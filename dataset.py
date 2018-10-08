@@ -1,9 +1,9 @@
 import logging
 import pickle
 import os
-from helpers import error, Config
+from helpers import error, Config, tic, toc
 from sklearn.datasets import fetch_20newsgroups
-# from keras.preprocessing.text import text_to_word_sequence
+from keras.preprocessing.text import text_to_word_sequence
 
 
 
@@ -15,15 +15,33 @@ class Dataset:
         self.name = name
         pass
 
-    def make(self):
-        logging.getLogger().warning("Attempted to make an abstract dataset!")
-        pass
+    def make(self, config):
+        if config.option("data_limit"):
+            logger = logging.getLogger()
+            value = config.option("data_limit")
+            self.train = self.train[:value]
+            self.test = self.test[:value]
+            logger.info("Limiting {} to {} items.".format(self.name, value))
+
+    # data getter
+    def get_data(self):
+        return self.train, self.test
 
     def preprocess(self):
+        logger = logging.getLogger()
+        tic()
+        filter = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
+        logger.info("Preprocessing {}".format(self.name))
         for i in range(len(self.train)):
-            pass
-#           processed = text_to_word_sequence(self.train[i], filters='!"#$%&()*+,-./:;<=>?@[\]^_`{|}~', lower=True, split=' ')
-#            self.train[i] = processed
+            processed = text_to_word_sequence(self.train[i], filters=filter, lower=True, split=' ')
+            self.train[i] = processed
+            # print(processed)
+        for i in range(len(self.test)):
+            processed = text_to_word_sequence(self.test[i], filters=filter, lower=True, split=' ')
+            self.test[i] = processed
+            # print(processed)
+        toc("Preprocessing")
+
 
 
 
@@ -35,7 +53,7 @@ class TwentyNewsGroups(Dataset):
         Dataset.__init__(self, TwentyNewsGroups.name)
         self.serialization_path = "{}/{}.pickle".format(self.serialization_dir, self.name)
 
-    def make(self):
+    def make(self, config):
         logger = logging.getLogger()
         # if already downloaded and serialized, load it
         if os.path.exists(self.serialization_path) and os.path.isfile(self.serialization_path):
@@ -63,6 +81,5 @@ class TwentyNewsGroups(Dataset):
         self.train, self.test = train.data, test.data
         self.train_target, self.test_target = train.target, test.target
 
-    # data getter
-    def get_data(self):
-        return self.train, self.test
+        Dataset.make(self, config)
+

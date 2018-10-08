@@ -2,3 +2,6 @@ dataset: 20newsgroups
 embedding: glove,50
 semantic_resource: wordnet
 classifier: naive_bayes
+
+options:
+  data_limit: 20

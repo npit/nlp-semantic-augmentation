@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 import random
 import yaml
@@ -11,11 +12,18 @@ class Config:
     logger = None
     seed = None
     conf = {}
+    
 
     def initialize(self, config_file):
         self.setup_logging()
         self.setup_seed()
         self.read_config(config_file)
+
+    # get option
+    def option(self, name):
+        if name in self.conf["options"]:
+            return self.conf["options"][name]
+        return None
 
     # logging initialization
     def setup_logging(self):
@@ -82,3 +90,29 @@ def error(msg):
     logger = logging.getLogger()
     logger.error(msg)
     raise Exception(msg)
+
+class Timer:
+    times = []
+
+def tic():
+    Timer.times.append(time.time())
+
+def toc(msg):
+    logger = logging.getLogger()
+    elapsed = time.time() - Timer.times.pop()
+    # convert to smhd
+    minutes = elapsed // 60
+    elapsed -= minutes * 60
+    seconds = elapsed
+
+    hours = minutes // 60
+    minutes -= hours * 60
+
+    days = hours // 24
+    hours -= days*24
+
+    elapsed = ""
+    names = ["days", "hours", "minutes", "seconds"]
+    values = [days, hours, minutes, seconds]
+    elapsed = "".join([ elapsed + "{:.3f} {} ".format(x, n) for (n,x) in zip(names, values) if x > 0])
+    logger.info("{} took {}.".format(msg, elapsed))

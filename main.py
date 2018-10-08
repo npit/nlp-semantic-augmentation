@@ -23,17 +23,16 @@ def main(config_file):
 
     # datasets loading & preprocessing
     dataset = fetcher.fetch_dataset(config.get_dataset())
-    dataset.make()
+    dataset.make(config)
     dataset.preprocess()
 
     # embedding
     embedding = fetcher.fetch_embedding(config.get_embedding())
-    embedding.make(dataset.get_data())
+    embedding.map_text(dataset)
 
     # semantic enrichment
     semantic = fetcher.fetch_semantic(config.get_semantic_resource())
-    semantic.make()
-    dataset.preprocess()
+    semantic.map_text(embedding.get_words())
 
     # learning
 
