@@ -77,14 +77,17 @@ class Config:
     def get_dataset(self):
         return self.conf["dataset"]
 
+    
     def get_semantic_resource(self):
         return self.conf["semantic_resource"]
 
-    def get_classifier(self):
-        return self.conf["classifier"]
+    def get_learner(self):
+        return self.conf["learner"]
 
     def get_embedding(self):
         return self.conf["embedding"]
+    def get_batch_size(self):
+        return self.conf["batch_size"]
 
 def error(msg):
     logger = logging.getLogger()

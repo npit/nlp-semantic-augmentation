@@ -2,6 +2,7 @@ from dataset import TwentyNewsGroups
 from embedding import Glove, Word2vec
 from semantic import Wordnet
 from helpers import error
+from learner import Dnn
 
 
 class Fetcher:
@@ -38,3 +39,11 @@ class Fetcher:
         else:
             error("Undefined embedding: {}".format(name))
 
+
+    # embedding name resolver
+    def fetch_learner(self, name):
+        name, params = self.get_params(name)
+        if name == Dnn.name:
+            return Dnn(params)
+        else:
+            error("Undefined embedding: {}".format(name))

@@ -32,9 +32,14 @@ def main(config_file):
 
     # semantic enrichment
     semantic = fetcher.fetch_semantic(config.get_semantic_resource())
-    semantic.map_text(embedding.get_words())
+    semantic.map_text(embedding.get_words(), dataset.get_name())
 
     # learning
+    learner = fetcher.fetch_learner(config.get_learner())
+    learner.make(embedding.get_data(), dataset.get_targets(), config)
+
+    learner.do_train()
+    learner.do_test()
 
 
 if __name__ == "__main__":

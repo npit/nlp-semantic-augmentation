@@ -1,7 +1,14 @@
 dataset: 20newsgroups
+# dataset name, param1, param2
 embedding: glove,50
+# semantic resource settings
+# resource,population_strategy,weighting_strategy,pruning_strategy
 semantic_resource: wordnet
-classifier: naive_bayes
+enrichment: 
+learner: dnn
+
+batch_size: 20
+
 
 options:
   data_limit: 20

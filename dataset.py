@@ -26,6 +26,9 @@ class Dataset:
     # data getter
     def get_data(self):
         return self.train, self.test
+    def get_targets(self):
+        return self.train_target, self.test_target
+
 
     def preprocess(self):
         logger = logging.getLogger()
@@ -43,7 +46,8 @@ class Dataset:
         toc("Preprocessing")
 
 
-
+    def get_name(self):
+        return self.name
 
 
 class TwentyNewsGroups(Dataset):

@@ -14,6 +14,7 @@ class Embedding():
     dataset_embeddings = None
     embeddings = None
     words_to_numeric_idx  = None
+    missing = []
 
     def read_pickled(self, pickled_path):
         logger = logging.getLogger()
@@ -39,6 +40,9 @@ class Embedding():
                     doc_words = document.index.tolist()
                     self.words[-1].append(doc_words)
         return self.words
+
+    def get_data(self):
+        return self.dataset_embeddings
 
 
 class Glove(Embedding):
@@ -72,6 +76,12 @@ class Glove(Embedding):
     # transform input texts to embeddings
     def map_text(self, dset):
         logger = logging.getLogger()
+        serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}.pickle".format(dset.name, self.name))
+        if os.path.exists(serialization_path):
+            with open(serialization_path, "rb") as f:
+                [self.dataset_embeddings, self.missing_words] = pickle.load(f)
+            return
+
         logger.info("Mapping {} to {} embeddings.".format(dset.name, self.name))
         text_bundles = dset.train, dset.test
         self.dataset_embeddings = []
@@ -108,14 +118,18 @@ class Glove(Embedding):
 
             logger.info("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit/num_total*100, num_total, num_words_hit))
             logger.info("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss/num_total*100, num_total, num_words_miss))
-            # import pdb; pdb.set_trace()
 
-            # log missing words
-            missing_filename = os.path.join(self.serialization_dir, self.name + "_" + dset.name + ".txt")
+            self.missing.append(hist_missing)
+
+        # write
+        with open(serialization_path, "wb") as f:
+            pickle.dump([self.dataset_embeddings, self.missing], f)
+        # log missing words
+        for d in range(len(self.missing)):
+            missing_filename = os.path.join(self.serialization_dir, self.name + "_" + dset.name + str(d+1) + ".txt")
             logger.info("Writing missing words to {}".format(missing_filename))
             with open(missing_filename, "w") as f:
-                f.write("\n".join(hist_missing.keys()))
-            
+                f.write("\n".join(self.missing[d].keys()))
 
 
 class Word2vec(Embedding):

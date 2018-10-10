@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-
-# activate virtualenv
-venv="../venv/bin/activate"
-source "${venv}"
+[ -z $VIRTUAL_ENV ] && echo "Need to activate python3.6 virtualenv" && exit
 
 # run
-python run.py
+python main.py
