@@ -21,9 +21,11 @@ class Config:
 
     # get option
     def option(self, name):
+        if "options" not in self.conf or not self.conf["options"]:
+            return False
         if name in self.conf["options"]:
             return self.conf["options"][name]
-        return None
+        return False
 
     # logging initialization
     def setup_logging(self):
@@ -84,10 +86,18 @@ class Config:
     def get_learner(self):
         return self.conf["learner"]
 
+    def get_aggregation(self):
+        return self.conf["aggregation"]
+
     def get_embedding(self):
         return self.conf["embedding"]
+
     def get_batch_size(self):
         return self.conf["batch_size"]
+
+    def get_train_params(self):
+        return self.conf["train"]
+
 
 def error(msg):
     logger = logging.getLogger()

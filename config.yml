@@ -1,14 +1,28 @@
-dataset: 20newsgroups
+# dataset
 # dataset name, param1, param2
+dataset: 20newsgroups
+
+# embeddings
 embedding: glove,50
+# information aggregation method to document-level representations
+# avg, concat, prune-sequence
+aggregation: avg
+
 # semantic resource settings
 # resource,population_strategy,weighting_strategy,pruning_strategy
 semantic_resource: wordnet
-enrichment: 
+# how the semantic information is combined with the textual one
+enrichment: concat
+
+# learning model
+# dnn or lstm
 learner: dnn
+
+train:
+  epochs: 50
 
 batch_size: 20
 
 
 options:
-  data_limit: 20
+  data_limit: 50

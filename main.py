@@ -1,6 +1,8 @@
 #! /home/nik/work/iit/submissions/NLE-special/venv/bin/python3.6
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
+
+
 # import keras
 #  wordnet api in nltk
 # from nltk.corpora import wordnet as wn
@@ -28,15 +30,17 @@ def main(config_file):
 
     # embedding
     embedding = fetcher.fetch_embedding(config.get_embedding())
-    embedding.map_text(dataset)
+    embedding.map_text(dataset, config)
+    embedding.prepare(config)
 
     # semantic enrichment
     semantic = fetcher.fetch_semantic(config.get_semantic_resource())
     semantic.map_text(embedding.get_words(), dataset.get_name())
 
     # learning
+    # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
     learner = fetcher.fetch_learner(config.get_learner())
-    learner.make(embedding.get_data(), dataset.get_targets(), config)
+    learner.make(embedding.get_data(), dataset.get_targets(), dataset.get_num_labels(), config)
 
     learner.do_train()
     learner.do_test()

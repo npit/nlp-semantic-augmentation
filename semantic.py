@@ -8,7 +8,7 @@ from nltk.corpus import wordnet as wn
 
 class Wordnet:
     name="wordnet"
-    serialization_dir = "semantic_data"
+    serialization_dir = "serializations/semantic_data"
     word_synset_cache = {}
 
     synset_freqs = []
@@ -67,6 +67,8 @@ class Wordnet:
 
         logger = logging.getLogger()
         serialization_path = os.path.join(self.serialization_dir, "{}_{}_assignments".format(dataset_name, self.name))
+        if os.path.exists(self.serialization_dir):
+            os.makedirs(self.serialization_dir, exist_ok=True)
         if os.path.exists(serialization_path):
             logger.info("Loading existing mapped semantic information.")
             with open(serialization_path, "rb") as f:
