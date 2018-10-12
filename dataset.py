@@ -5,6 +5,7 @@ from helpers import Config
 from utils import error, tic, toc
 from sklearn.datasets import fetch_20newsgroups
 from keras.preprocessing.text import text_to_word_sequence
+from nltk.corpus import stopwords
 
 
 
@@ -29,6 +30,8 @@ class Dataset:
         self.set_paths(name)
 
     def make(self, config):
+        self.serialization_dir = os.path.join(config.get_serialization_dir(), "datasets")
+        self.set_paths(self.name)
         pass
 
     # data getter
@@ -57,6 +60,7 @@ class Dataset:
 
     def preprocess(self):
         logger = logging.getLogger()
+        stopw = set(stopwords.words('english'))
         if self.preprocessed:
             logger.info("Skipping preprocessing, loading existing data from {}.".format(self.serialization_path_preprocessed))
             return
@@ -66,10 +70,12 @@ class Dataset:
         logger.info("Mapping training set to word sequence.")
         for i in range(len(self.train)):
             processed = text_to_word_sequence(self.train[i], filters=filter, lower=True, split=' ')
+            processed = [p for p in processed if p not in stopw]
             self.train[i] = processed
         logger.info("Mapping test set to word sequence.")
         for i in range(len(self.test)):
             processed = text_to_word_sequence(self.test[i], filters=filter, lower=True, split=' ')
+            processed = [p for p in processed if p not in stopw]
             self.test[i] = processed
         toc("Preprocessing")
         # serialize
@@ -84,11 +90,13 @@ class Dataset:
 
 class TwentyNewsGroups(Dataset):
     name = "20newsgroups"
+    language = "english"
 
     def __init__(self):
         Dataset.__init__(self, TwentyNewsGroups.name)
 
     def make(self, config):
+        Dataset.make(self, config)
         logger = logging.getLogger()
 
         self.apply_limit(config)
@@ -126,5 +134,6 @@ class TwentyNewsGroups(Dataset):
         self.train_label_names = train.target_names
         self.test_label_names = test.target_names
         self.num_labels = len(self.train_label_names)
-        Dataset.make(self, config)
+
+        self.apply_limit(config)
 

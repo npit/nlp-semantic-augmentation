@@ -3,7 +3,7 @@ import os
 import copy
 import pickle
 import logging
-from utils import tic, toc
+from utils import tic, toc, error
 from nltk.corpus import wordnet as wn
 
 class Wordnet:
@@ -16,6 +16,9 @@ class Wordnet:
     dataset_freqs = []
     dataset_minmax_freqs = []
     assignments = {}
+
+    def make(self, config):
+        self.serialization_dir = os.path.join(config.get_serialization_dir(), "semantic_data")
 
     # merge list of document-wise frequency dicts
     # to a single, dataset-wise frequency dict
@@ -60,6 +63,21 @@ class Wordnet:
         self.synset_tfidf_freqs.append(tfidf_freqs)
         toc("tf-idf computation")
 
+
+    def disambiguate(self, config):
+        disam = config.get_disambiguation()
+        if disam == 'POS':
+            # part-of-speech filtering
+            pass
+        elif disam == 'embedding-centroid':
+            # generate closest synset embeddings
+            # assign to closest embedding
+            pass
+        elif disam == "prior":
+            # select the synset with the highest prior prob
+            pass
+        else:
+            error("Undefined disambiguation method: " + disam)
 
 
     # function to map words to wordnet concepts

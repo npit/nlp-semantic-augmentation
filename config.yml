@@ -10,9 +10,12 @@ aggregation: avg
 
 # semantic resource settings
 # resource,population_strategy,weighting_strategy,pruning_strategy
+
 semantic_resource: wordnet
 # how the semantic information is combined with the textual one
 enrichment: concat
+# pos, embedding-centroid
+disambiguation: pos
 
 # learning model
 # dnn or lstm
@@ -24,10 +27,13 @@ train:
   early_stopping_patience: -1
 
 batch_size: 20
-log_level: info
+log_level: debug
 
 
 options:
   data_limit: 100
 
 results_folder: "results"
+serialization_dir: "serialization"
+embeddings_folder: "serialization"
+semantic_folder: "serialization"

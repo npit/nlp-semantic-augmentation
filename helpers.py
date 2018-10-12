@@ -98,6 +98,9 @@ class Config:
             self.conf = yaml.load(f)
 
     # configuration entry getters
+    def get_serialization_dir(self):
+        return self.conf["serialization_dir"]
+
     def get_dataset(self):
         return self.conf["dataset"]
 

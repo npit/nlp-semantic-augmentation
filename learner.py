@@ -119,7 +119,6 @@ class Dnn:
                                 validation_data = (val_x, val_y_onehot),
                                 callbacks = self.get_callbacks(config, fold_index))
 
-            import pdb; pdb.set_trace()
             if self.early_stopping:
                 logger.info("Stopped on epoch {}".format(self.early_stopping.stopped_epoch))
             self.do_test(model)

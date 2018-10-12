@@ -31,11 +31,13 @@ def main(config_file):
 
     # embedding
     embedding = fetcher.fetch_embedding(config.get_embedding())
+    embedding.make(config)
     embedding.map_text(dataset, config)
     embedding.prepare(config)
 
     # semantic enrichment
     semantic = fetcher.fetch_semantic(config.get_semantic_resource())
+    semantic.make(config)
     semantic.map_text(embedding.get_words(), dataset.get_name())
 
     # learning

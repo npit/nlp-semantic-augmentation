@@ -54,6 +54,8 @@ class Embedding():
                 for doc_dict in self.dataset_embeddings[dset_idx]:
                     aggregated_doc_vectors.append(np.mean(doc_dict.values, axis=0))
                 self.dataset_embeddings[dset_idx] = np.concatenate(aggregated_doc_vectors).reshape(len(aggregated_doc_vectors), self.embedding_dim)
+        elif aggregation == "lstm":
+            pass
 
 
 
@@ -61,9 +63,14 @@ class Embedding():
 
 class Glove(Embedding):
     name = "glove"
+    dataset_name = ""
 
-    def __init__(self, params):
-        self.embedding_dim = int(params[0])
+    def make(self, config):
+        self.dataset_name = config.get_dataset()
+        if config.option("data_limit"):
+            self.dataset_name += "_limit{}".format(config.option("data_limit"))
+        self.serialization_dir = os.path.join(config.get_serialization_dir(), "embeddings")
+
         if not os.path.exists(self.serialization_dir):
             os.makedirs(self.serialization_dir, exist_ok=True)
         raw_data_path = os.path.join("embeddings/glove.6B.{}d.txt".format(self.embedding_dim))
@@ -93,10 +100,7 @@ class Glove(Embedding):
     # transform input texts to embeddings
     def map_text(self, dset, config):
         logger = logging.getLogger()
-        if config.option("data_limit"):
-            serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_limit{}_{}.pickle".format(dset.name, config.option("data_limit"), self.name))
-        else:
-            serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}.pickle".format(dset.name, self.name))
+        serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}.pickle".format(self.dataset_name, self.name))
         if os.path.exists(serialization_path):
             with open(serialization_path, "rb") as f:
                 [self.dataset_embeddings, self.missing_words] = pickle.load(f)
@@ -151,6 +155,11 @@ class Glove(Embedding):
             logger.info("Writing missing words to {}".format(missing_filename))
             with open(missing_filename, "w") as f:
                 f.write("\n".join(self.missing[d].keys()))
+
+
+
+    def __init__(self, params):
+        self.embedding_dim = int(params[0])
 
 
 class Word2vec(Embedding):
