@@ -1,7 +1,8 @@
 import logging
 import pickle
 import os
-from helpers import error, Config, tic, toc
+from helpers import Config
+from utils import error, tic, toc
 from sklearn.datasets import fetch_20newsgroups
 from keras.preprocessing.text import text_to_word_sequence
 
@@ -9,33 +10,56 @@ from keras.preprocessing.text import text_to_word_sequence
 
 class Dataset:
     name = ""
+    limited_name = ""
     serialization_dir = "serializations/datasets"
+    preprocessed = False
+    train, test = None, None
+
+    def suspend_limit(self):
+        self.set_paths(self.name)
+
+    def set_paths(self, name):
+        if not os.path.exists(self.serialization_dir):
+            os.makedirs(self.serialization_dir, exist_ok=True)
+        self.serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
+        self.serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
 
     def __init__(self, name):
         self.name = name
-        pass
+        self.set_paths(name)
 
     def make(self, config):
-        if config.option("data_limit"):
-            logger = logging.getLogger()
-            value = config.option("data_limit")
-            self.train = self.train[:value]
-            self.test = self.test[:value]
-            self.train_target = self.train_target[:value]
-            self.test_target = self.test_target[:value]
-            logger.info("Limiting {} to {} items.".format(self.name, value))
+        pass
 
     # data getter
     def get_data(self):
         return self.train, self.test
+
     def get_targets(self):
         return self.train_target, self.test_target
+
     def get_num_labels(self):
         return self.num_labels
 
 
+    def apply_limit(self, config):
+        if config.option("data_limit"):
+            logger = logging.getLogger()
+            value = config.option("data_limit")
+            if self.train:
+                self.train = self.train[:value]
+                self.test = self.test[:value]
+                self.train_target = self.train_target[:value]
+                self.test_target = self.test_target[:value]
+                logger.info("Limiting {} to {} items.".format(self.name, value))
+            self.limited_name = self.name + "_limited_" + str(value)
+            self.set_paths(self.limited_name)
+
     def preprocess(self):
         logger = logging.getLogger()
+        if self.preprocessed:
+            logger.info("Skipping preprocessing, loading existing data from {}.".format(self.serialization_path_preprocessed))
+            return
         tic()
         filter = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
         logger.info("Preprocessing {}".format(self.name))
@@ -43,13 +67,15 @@ class Dataset:
         for i in range(len(self.train)):
             processed = text_to_word_sequence(self.train[i], filters=filter, lower=True, split=' ')
             self.train[i] = processed
-            # print(processed)
         logger.info("Mapping test set to word sequence.")
         for i in range(len(self.test)):
             processed = text_to_word_sequence(self.test[i], filters=filter, lower=True, split=' ')
             self.test[i] = processed
-            # print(processed)
         toc("Preprocessing")
+        # serialize
+        with open(self.serialization_path_preprocessed, "wb") as f:
+            pickle.dump([self.train, self.train_target, self.train_label_names,
+                         self.test, self.test_target, self.test_label_names], f)
 
 
     def get_name(self):
@@ -61,39 +87,44 @@ class TwentyNewsGroups(Dataset):
 
     def __init__(self):
         Dataset.__init__(self, TwentyNewsGroups.name)
-        if os.path.exists(self.serialization_dir):
-            os.makedirs(self.serialization_dir, exist_ok=True)
-        self.serialization_path = "{}/{}.pickle".format(self.serialization_dir, self.name)
 
     def make(self, config):
         logger = logging.getLogger()
-        # if already downloaded and serialized, load it
+
+        self.apply_limit(config)
+        # if preprocessed data already exists, load them
+        if os.path.exists(self.serialization_path_preprocessed):
+            with open(self.serialization_path_preprocessed, "rb") as f:
+                self.train, self.train_target, self.train_label_names, self.test, self.test_target, self.test_label_names = pickle.load(f)
+                self.num_labels = len(self.train_label_names)
+                self.preprocessed = True
+                return
+        self.suspend_limit()
+
+        # else, check if the downloaded & serialized raw data exists
         if os.path.exists(self.serialization_path) and os.path.isfile(self.serialization_path):
             logger.info("Loading {} from serialization path {}".format(self.name, self.serialization_path))
             with open(self.serialization_path, "rb") as f:
                 deser = pickle.load(f)
                 train, test = deser[0], deser[1]
         else:
+            # else, fetch from scikit-learn
             logger.info("Downloading {} via sklearn".format(self.name))
-            # fetch from scikit-learn
-            # alternatively you can se sklearn manually with
-            # sklearn.datasets.load_files(data_folder) to load each category data
             seed = Config().get_seed()
             train = fetch_20newsgroups(subset='train', shuffle=True, random_state=seed)
             test = fetch_20newsgroups(subset='train', shuffle=True, random_state=seed)
             # write
-            logger.info("Writing to {} from serialization path {}".format(self.name, self.serialization_path))
-            if not os.path.exists(self.serialization_dir):
-                os.makedirs(self.serialization_dir, exist_ok = True)
+            logger.info("Writing {} dataset to from serialization path {}".format(self.name, self.serialization_path))
             with open(self.serialization_path, "wb") as f:
                 pickle.dump([train, test], f)
+
         # results are sklearn bunches
         logger.info("Got {} and {} train / test samples".format(len(train.data), len(test.data)))
         # map to train/test/categories
         self.train, self.test = train.data, test.data
         self.train_target, self.test_target = train.target, test.target
-        self.label_names_train = train.target_names
-        self.label_names_test = test.target_names
-        self.num_labels = len(self.label_names_train)
+        self.train_label_names = train.target_names
+        self.test_label_names = test.target_names
+        self.num_labels = len(self.train_label_names)
         Dataset.make(self, config)
 

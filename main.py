@@ -11,6 +11,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from fetcher import Fetcher
 from helpers import Config
 import argparse
+import logging
 
 
 print("Imports done.")
@@ -42,8 +43,8 @@ def main(config_file):
     learner = fetcher.fetch_learner(config.get_learner())
     learner.make(embedding.get_data(), dataset.get_targets(), dataset.get_num_labels(), config)
 
-    learner.do_train()
-    learner.do_test()
+    learner.do_traintest(config)
+    logging.getLogger().info("Done.")
 
 
 if __name__ == "__main__":

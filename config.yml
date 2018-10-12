@@ -20,9 +20,14 @@ learner: dnn
 
 train:
   epochs: 50
+  folds: 3
+  early_stopping_patience: -1
 
 batch_size: 20
+log_level: info
 
 
 options:
-  data_limit: 50
+  data_limit: 100
+
+results_folder: "results"

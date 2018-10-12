@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 import csv
 import pickle
-from helpers import error, tic, toc
+from utils import error, tic, toc
 import numpy as np
 
 
@@ -146,7 +146,8 @@ class Glove(Embedding):
             pickle.dump([self.dataset_embeddings, self.missing], f)
         # log missing words
         for d in range(len(self.missing)):
-            missing_filename = os.path.join(self.serialization_dir, "missing_words_" + self.name + "_" + dset.name + str(d+1) + ".txt")
+            l = ['train', 'text']
+            missing_filename = os.path.join(self.serialization_dir, "missing_words_" + self.name + "_" + dset.name + l[d] + ".txt")
             logger.info("Writing missing words to {}".format(missing_filename))
             with open(missing_filename, "w") as f:
                 f.write("\n".join(self.missing[d].keys()))

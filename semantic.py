@@ -3,7 +3,7 @@ import os
 import copy
 import pickle
 import logging
-from helpers import tic, toc
+from utils import tic, toc
 from nltk.corpus import wordnet as wn
 
 class Wordnet:
@@ -37,7 +37,7 @@ class Wordnet:
         for wl, word_list in enumerate(dset):
             doc_freqs = {}
             for w, word in enumerate(word_list):
-                logger.info("Semantic processing for word {}/{} ({}) of doc {}/{}".format(w+1, len(word_list), word, wl+1, len(dset)))
+                logger.debug("Semantic processing for word {}/{} ({}) of doc {}/{}".format(w+1, len(word_list), word, wl+1, len(dset)))
                 synset, doc_freqs = self.get_synset(word, doc_freqs)
                 if not synset: continue
                 self.process_synset(synset)

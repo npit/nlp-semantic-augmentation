@@ -3,21 +3,29 @@ import time
 import logging
 import random
 import yaml
+import utils
 
 
 
 class Config:
+    log_dir = "logs"
     seed_file = "seed.txt"
     # logger_name = "root"
     logger = None
     seed = None
     conf = {}
-    
+    run_id = None
+
+    def get_run_id(self):
+        return self.run_id
 
     def initialize(self, config_file):
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir)
+        self.run_id = "run_" + utils.datetime_str()
+        self.read_config(config_file)
         self.setup_logging()
         self.setup_seed()
-        self.read_config(config_file)
 
     # get option
     def option(self, name):
@@ -31,13 +39,27 @@ class Config:
     def setup_logging(self):
         formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
 
+        # console handler
         handler = logging.StreamHandler()
         handler.setFormatter(formatter)
+        log_level = self.conf["log_level"]
+        if log_level == "info":
+            log_level = logging.INFO
+        elif log_level == "debug":
+            log_level = logging.DEBUG
 
         # logger = logging.getLogger(self.logger_name)
         logger = logging.getLogger()
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(log_level)
         logger.addHandler(handler)
+
+        # file handler
+        logfile = os.path.join(self.log_dir,"log_{}.txt".format(self.run_id))
+        fhandler = logging.FileHandler(logfile)
+        fhandler.setLevel(log_level)
+        fhandler.setFormatter(formatter)
+        logger.addHandler(fhandler)
+
         self.logger = logger
         return logger
 
@@ -71,7 +93,7 @@ class Config:
 
     # read yaml configuration
     def read_config(self, yaml_file):
-        self.logger.info("Reading configuration from {}".format(yaml_file))
+        print("Reading configuration for run {} from {}".format(self.run_id, yaml_file))
         with open(yaml_file) as f:
             self.conf = yaml.load(f)
 
@@ -79,7 +101,9 @@ class Config:
     def get_dataset(self):
         return self.conf["dataset"]
 
-    
+    def get_results_folder(self):
+        return self.conf["results_folder"]
+
     def get_semantic_resource(self):
         return self.conf["semantic_resource"]
 
@@ -98,34 +122,3 @@ class Config:
     def get_train_params(self):
         return self.conf["train"]
 
-
-def error(msg):
-    logger = logging.getLogger()
-    logger.error(msg)
-    raise Exception(msg)
-
-class Timer:
-    times = []
-
-def tic():
-    Timer.times.append(time.time())
-
-def toc(msg):
-    logger = logging.getLogger()
-    elapsed = time.time() - Timer.times.pop()
-    # convert to smhd
-    minutes = elapsed // 60
-    elapsed -= minutes * 60
-    seconds = elapsed
-
-    hours = minutes // 60
-    minutes -= hours * 60
-
-    days = hours // 24
-    hours -= days*24
-
-    elapsed = ""
-    names = ["days", "hours", "minutes", "seconds"]
-    values = [days, hours, minutes, seconds]
-    elapsed = "".join([ elapsed + "{:.3f} {} ".format(x, n) for (n,x) in zip(names, values) if x > 0])
-    logger.info("{} took {}.".format(msg, elapsed))

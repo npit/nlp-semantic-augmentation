@@ -1,7 +1,7 @@
 from dataset import TwentyNewsGroups
 from embedding import Glove, Word2vec
 from semantic import Wordnet
-from helpers import error
+from utils import error
 from learner import Dnn
 
 
