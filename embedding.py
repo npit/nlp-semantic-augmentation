@@ -58,6 +58,30 @@ class Embedding():
             pass
 
 
+    # infuse semantic information in the embeddings
+    def enrich(self, semantic_data, config):
+        # first aggregate the semantic stuff
+        # import pdb; pdb.set_trace()
+        # aggregation = config.get_aggregation()
+        # if aggregation == "avg":
+        #     for d in range(len(semantic_data)):
+        #         for doc in range(len(semantic_data[d])):
+        #             semantic_data[d][doc] = np.mean( semantic_data[d][doc], axis = 0)
+
+        if config.get_enrichment() == "concat":
+            composite_dim = self.embedding_dim + len(semantic_data[0][0])
+            logging.getLogger().info("Concatenating to composite dimension: {}".format(composite_dim))
+            for dset_idx in range(len(semantic_data)):
+                new_dset_embeddings = np.ndarray((0, composite_dim), np.float32)
+                for doc_idx in range(len(semantic_data[dset_idx])):
+                    embedding = self.dataset_embeddings[dset_idx][doc_idx,:]
+                    sem_vector = semantic_data[dset_idx][doc_idx]
+                    new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embedding, sem_vector])])
+                self.dataset_embeddings[dset_idx] = new_dset_embeddings
+
+
+
+
 
 
 

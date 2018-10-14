@@ -12,6 +12,9 @@ aggregation: avg
 # resource,population_strategy,weighting_strategy,pruning_strategy
 
 semantic_resource: wordnet
+# the form of semantic information to use
+# frequencies or tfidf
+semantic_type: freq
 # how the semantic information is combined with the textual one
 enrichment: concat
 # pos, embedding-centroid
@@ -27,7 +30,8 @@ train:
   early_stopping_patience: -1
 
 batch_size: 20
-log_level: debug
+#log_level: debug
+log_level: info
 
 
 options:

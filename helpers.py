@@ -110,6 +110,12 @@ class Config:
     def get_semantic_resource(self):
         return self.conf["semantic_resource"]
 
+    def get_semantic_type(self):
+        return self.conf["semantic_type"]
+
+    def get_enrichment(self):
+        return self.conf["enrichment"]
+
     def get_learner(self):
         return self.conf["learner"]
 

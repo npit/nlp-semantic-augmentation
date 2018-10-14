@@ -12,7 +12,7 @@ from nltk.corpus import stopwords
 class Dataset:
     name = ""
     limited_name = ""
-    serialization_dir = "serializations/datasets"
+    serialization_dir = "serialization/datasets"
     preprocessed = False
     train, test = None, None
 

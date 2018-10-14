@@ -39,6 +39,7 @@ def main(config_file):
     semantic = fetcher.fetch_semantic(config.get_semantic_resource())
     semantic.make(config)
     semantic.map_text(embedding.get_words(), dataset.get_name())
+    embedding.enrich(semantic.get_data(config), config)
 
     # learning
     # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
