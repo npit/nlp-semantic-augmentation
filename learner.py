@@ -115,7 +115,7 @@ class Dnn:
             history = model.fit(train_x, train_y_onehot,
                                 batch_size=self.batch_size,
                                 epochs=self.epochs,
-                                verbose=1,
+                                verbose=0,
                                 validation_data = (val_x, val_y_onehot),
                                 callbacks = self.get_callbacks(config, fold_index))
 
@@ -139,7 +139,7 @@ class Dnn:
     def do_test(self, model):
         logger = logging.getLogger()
         logger.info("Testing network.")
-        predictions = model.predict(self.test, batch_size=self.batch_size, verbose=1)
+        predictions = model.predict(self.test, batch_size=self.batch_size, verbose=0)
         predictions_amax = np.argmax(predictions, axis=1)
         self.get_baselines()
         acc   = metrics.accuracy_score(self.test_labels, predictions_amax)

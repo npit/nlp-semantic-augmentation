@@ -49,7 +49,7 @@ class Wordnet:
         for wl, word_list in enumerate(dset):
             doc_freqs = {}
             for w, word in enumerate(word_list):
-                logger.debug("Semantic processing for word {}/{} ({}) of doc {}/{}".format(w+1, len(word_list), word, wl+1, len(dset)))
+                # logger.debug("Semantic processing for word {}/{} ({}) of doc {}/{}".format(w+1, len(word_list), word, wl+1, len(dset)))
                 synset, doc_freqs = self.get_synset(word, doc_freqs, force_reference_synsets)
                 if not synset: continue
                 self.process_synset(synset)

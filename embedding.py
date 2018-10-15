@@ -175,7 +175,7 @@ class Glove(Embedding):
         # log missing words
         for d in range(len(self.missing)):
             l = ['train', 'text']
-            missing_filename = os.path.join(self.serialization_dir, "missing_words_" + self.name + "_" + dset.name + l[d] + ".txt")
+            missing_filename = os.path.join(self.serialization_dir, "missing_words_{}_{}_{}.txt".format(self.name, dset.name, l[d]))
             logger.info("Writing missing words to {}".format(missing_filename))
             with open(missing_filename, "w") as f:
                 f.write("\n".join(self.missing[d].keys()))
