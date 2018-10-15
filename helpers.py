@@ -101,6 +101,9 @@ class Config:
     def get_serialization_dir(self):
         return self.conf["serialization_dir"]
 
+    def get_parallel(self):
+        return self.conf["parallelization"]
+
     def get_dataset(self):
         return self.conf["dataset"]
 

@@ -156,7 +156,6 @@ class Dnn:
         logger.info("Done testing network.")
 
     def get_baselines(self):
-        print()
         logger = logging.getLogger()
         logger.info("Baseline performance:")
 

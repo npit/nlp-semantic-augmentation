@@ -12,6 +12,7 @@ from fetcher import Fetcher
 from helpers import Config
 import argparse
 import logging
+from utils import info
 
 
 print("Imports done.")
@@ -25,29 +26,33 @@ def main(config_file):
     fetcher = Fetcher()
 
     # datasets loading & preprocessing
+    info("===== DATASET =====")
     dataset = fetcher.fetch_dataset(config.get_dataset())
     dataset.make(config)
     dataset.preprocess()
 
     # embedding
+    info("===== EMBEDDING =====")
     embedding = fetcher.fetch_embedding(config.get_embedding())
     embedding.make(config)
-    embedding.map_text(dataset, config)
-    embedding.prepare(config)
+    embedding.map_text(dataset)
+    embedding.prepare()
 
     # semantic enrichment
+    info("===== SEMANTIC =====")
     semantic = fetcher.fetch_semantic(config.get_semantic_resource())
     semantic.make(config)
     semantic.map_text(embedding.get_words(), dataset.get_name())
-    embedding.enrich(semantic.get_data(config), config)
+    embedding.enrich(semantic.get_data(config))
 
     # learning
+    info("===== LEARNING =====")
     # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
     learner = fetcher.fetch_learner(config.get_learner())
     learner.make(embedding.get_data(), dataset.get_targets(), dataset.get_num_labels(), config)
 
     learner.do_traintest(config)
-    logging.getLogger().info("Done.")
+    info("Done.")
 
 
 if __name__ == "__main__":

@@ -33,9 +33,12 @@ batch_size: 20
 #log_level: debug
 log_level: info
 
+#parallelization: 10
+#parallelization: 4
 
 options:
   data_limit: 100
+#  data_limit: 100
 
 results_folder: "results"
 serialization_dir: "serialization"

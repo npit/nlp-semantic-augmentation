@@ -122,7 +122,7 @@ class TwentyNewsGroups(Dataset):
             train = fetch_20newsgroups(subset='train', shuffle=True, random_state=seed)
             test = fetch_20newsgroups(subset='train', shuffle=True, random_state=seed)
             # write
-            logger.info("Writing {} dataset to from serialization path {}".format(self.name, self.serialization_path))
+            logger.info("Writing {} dataset from serialization path {}".format(self.name, self.serialization_path))
             with open(self.serialization_path, "wb") as f:
                 pickle.dump([train, test], f)
 

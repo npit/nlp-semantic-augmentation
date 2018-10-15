@@ -3,7 +3,7 @@ import os
 import copy
 import pickle
 import logging
-from utils import tic, toc, error
+from utils import tic, toc, error, info
 from nltk.corpus import wordnet as wn
 
 class Wordnet:
@@ -124,6 +124,7 @@ class Wordnet:
         # process the data
         self.synset_freqs = []
         for d, dset in enumerate(datasets_words):
+            info("Extracting semantic information from dataset {}/{}".format(d+1, len(datasets_words)))
             # process data within a dataset portion
             self.map_dset(dset, dataset_name + "{}".format(d+1),
                           store_reference_synsets=d == 0,
