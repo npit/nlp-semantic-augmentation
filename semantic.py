@@ -17,22 +17,56 @@ class Wordnet:
     dataset_minmax_freqs = []
     assignments = {}
 
+
+
+    def apply_freq_filtering(self, freq_dict_list, dataset_freqs, force_reference=False):
+        info("Applying synset frequency filtering with a threshold of {}".format(self.semantic_freq_threshold))
+        tic()
+        # delete from dataset-level dicts
+        synsets_to_delete = set()
+        for synset in dataset_freqs:
+            if dataset_freqs[synset] < self.semantic_freq_threshold:
+                synsets_to_delete.add(synset)
+        toc("Dataset-level frequency filtering")
+        # if forcing reference, we can override the freq threshold for these synsets
+        if force_reference:
+            orig_num = len(synsets_to_delete)
+            synsets_to_delete = [x for x in synsets_to_delete if x not in self.reference_synsets]
+            info("Limiting synsets-to-delete from {} to {} due to forcing to reference synset set".format(orig_num, len(synsets_to_delete)))
+        if not synsets_to_delete:
+            return  freq_dict_list, dataset_freqs
+        info("Will remove {}/{} synsets due to a freq threshold of {}".format(len(synsets_to_delete), len(dataset_freqs), self.semantic_freq_threshold))
+        tic()
+        # delete
+        for synset in synsets_to_delete:
+            del dataset_freqs[synset]
+            for doc_dict in freq_dict_list:
+                if synset in doc_dict:
+                    del doc_dict[synset]
+        toc("Document-level frequency filtering")
+        return  freq_dict_list, dataset_freqs
+
     def make(self, config):
         self.serialization_dir = os.path.join(config.get_serialization_dir(), "semantic_data")
+        self.semantic_freq_threshold = config.get_semantic_freq_threshold()
 
     # merge list of document-wise frequency dicts
     # to a single, dataset-wise frequency dict
-    def doc_to_dset_freqs(self, freq_dict_list):
+    def doc_to_dset_freqs(self, freq_dict_list, force_reference = False):
         dataset_freqs = {}
         for doc_dict in freq_dict_list:
             for synset, freq in doc_dict.items():
                 if synset not in dataset_freqs:
                     dataset_freqs[synset] = 0
                 dataset_freqs[synset] += freq
-        # also complete document-level freqs with zeros for missing dataset synsets
-        for d, doc_dict in enumerate(freq_dict_list):
-            for synset in [s for s in dataset_freqs if s not in doc_dict]:
-                freq_dict_list[d][synset] = 0
+        # frequency filtering, if defined
+        if self.semantic_freq_threshold:
+            freq_dict_list, dataset_freqs = self.apply_freq_filtering(freq_dict_list, dataset_freqs, force_reference)
+
+        # complete document-level freqs with zeros for dataset-level synsets missing in the document level
+        #for d, doc_dict in enumerate(freq_dict_list):
+        #    for synset in [s for s in dataset_freqs if s not in doc_dict]:
+        #        freq_dict_list[d][synset] = 0
         return dataset_freqs, freq_dict_list
 
 
@@ -61,7 +95,7 @@ class Wordnet:
         toc("Document-level mapping and frequency computation")
         # merge to dataset-wise synset frequencies
         tic()
-        dataset_freqs, current_synset_freqs = self.doc_to_dset_freqs(current_synset_freqs)
+        dataset_freqs, current_synset_freqs = self.doc_to_dset_freqs(current_synset_freqs, force_reference = force_reference_synsets)
         self.dataset_freqs.append(dataset_freqs)
         self.synset_freqs.append(current_synset_freqs)
         toc("Dataset-level frequency computation")
@@ -191,6 +225,7 @@ class Wordnet:
         # map dicts to vectors
         synset_order = sorted(self.dataset_freqs[0].keys())
         for d, dset in enumerate(self.dataset_freqs):
+            #import pdb; pdb.set_trace()
             if not set(synset_order) == set(dset.keys()):
                 print(len(synset_order))
                 print(len(dset.keys()))
@@ -202,7 +237,7 @@ class Wordnet:
             # get raw frequencies
             for d in range(len(self.synset_freqs)):
                 for doc_dict in self.synset_freqs[d]:
-                    doc_vector = [doc_dict[s] for s in synset_order]
+                    doc_vector = [doc_dict[s] if s in doc_dict else 0 for s in synset_order]
                     semantic_document_vectors[d].append(doc_vector)
         else:
             error("Unimplemented semantic vector method: {}.".format(semtype))

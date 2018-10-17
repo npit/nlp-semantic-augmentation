@@ -125,6 +125,9 @@ class Config:
     def get_aggregation(self):
         return self.conf["aggregation"]
 
+    def get_semantic_freq_threshold(self):
+        return self.conf["semantic_freq_threshold"] if "semantic_freq_threshold" in self.conf else None
+
     def get_embedding(self):
         return self.conf["embedding"]
 
