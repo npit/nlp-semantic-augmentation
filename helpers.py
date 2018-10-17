@@ -113,6 +113,9 @@ class Config:
     def get_semantic_resource(self):
         return self.conf["semantic_resource"]
 
+    def get_log_level(self):
+        return self.conf["semantic_type"]
+
     def get_semantic_type(self):
         return self.conf["semantic_type"]
 

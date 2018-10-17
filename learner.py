@@ -1,6 +1,7 @@
 import logging
 import random
 from sklearn import metrics
+from utils import info, debug
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.model_selection import StratifiedKFold
 
@@ -68,7 +69,7 @@ class Dnn:
 
     def make(self, embeddings, targets, num_labels, config):
         logger = logging.getLogger()
-        logger.info("Building dnn")
+        info("Building dnn")
         self.input_dim = embeddings[0][0].shape[-1]
         self.train, self.test = embeddings
         self.num_labels = num_labels
@@ -100,8 +101,8 @@ class Dnn:
 
     def do_traintest(self, config):
         model = self.get_model()
-        logger = logging.getLogger()
-        logger.info("Training {} with input data {} on {} stratified folds".format(self.name, self.train.shape, self.folds))
+        tic()
+        info("Training {} with input data {} on {} stratified folds".format(self.name, self.train.shape, self.folds))
         skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
         for fold_index, (train_idx, val_idx) in enumerate(skf.split(self.train, self.train_labels)):
             train_x, train_y = self.train[train_idx], self.train_labels[train_idx]
@@ -111,53 +112,55 @@ class Dnn:
             val_y_onehot = to_categorical(val_y, num_classes = self.num_labels)
 
             # train
-            logger.info("Trainig fold {}/{}".format(fold_index + 1, self.folds))
+            info("Trainig fold {}/{}".format(fold_index + 1, self.folds))
+            verbosity = 1 if config.get_log_level() == "debug" else 0
             history = model.fit(train_x, train_y_onehot,
                                 batch_size=self.batch_size,
                                 epochs=self.epochs,
-                                verbose=0,
+                                verbose=verbosity,
                                 validation_data = (val_x, val_y_onehot),
                                 callbacks = self.get_callbacks(config, fold_index))
 
             if self.early_stopping:
-                logger.info("Stopped on epoch {}".format(self.early_stopping.stopped_epoch))
+                info("Stopped on epoch {}".format(self.early_stopping.stopped_epoch))
             self.do_test(model)
+        toc("Total training")
         # report results across folds
         self.report()
 
     def report(self):
         logger = logging.getLogger()
-        logger.info("==============================")
-        logger.info("Mean performance across folds:")
+        info("==============================")
+        info("Mean performance across folds:")
         for measure, perfs in self.baseline['random'].items():
-            logger.info("Random {} : {}".format(measure, np.mean(perfs)))
+            info("Random {} : {}".format(measure, np.mean(perfs)))
         for measure, perfs in self.baseline['majority'].items():
-            logger.info("Majority {} : {}".format(measure, np.mean(perfs)))
+            info("Majority {} : {}".format(measure, np.mean(perfs)))
         for measure, perfs in self.performance.items():
-            logger.info("Run {} : {}".format(measure, np.mean(perfs)))
+            info("Run {} : {}".format(measure, np.mean(perfs)))
 
     def do_test(self, model):
         logger = logging.getLogger()
-        logger.info("Testing network.")
+        info("Testing network.")
         predictions = model.predict(self.test, batch_size=self.batch_size, verbose=0)
         predictions_amax = np.argmax(predictions, axis=1)
         self.get_baselines()
         acc   = metrics.accuracy_score(self.test_labels, predictions_amax)
         ma_f1 = metrics.f1_score(self.test_labels, predictions_amax, average='macro')
         mi_f1 = metrics.f1_score(self.test_labels, predictions_amax, average='micro')
-        logger.info("---------------")
-        logger.info("Run performance:")
-        logger.info('Accuracy: {}'.format(acc))
-        logger.info('Macro f1: {}'.format(ma_f1))
-        logger.info('Micro f1: {}'.format(mi_f1))
+        info("---------------")
+        info("Run performance:")
+        info('Accuracy: {}'.format(acc))
+        info('Macro f1: {}'.format(ma_f1))
+        info('Micro f1: {}'.format(mi_f1))
         self.performance['acc'].append(acc)
         self.performance['mi_f1'].append(mi_f1)
         self.performance['ma_f1'].append(ma_f1)
-        logger.info("Done testing network.")
+        info("Done testing network.")
 
     def get_baselines(self):
         logger = logging.getLogger()
-        logger.info("Baseline performance:")
+        info("Baseline performance:")
 
         maxfreq, maxlabel = -1, -1
         for t in set(self.test_labels):
@@ -170,10 +173,10 @@ class Dnn:
         acc = metrics.accuracy_score(self.test_labels, majpred)
         ma_f1 = metrics.f1_score(self.test_labels, majpred, average='macro')
         mi_f1 = metrics.f1_score(self.test_labels, majpred, average='micro')
-        logger.info("Majority classifier")
-        logger.info('Accuracy: {}'.format(acc))
-        logger.info('Macro f1: {}'.format(ma_f1))
-        logger.info('Micro f1: {}'.format(mi_f1))
+        info("Majority classifier")
+        info('Accuracy: {}'.format(acc))
+        info('Macro f1: {}'.format(ma_f1))
+        info('Micro f1: {}'.format(mi_f1))
         self.baseline['majority']['acc'].append(acc)
         self.baseline['majority']['mi_f1'].append(mi_f1)
         self.baseline['majority']['ma_f1'].append(ma_f1)
@@ -183,10 +186,10 @@ class Dnn:
         acc = metrics.accuracy_score(self.test_labels, randpred)
         ma_f1 = metrics.f1_score(self.test_labels, randpred, average='macro')
         mi_f1 = metrics.f1_score(self.test_labels, randpred, average='micro')
-        logger.info("Random classifier")
-        logger.info('Accuracy: {}'.format(acc))
-        logger.info('Macro f1: {}'.format(ma_f1))
-        logger.info('Micro f1: {}'.format(mi_f1))
+        info("Random classifier")
+        info('Accuracy: {}'.format(acc))
+        info('Macro f1: {}'.format(ma_f1))
+        info('Micro f1: {}'.format(mi_f1))
         self.baseline['random']['acc'].append(acc)
         self.baseline['random']['mi_f1'].append(mi_f1)
         self.baseline['random']['ma_f1'].append(ma_f1)

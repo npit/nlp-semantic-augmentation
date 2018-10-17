@@ -16,7 +16,7 @@ semantic_resource: wordnet
 # frequencies or tfidf
 semantic_type: freq
 # drop synsets with dataset-wise freq less than this threshold
-semantic_freq_threshold: 15
+#semantic_freq_threshold: 15
 # how the semantic information is combined with the textual one
 enrichment: concat
 # pos, embedding-centroid
@@ -32,14 +32,14 @@ train:
   early_stopping_patience: -1
 
 batch_size: 20
-#log_level: debug
-log_level: info
+log_level: debug
+#log_level: info
 
 #parallelization: 10
 #parallelization: 4
 
-options:
-  data_limit: 100
+#options:
+#  data_limit: 100
 #  data_limit: 100
 
 results_folder: "results"

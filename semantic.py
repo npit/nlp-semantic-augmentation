@@ -3,7 +3,7 @@ import os
 import copy
 import pickle
 import logging
-from utils import tic, toc, error, info
+from utils import tic, toc, error, info, debug
 from nltk.corpus import wordnet as wn
 
 class Wordnet:
@@ -77,20 +77,17 @@ class Wordnet:
             # restrict discoverable synsets to a predefined selection
             # used for the test set where not encountered synsets are unusable
             logger.info("Restricting synsets to the reference synset set of {} entries.".format(len(self.reference_synsets)))
+            #import pdb;pdb.set_trace();
 
         current_synset_freqs = []
         tic()
         for wl, word_list in enumerate(dset):
+            debug("Semantic processing for document {}/{}".format(wl+1, len(dset)))
             doc_freqs = {}
             for w, word in enumerate(word_list):
-                # logger.debug("Semantic processing for word {}/{} ({}) of doc {}/{}".format(w+1, len(word_list), word, wl+1, len(dset)))
                 synset, doc_freqs = self.get_synset(word, doc_freqs, force_reference_synsets)
                 if not synset: continue
                 self.process_synset(synset)
-            if force_reference_synsets:
-                for s in self.reference_synsets:
-                    if s not in doc_freqs:
-                        doc_freqs[s] = 0
             current_synset_freqs.append(doc_freqs)
         toc("Document-level mapping and frequency computation")
         # merge to dataset-wise synset frequencies
@@ -145,7 +142,8 @@ class Wordnet:
         if os.path.exists(self.serialization_dir):
             os.makedirs(self.serialization_dir, exist_ok=True)
         if os.path.exists(serialization_path):
-            logger.info("Loading existing mapped semantic information.")
+            info("Loading existing mapped semantic information.")
+            tic()
             with open(serialization_path, "rb") as f:
                 # load'em.
                 # assignments: word -> synset assignment
@@ -153,6 +151,7 @@ class Wordnet:
                 # dataset_freqs: frequencies of synsets aggregated per dataset
                 # synset_tfidf: tf-idf frequencies of synsets per document (df is per dataset)
                 self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs = pickle.load(f)
+                toc("Loading")
             return
 
         # process the data
@@ -173,7 +172,7 @@ class Wordnet:
             pickle.dump([self.assignments, self.synset_freqs,
                          self.dataset_freqs, self.synset_tfidf_freqs], f)
 
-        logger.info("Semantic mapping completed.")
+        info("Semantic mapping completed.")
 
 
 
@@ -205,7 +204,8 @@ class Wordnet:
             self.word_synset_cache[word] = synset
 
         freqs[synset] += 1
-        self.assignments[word] = synset
+        if word not in self.assignments:
+            self.assignments[word] = synset
         return synset, freqs
 
     # function that applies the required processing

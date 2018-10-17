@@ -41,7 +41,9 @@ class Embedding():
 
     # prepare embedding data to be ready for classification
     def prepare(self):
+        info("Preparing embeddings.")
         # save the words
+        info("Storing the embedding word list.")
         for dset in self.dataset_embeddings:
             self.words.append([])
             for document in dset:
@@ -49,6 +51,7 @@ class Embedding():
                 self.words[-1].append(doc_words)
 
         aggregation = self.config.get_aggregation()
+        info("Aggregating embeddings via the {} method.".format(aggregation))
         if aggregation == "avg":
             # average all word vectors in the doc
             for dset_idx in range(len(self.dataset_embeddings)):
@@ -62,6 +65,8 @@ class Embedding():
 
     # infuse semantic information in the embeddings
     def enrich(self, semantic_data):
+        info("Aggregating semantic information to embeddings.")
+        #import pdb;pdb.set_trace()
         # first aggregate the semantic stuff
         # import pdb; pdb.set_trace()
         # aggregation = config.get_aggregation()
@@ -72,13 +77,15 @@ class Embedding():
 
         if self.config.get_enrichment() == "concat":
             composite_dim = self.embedding_dim + len(semantic_data[0][0])
-            info("Concatenating to composite dimension: {}".format(composite_dim))
             for dset_idx in range(len(semantic_data)):
-                new_dset_embeddings = np.ndarray((0, composite_dim), np.float32)
+                info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx+1, len(semantic_data), composite_dim))
+                num_data = len(self.dataset_embeddings[dset_idx])
+                new_dset_embeddings = np.ndarray((num_data, composite_dim), np.float32)
                 for doc_idx in range(len(semantic_data[dset_idx])):
+                    debug("Enriching document {}/{}".format(doc_idx, len(semantic_data[dset_idx])))
                     embedding = self.dataset_embeddings[dset_idx][doc_idx,:]
                     sem_vector = semantic_data[dset_idx][doc_idx]
-                    new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embedding, sem_vector])])
+                    new_dset_embeddings[doc_idx,:] = np.concatenate([embedding, sem_vector])
                 self.dataset_embeddings[dset_idx] = new_dset_embeddings
 
 
