@@ -4,9 +4,13 @@ dataset: 20newsgroups
 
 # embeddings
 embedding: glove,50
-# information aggregation method to document-level representations
-# avg, concat, prune-sequence
-aggregation: avg
+# embedding aggregation method to document-level representations
+# - avg: average word embeddings to a single doc vector
+# - pad,NUM,filter: force NUM words / embeddings per document, padding / pruning where necessary 
+# NUM words are selected by filter:
+# first: just get the first NUM words
+# freq: get the NUM words that are most frequent in the dataset
+aggregation: pad,10,first
 
 # semantic resource settings
 # resource,population_strategy,weighting_strategy,pruning_strategy
@@ -24,7 +28,7 @@ disambiguation: pos
 
 # learning model
 # dnn or lstm
-learner: dnn
+learner: lstm,521,10
 
 train:
   epochs: 50

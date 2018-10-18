@@ -4,11 +4,13 @@ from sklearn import metrics
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.model_selection import StratifiedKFold
 
+from utils import info, error, debug
 import os
 import numpy as np
 import pickle
 from keras.models import Sequential
 from keras.layers import Activation, Dense, Dropout
+from keras.layers import LSTM as keras_lstm
 from keras.utils import to_categorical
 from keras import callbacks
 
@@ -16,8 +18,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
 
 
-class Dnn:
-    name = "dnn"
+class DNN:
     save_dir = "models"
     folds = None
     performance = {}
@@ -30,7 +31,6 @@ class Dnn:
             self.performance[measure] = []
             self.baseline['random'][measure] = []
             self.baseline['majority'][measure] = []
-        pass
 
     # define useful keras callbacks for the training process
     def get_callbacks(self, config, fold_index):
@@ -67,8 +67,8 @@ class Dnn:
         return self.callbacks
 
     def make(self, embeddings, targets, num_labels, config):
-        logger = logging.getLogger()
-        logger.info("Building dnn")
+
+        self.verbosity = 1 if config.get_log_level() == "debug" else 0
         self.input_dim = embeddings[0][0].shape[-1]
         self.train, self.test = embeddings
         self.num_labels = num_labels
@@ -81,31 +81,15 @@ class Dnn:
         self.early_stopping = train_params["early_stopping_patience"] if "early_stopping_patience" in train_params and train_params["early_stopping_patience"] > 0 else None
         self.seed = config.get_seed()
 
-    def get_model(self):
-        model = Sequential()
-        model.add(Dense(512, input_shape=(self.input_dim,)))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.3))
-        model.add(Dense(512))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.3))
-        model.add(Dense(self.num_labels))
-        model.add(Activation('softmax'))
-        model.summary()
-
-        model.compile(loss='categorical_crossentropy',
-                    optimizer='adam',
-                    metrics=['accuracy'])
-        return model
-
     def do_traintest(self, config):
         model = self.get_model()
         logger = logging.getLogger()
         logger.info("Training {} with input data {} on {} stratified folds".format(self.name, self.train.shape, self.folds))
         skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
-        for fold_index, (train_idx, val_idx) in enumerate(skf.split(self.train, self.train_labels)):
-            train_x, train_y = self.train[train_idx], self.train_labels[train_idx]
-            val_x, val_y = self.train[val_idx], self.train_labels[val_idx]
+        fold_data = self.get_fold_indexes()
+        for fold_index, (train_data_idx, train_label_idx, val_data_idx, val_label_idx) in enumerate(fold_data):
+            train_x, train_y, val_x, val_y = self.get_fold_data(self.train, self.train_labels, train_data_idx, train_label_idx)
+            val_x, val_y = self.get_fold_data(self.train, self.train_labels, val_data_idx, val_label_idx)
             # convert labels to one-hot
             train_y_onehot = to_categorical(train_y, num_classes = self.num_labels)
             val_y_onehot = to_categorical(val_y, num_classes = self.num_labels)
@@ -115,7 +99,7 @@ class Dnn:
             history = model.fit(train_x, train_y_onehot,
                                 batch_size=self.batch_size,
                                 epochs=self.epochs,
-                                verbose=0,
+                                verbose=self.verbosity,
                                 validation_data = (val_x, val_y_onehot),
                                 callbacks = self.get_callbacks(config, fold_index))
 
@@ -138,8 +122,9 @@ class Dnn:
 
     def do_test(self, model):
         logger = logging.getLogger()
-        logger.info("Testing network.")
-        predictions = model.predict(self.test, batch_size=self.batch_size, verbose=0)
+        #logger.info("Testing network.")
+        test_data, = self.get_fold_data(self.test)
+        predictions = model.predict(self.test, batch_size=self.batch_size, verbose=self.verbosity)
         predictions_amax = np.argmax(predictions, axis=1)
         self.get_baselines()
         acc   = metrics.accuracy_score(self.test_labels, predictions_amax)
@@ -154,6 +139,25 @@ class Dnn:
         self.performance['mi_f1'].append(mi_f1)
         self.performance['ma_f1'].append(ma_f1)
         logger.info("Done testing network.")
+
+
+    # fold generator function
+    def get_fold_indexes(self):
+        skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
+        return [(train, train, val, val) for (train, val) in enumerate(skf.split(self.train, self.train_labels))]
+
+    # data preprocessing function
+    def get_fold_data(self, data, labels, data_idx=None, label_idx=None):
+        # if indexes provided, take only these parts
+        if data_idx:
+            x = data[data_idx]
+        if label_idx and labels:
+            y = labels[label_idx]
+        elif labels:
+            y = labels
+        else:
+            y = None
+        return x, y
 
     def get_baselines(self):
         logger = logging.getLogger()
@@ -214,3 +218,102 @@ class Dnn:
     #     # Save Tokenizer i.e. Vocabulary
     #     with open('tokenizer.pickle', 'wb') as handle:
     #         pickle.dump(tokenizer, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+class MLP(DNN):
+    name = "mlp"
+    def __init__(self, params):
+        DNN.__init__(self, params)
+
+    def make(self, embeddings, targets, num_labels, config):
+        info("Building dnn: {}".format(self.name))
+        DNN.make(self, embeddings, targets, num_labels, config)
+
+    def get_model(self):
+        model = Sequential()
+        model.add(Dense(512, input_shape=(self.input_dim,)))
+        model.add(Activation('relu'))
+        model.add(Dropout(0.3))
+        model.add(Dense(512))
+        model.add(Activation('relu'))
+        model.add(Dropout(0.3))
+        model.add(Dense(self.num_labels))
+        model.add(Activation('softmax'))
+        model.summary()
+
+        model.compile(loss='categorical_crossentropy',
+                    optimizer='adam',
+                    metrics=['accuracy'])
+        return model
+
+
+class LSTM(DNN):
+    name = "lstm"
+    def __init__(self, params):
+        if len(params) < 2:
+            error("Need lstm parameters: hidden size, sequence_length.")
+        self.sequence_length = int(params[1])
+        self.hidden_length = int(params[0])
+        DNN.__init__(self, params)
+
+
+    def make(self, embeddings, targets, num_labels, config):
+        info("Building dnn: {}".format(self.name))
+        # make sure embedding aggregation is compatible with the sequence-based lstm model
+        aggr = config.get_aggregation().split(",")
+        aggregation = aggr[0]
+        if aggregation not in ["pad"]:
+            error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))
+
+        DNN.make(self, embeddings, targets, num_labels, config)
+
+    # get fold data
+    def get_fold_indexes(self):
+        idxs = []
+        skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
+        # get first-vector positions
+        data_full_index = np.asarray((range(len(self.train))))
+        single_vector_data = list(range(0, len(self.train), self.sequence_length))
+        fold_data = list(skf.split(single_vector_data, self.train_labels))
+        for train_test in fold_data:
+            # get train indexes
+            train_fold_singlevec_index, test_fold_singlevec_index = train_test
+            # transform to full-sequence indexes
+            train_fold_index = data_full_index[train_fold_singlevec_index]
+            test_fold_index = data_full_index[test_fold_singlevec_index]
+            # expand to the rest of the sequence members
+            train_fold_index = [j for i in train_fold_index for j in list(range(i, i + self.sequence_length))]
+            test_fold_index = [j for i in test_fold_index for j in list(range(i, i + self.sequence_length))]
+            idxs.append((train_fold_index, train_fold_singlevec_index, test_fold_index, test_fold_singlevec_index))
+        return idxs
+
+    def get_fold_data(self, data, labels, data_idx=None, label_idx=None):
+        # if indexes provided, take only these parts
+        if data_idx:
+            x = data[data_idx]
+            # reshape input data
+            import pdb; pdb.set_trace()
+            x = np.reshape(x, (len(x), self.sequence_length, self.embedding_dim))
+        if label_idx and labels:
+            y = labels[label_idx]
+        elif labels:
+            y = labels
+        else:
+            y = None
+        return x, y
+
+    def get_model(self):
+        model = Sequential()
+        # model.add(Dense(512, input_shape=(self.input_dim,)))
+        # model.add(Activation('relu'))
+        # model.add(Dropout(0.3))
+        model.add(keras_lstm(self.hidden_length, input_shape=(self.sequence_length, self.input_dim), time_steps = self.sequence_length))
+        model.add(Dropout(0.3))
+        model.add(Dense(self.num_labels))
+        model.add(Activation('softmax'))
+        model.summary()
+
+        model.compile(loss='categorical_crossentropy',
+                    optimizer='adam',
+                    metrics=['accuracy'])
+        return model
+
