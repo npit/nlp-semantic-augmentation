@@ -113,6 +113,12 @@ class Config:
     def get_semantic_resource(self):
         return self.conf["semantic_resource"]
 
+    def get_log_level(self):
+        return self.conf["log_level"] if "log_level" in self.conf else "info" 
+
+    def get_semantic_freq_threshold(self):
+        return self.conf["semantic_freq_threshold"] if "semantic_freq_threshold" in self.conf else None 
+
     def get_semantic_type(self):
         return self.conf["semantic_type"]
 
@@ -124,9 +130,6 @@ class Config:
 
     def get_aggregation(self):
         return self.conf["aggregation"]
-
-    def get_semantic_freq_threshold(self):
-        return self.conf["semantic_freq_threshold"] if "semantic_freq_threshold" in self.conf else None
 
     def get_embedding(self):
         return self.conf["embedding"]

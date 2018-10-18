@@ -2,7 +2,7 @@ import logging
 import pickle
 import os
 from helpers import Config
-from utils import error, tic, toc
+from utils import error, tic, toc, info
 from sklearn.datasets import fetch_20newsgroups
 from keras.preprocessing.text import text_to_word_sequence
 from nltk.corpus import stopwords
@@ -106,6 +106,7 @@ class TwentyNewsGroups(Dataset):
                 self.train, self.train_target, self.train_label_names, self.test, self.test_target, self.test_label_names = pickle.load(f)
                 self.num_labels = len(self.train_label_names)
                 self.preprocessed = True
+                info("Loaded {} train and {} test data, with {} labels".format(len(self.train), len(self.test), self.num_labels))
                 return
         self.suspend_limit()
 

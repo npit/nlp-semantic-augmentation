@@ -41,7 +41,9 @@ class Embedding():
 
     # prepare embedding data to be ready for classification
     def prepare(self):
+        info("Preparing embeddings.")
         # save the words
+        info("Storing the embedding word list.")
         for dset in self.dataset_embeddings:
             self.words.append([])
             for document in dset:
@@ -49,7 +51,10 @@ class Embedding():
                 self.words[-1].append(doc_words)
 
         aggr = self.config.get_aggregation().split(",")
-        aggregation, params = aggr[0], aggr[1:]
+        aggregation = aggr[0]
+        params = aggr[1:] if len(aggr) > 1 else []
+
+        info("Aggregating embeddings via the {} method.".format(aggregation))
         if aggregation == "avg":
             self.vectors_per_document = 1
             # average all word vectors in the doc
@@ -59,7 +64,10 @@ class Embedding():
                     aggregated_doc_vectors.append(np.mean(doc_dict.values, axis=0))
                 self.dataset_embeddings[dset_idx] = np.concatenate(aggregated_doc_vectors).reshape(len(aggregated_doc_vectors), self.embedding_dim)
         elif aggregation == "pad":
+            if not params:
+                error("Parameters required for pad aggregation.")
             num, filter = int(params[0]), params[1]
+            info("Aggregation with pad: {} {}".format(num, filter))
             self.vectors_per_document = num
             zero_pad = np.ndarray((1, self.embedding_dim), np.float32)
             for dset_idx in range(len(self.dataset_embeddings)):
@@ -76,24 +84,24 @@ class Embedding():
 
     # infuse semantic information in the embeddings
     def enrich(self, semantic_data):
-        # first aggregate the semantic stuff
-        # import pdb; pdb.set_trace()
-        # aggregation = config.get_aggregation()
-        # if aggregation == "avg":
-        #     for d in range(len(semantic_data)):
-        #         for doc in range(len(semantic_data[d])):
-        #             semantic_data[d][doc] = np.mean( semantic_data[d][doc], axis = 0)
+        info("Aggregating semantic information to embeddings.")
         if self.config.get_enrichment() == "concat":
             composite_dim = self.embedding_dim + len(semantic_data[0][0])
-            info("Concatenating to composite dimension: {}".format(composite_dim))
             for dset_idx in range(len(semantic_data)):
+                info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx+1, len(semantic_data), composite_dim))
+                num_data = len(self.dataset_embeddings[dset_idx])
                 new_dset_embeddings = np.ndarray((0, composite_dim), np.float32)
                 for doc_idx in range(len(semantic_data[dset_idx])):
+                    # debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
+                    # import pdb; pdb.set_trace()
                     embeddings = self.dataset_embeddings[dset_idx][doc_idx]
                     sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
-                    if len(embeddings) > 1:
+                    if embeddings.ndim > 1:
+                        # tile sem. vectors
                         sem_vectors = np.tile(sem_vectors, (len(embeddings), 1))
-                    new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors], axis=1)])
+                        new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors], axis=1)])
+                    else:
+                        new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors])])
                 self.dataset_embeddings[dset_idx] = new_dset_embeddings
 
 

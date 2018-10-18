@@ -1,6 +1,7 @@
 import logging
 import random
 from sklearn import metrics
+from utils import info, debug, tic, toc
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.model_selection import StratifiedKFold
 
@@ -83,19 +84,21 @@ class DNN:
 
     def do_traintest(self, config):
         model = self.get_model()
-        logger = logging.getLogger()
-        logger.info("Training {} with input data {} on {} stratified folds".format(self.name, self.train.shape, self.folds))
+        tic()
+        info("Training {} with input data {} on {} stratified folds".format(self.name, self.train.shape, self.folds))
         skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
         fold_data = self.get_fold_indexes()
         for fold_index, (train_data_idx, train_label_idx, val_data_idx, val_label_idx) in enumerate(fold_data):
-            train_x, train_y, val_x, val_y = self.get_fold_data(self.train, self.train_labels, train_data_idx, train_label_idx)
+            import pdb; pdb.set_trace()
+            train_x, train_y = self.get_fold_data(self.train, self.train_labels, train_data_idx, train_label_idx)
             val_x, val_y = self.get_fold_data(self.train, self.train_labels, val_data_idx, val_label_idx)
             # convert labels to one-hot
             train_y_onehot = to_categorical(train_y, num_classes = self.num_labels)
             val_y_onehot = to_categorical(val_y, num_classes = self.num_labels)
 
             # train
-            logger.info("Trainig fold {}/{}".format(fold_index + 1, self.folds))
+            info("Trainig fold {}/{}".format(fold_index + 1, self.folds))
+            verbosity = 1 if config.get_log_level() == "debug" else 0
             history = model.fit(train_x, train_y_onehot,
                                 batch_size=self.batch_size,
                                 epochs=self.epochs,
@@ -104,64 +107,66 @@ class DNN:
                                 callbacks = self.get_callbacks(config, fold_index))
 
             if self.early_stopping:
-                logger.info("Stopped on epoch {}".format(self.early_stopping.stopped_epoch))
+                info("Stopped on epoch {}".format(self.early_stopping.stopped_epoch))
             self.do_test(model)
+        toc("Total training")
         # report results across folds
         self.report()
 
     def report(self):
         logger = logging.getLogger()
-        logger.info("==============================")
-        logger.info("Mean performance across folds:")
+        info("==============================")
+        info("Mean performance across all {} folds:".format(self.folds))
         for measure, perfs in self.baseline['random'].items():
-            logger.info("Random {} : {}".format(measure, np.mean(perfs)))
+            info("Random {} : {:.3f}".format(measure, np.mean(perfs)))
         for measure, perfs in self.baseline['majority'].items():
-            logger.info("Majority {} : {}".format(measure, np.mean(perfs)))
+            info("Majority {} : {:.3f}".format(measure, np.mean(perfs)))
         for measure, perfs in self.performance.items():
-            logger.info("Run {} : {}".format(measure, np.mean(perfs)))
+            info("Run {} : {:.3f}".format(measure, np.mean(perfs)))
 
     def do_test(self, model):
-        logger = logging.getLogger()
-        #logger.info("Testing network.")
-        test_data, = self.get_fold_data(self.test)
-        predictions = model.predict(self.test, batch_size=self.batch_size, verbose=self.verbosity)
+        test_data, _ = self.get_fold_data(self.test)
+        predictions = model.predict(test_data, batch_size=self.batch_size, verbose=self.verbosity)
         predictions_amax = np.argmax(predictions, axis=1)
         self.get_baselines()
-        acc   = metrics.accuracy_score(self.test_labels, predictions_amax)
+        acc = metrics.accuracy_score(self.test_labels, predictions_amax)
         ma_f1 = metrics.f1_score(self.test_labels, predictions_amax, average='macro')
         mi_f1 = metrics.f1_score(self.test_labels, predictions_amax, average='micro')
-        logger.info("---------------")
-        logger.info("Run performance:")
-        logger.info('Accuracy: {}'.format(acc))
-        logger.info('Macro f1: {}'.format(ma_f1))
-        logger.info('Micro f1: {}'.format(mi_f1))
+        info("---------------")
+        info("Run performance:")
+        info('Accuracy: {:.3f}'.format(acc))
+        info('Macro f1: {:.3f}'.format(ma_f1))
+        info('Micro f1: {:.3f}'.format(mi_f1))
         self.performance['acc'].append(acc)
         self.performance['mi_f1'].append(mi_f1)
         self.performance['ma_f1'].append(ma_f1)
-        logger.info("Done testing network.")
+        info("Done testing network.")
 
 
     # fold generator function
     def get_fold_indexes(self):
         skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
-        return [(train, train, val, val) for (train, val) in enumerate(skf.split(self.train, self.train_labels))]
+        return [(train, train, val, val) for (train, val) in skf.split(self.train, self.train_labels)]
 
     # data preprocessing function
-    def get_fold_data(self, data, labels, data_idx=None, label_idx=None):
+    def get_fold_data(self, data, labels=None, data_idx=None, label_idx=None):
         # if indexes provided, take only these parts
-        if data_idx:
+        if data_idx is not None:
             x = data[data_idx]
-        if label_idx and labels:
-            y = labels[label_idx]
-        elif labels:
-            y = labels
+        else:
+            x = data
+        if labels is not None:
+            if label_idx is not None:
+                y = labels[label_idx]
+            else:
+                y = labels
         else:
             y = None
         return x, y
 
     def get_baselines(self):
         logger = logging.getLogger()
-        logger.info("Baseline performance:")
+        info("Baseline performance:")
 
         maxfreq, maxlabel = -1, -1
         for t in set(self.test_labels):
@@ -174,10 +179,10 @@ class DNN:
         acc = metrics.accuracy_score(self.test_labels, majpred)
         ma_f1 = metrics.f1_score(self.test_labels, majpred, average='macro')
         mi_f1 = metrics.f1_score(self.test_labels, majpred, average='micro')
-        logger.info("Majority classifier")
-        logger.info('Accuracy: {}'.format(acc))
-        logger.info('Macro f1: {}'.format(ma_f1))
-        logger.info('Micro f1: {}'.format(mi_f1))
+        info("Majority classifier")
+        info('Accuracy: {:.3f}'.format(acc))
+        info('Macro f1: {:.3f}'.format(ma_f1))
+        info('Micro f1: {:.3f}'.format(mi_f1))
         self.baseline['majority']['acc'].append(acc)
         self.baseline['majority']['mi_f1'].append(mi_f1)
         self.baseline['majority']['ma_f1'].append(ma_f1)
@@ -187,10 +192,10 @@ class DNN:
         acc = metrics.accuracy_score(self.test_labels, randpred)
         ma_f1 = metrics.f1_score(self.test_labels, randpred, average='macro')
         mi_f1 = metrics.f1_score(self.test_labels, randpred, average='micro')
-        logger.info("Random classifier")
-        logger.info('Accuracy: {}'.format(acc))
-        logger.info('Macro f1: {}'.format(ma_f1))
-        logger.info('Micro f1: {}'.format(mi_f1))
+        info("Random classifier")
+        info('Accuracy: {:.3f}'.format(acc))
+        info('Macro f1: {:.3f}'.format(ma_f1))
+        info('Micro f1: {:.3f}'.format(mi_f1))
         self.baseline['random']['acc'].append(acc)
         self.baseline['random']['mi_f1'].append(mi_f1)
         self.baseline['random']['ma_f1'].append(ma_f1)
@@ -269,7 +274,7 @@ class LSTM(DNN):
     # get fold data
     def get_fold_indexes(self):
         idxs = []
-        skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
+        skf = StratifiedKFold(self.folds, shuffle=False, random_state=self.seed)
         # get first-vector positions
         data_full_index = np.asarray((range(len(self.train))))
         single_vector_data = list(range(0, len(self.train), self.sequence_length))
@@ -286,19 +291,11 @@ class LSTM(DNN):
             idxs.append((train_fold_index, train_fold_singlevec_index, test_fold_index, test_fold_singlevec_index))
         return idxs
 
-    def get_fold_data(self, data, labels, data_idx=None, label_idx=None):
-        # if indexes provided, take only these parts
-        if data_idx:
-            x = data[data_idx]
-            # reshape input data
-            import pdb; pdb.set_trace()
-            x = np.reshape(x, (len(x), self.sequence_length, self.embedding_dim))
-        if label_idx and labels:
-            y = labels[label_idx]
-        elif labels:
-            y = labels
-        else:
-            y = None
+    def get_fold_data(self, data, labels=None, data_idx=None, label_idx=None):
+        # handle indexes by parent's function
+        x, y = DNN.get_fold_data(self, data, labels, data_idx, label_idx)
+        # reshape input data to num_docs x vec_dim x seq_len
+        x = np.reshape(x, (-1, self.sequence_length, self.input_dim))
         return x, y
 
     def get_model(self):
@@ -306,7 +303,7 @@ class LSTM(DNN):
         # model.add(Dense(512, input_shape=(self.input_dim,)))
         # model.add(Activation('relu'))
         # model.add(Dropout(0.3))
-        model.add(keras_lstm(self.hidden_length, input_shape=(self.sequence_length, self.input_dim), time_steps = self.sequence_length))
+        model.add(keras_lstm(self.hidden_length, input_shape=(self.sequence_length, self.input_dim)))
         model.add(Dropout(0.3))
         model.add(Dense(self.num_labels))
         model.add(Activation('softmax'))
