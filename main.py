@@ -39,11 +39,12 @@ def main(config_file):
     embedding.prepare()
 
     # semantic enrichment
-    info("===== SEMANTIC =====")
-    semantic = fetcher.fetch_semantic(config.get_semantic_resource())
-    semantic.make(config)
-    semantic.map_text(embedding.get_words(), dataset.get_name())
-    embedding.enrich(semantic.get_data(config))
+    if config.has_enrichment():
+        info("===== SEMANTIC =====")
+        semantic = fetcher.fetch_semantic(config.get_semantic_resource())
+        semantic.make(config)
+        semantic.map_text(embedding.get_words(), dataset.get_name())
+        embedding.enrich(semantic.get_data(config))
 
     # learning
     info("===== LEARNING =====")

@@ -10,7 +10,7 @@ embedding: glove,50
 # NUM words are selected by filter:
 # first: just get the first NUM words
 # freq: get the NUM words that are most frequent in the dataset
-#aggregation: pad,10,first
+# aggregation: pad,10,first
 aggregation: avg
 
 # semantic resource settings
@@ -19,27 +19,28 @@ aggregation: avg
 semantic_resource: wordnet
 # the form of semantic information to use
 # frequencies or tfidf
-semantic_type: freq
+semantic_weights: freq
 # drop synsets with dataset-wise freq less than this threshold
 #semantic_freq_threshold: 15
 # how the semantic information is combined with the textual one
-enrichment: concat
+# enrichment: concat
+# enrichment: concat
 # pos, embedding-centroid
 disambiguation: pos
 
 # learning model
 # dnn or lstm
-# learner: lstm,256,10
-learner: mlp
+# learner: lstm,128,10
+learner: mlp,128,4
 
 train:
-  epochs: 2 
+  epochs: 50
   folds: 3
   early_stopping_patience: -1
 
 batch_size: 20
-log_level: debug
-#log_level: info
+# log_level: debug
+log_level: info
 
 #parallelization: 10
 #parallelization: 4
@@ -49,5 +50,3 @@ options:
 
 results_folder: "results"
 serialization_dir: "serialization"
-embeddings_folder: "serialization"
-semantic_folder: "serialization"

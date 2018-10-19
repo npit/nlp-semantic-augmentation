@@ -23,15 +23,14 @@ class DNN:
     save_dir = "models"
     folds = None
     performance = {}
-    baseline = {}
 
     def __init__(self, params):
-        for x in ['random', 'majority']:
-            self.baseline[x] = {}
-        for measure in ["acc", "ma_f1", "mi_f1"]:
-            self.performance[measure] = []
-            self.baseline['random'][measure] = []
-            self.baseline['majority'][measure] = []
+        for x in ['random', 'majority', 'run']:
+            self.performance[x] = {}
+            for measure in ["acc", "ma_f1", "mi_f1"]:
+                self.performance[x][measure] = []
+                self.performance[x][measure] = []
+                self.performance[x][measure] = []
 
     # define useful keras callbacks for the training process
     def get_callbacks(self, config, fold_index):
@@ -69,6 +68,7 @@ class DNN:
 
     def make(self, embeddings, targets, num_labels, config):
 
+        self.config = config
         self.verbosity = 1 if config.get_log_level() == "debug" else 0
         self.input_dim = embeddings[0][0].shape[-1]
         self.train, self.test = embeddings
@@ -89,7 +89,6 @@ class DNN:
         skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
         fold_data = self.get_fold_indexes()
         for fold_index, (train_data_idx, train_label_idx, val_data_idx, val_label_idx) in enumerate(fold_data):
-            import pdb; pdb.set_trace()
             train_x, train_y = self.get_fold_data(self.train, self.train_labels, train_data_idx, train_label_idx)
             val_x, val_y = self.get_fold_data(self.train, self.train_labels, val_data_idx, val_label_idx)
             # convert labels to one-hot
@@ -113,35 +112,23 @@ class DNN:
         # report results across folds
         self.report()
 
+    # print performance across folds
     def report(self):
-        logger = logging.getLogger()
         info("==============================")
         info("Mean performance across all {} folds:".format(self.folds))
-        for measure, perfs in self.baseline['random'].items():
-            info("Random {} : {:.3f}".format(measure, np.mean(perfs)))
-        for measure, perfs in self.baseline['majority'].items():
-            info("Majority {} : {:.3f}".format(measure, np.mean(perfs)))
-        for measure, perfs in self.performance.items():
-            info("Run {} : {:.3f}".format(measure, np.mean(perfs)))
+        for type in self.performance:
+            for measure, perfs in self.performance[type].items():
+                info("{} {} : {:.3f}".format(type, measure, np.mean(perfs)))
+
 
     def do_test(self, model):
         test_data, _ = self.get_fold_data(self.test)
         predictions = model.predict(test_data, batch_size=self.batch_size, verbose=self.verbosity)
         predictions_amax = np.argmax(predictions, axis=1)
-        self.get_baselines()
-        acc = metrics.accuracy_score(self.test_labels, predictions_amax)
-        ma_f1 = metrics.f1_score(self.test_labels, predictions_amax, average='macro')
-        mi_f1 = metrics.f1_score(self.test_labels, predictions_amax, average='micro')
-        info("---------------")
-        info("Run performance:")
-        info('Accuracy: {:.3f}'.format(acc))
-        info('Macro f1: {:.3f}'.format(ma_f1))
-        info('Micro f1: {:.3f}'.format(mi_f1))
-        self.performance['acc'].append(acc)
-        self.performance['mi_f1'].append(mi_f1)
-        self.performance['ma_f1'].append(ma_f1)
-        info("Done testing network.")
-
+        # get baseline performances
+        self.compute_performance(predictions_amax)
+        if self.config.is_debug():
+            self.print_performance()
 
     # fold generator function
     def get_fold_indexes(self):
@@ -164,10 +151,20 @@ class DNN:
             y = None
         return x, y
 
-    def get_baselines(self):
-        logger = logging.getLogger()
-        info("Baseline performance:")
+    # add softmax classification layer
+    def add_softmax(self, model, is_first=False):
+        if is_first:
+            model.add(Dense(self.num_labels, input_shape=self.input_shape, name="dense_classifier"))
+        else:
+            model.add(Dense(self.num_labels, name="dense_classifier"))
 
+        model.add(Activation('softmax', name="softmax"))
+        return model
+
+    # compute classification baselines
+    def compute_performance(self, predictions):
+        # add run performance
+        self.add_performance("run", predictions)
         maxfreq, maxlabel = -1, -1
         for t in set(self.test_labels):
             freq = len([1 for x in self.test_labels if x == t])
@@ -176,100 +173,88 @@ class DNN:
                 maxlabel = t
 
         majpred = np.repeat(maxlabel, len(self.test_labels))
-        acc = metrics.accuracy_score(self.test_labels, majpred)
-        ma_f1 = metrics.f1_score(self.test_labels, majpred, average='macro')
-        mi_f1 = metrics.f1_score(self.test_labels, majpred, average='micro')
-        info("Majority classifier")
-        info('Accuracy: {:.3f}'.format(acc))
-        info('Macro f1: {:.3f}'.format(ma_f1))
-        info('Micro f1: {:.3f}'.format(mi_f1))
-        self.baseline['majority']['acc'].append(acc)
-        self.baseline['majority']['mi_f1'].append(mi_f1)
-        self.baseline['majority']['ma_f1'].append(ma_f1)
-
-
+        self.add_performance("majority", majpred)
         randpred = np.asarray([random.choice(list(range(self.num_labels))) for _ in self.test_labels], np.int32)
-        acc = metrics.accuracy_score(self.test_labels, randpred)
-        ma_f1 = metrics.f1_score(self.test_labels, randpred, average='macro')
-        mi_f1 = metrics.f1_score(self.test_labels, randpred, average='micro')
-        info("Random classifier")
-        info('Accuracy: {:.3f}'.format(acc))
-        info('Macro f1: {:.3f}'.format(ma_f1))
-        info('Micro f1: {:.3f}'.format(mi_f1))
-        self.baseline['random']['acc'].append(acc)
-        self.baseline['random']['mi_f1'].append(mi_f1)
-        self.baseline['random']['ma_f1'].append(ma_f1)
+        self.add_performance("random", randpred)
 
-        # for i in range(10):
-        #     prediction = self.model.predict(np.array([self.test[i]]))
-        #     predicted_label = text_labels[np.argmax(prediction[0])]
-        #     print(test_files_names.iloc[i])
-        #     print('Actual label:' + test_tags.iloc[i])
-        #     print("Predicted label: " + predicted_label)
+    # compute scores and append to per-fold lists
+    def add_performance(self, type, preds):
+        acc = metrics.accuracy_score(self.test_labels, preds)
+        ma_f1 = metrics.f1_score(self.test_labels, preds, average='macro')
+        mi_f1 = metrics.f1_score(self.test_labels, preds, average='micro')
+        self.performance[type]['acc'].append(acc)
+        self.performance[type]['mi_f1'].append(mi_f1)
+        self.performance[type]['ma_f1'].append(ma_f1)
 
-    # def load(self):
-    #     # load our saved model
-    #     model = load_model('my_model.h5')
-
-    #     # load tokenizer
-    #     tokenizer = Tokenizer()
-    #     with open('tokenizer.pickle', 'rb') as handle:
-    #         tokenizer = pickle.load(handle)
-
-    # def  save(self):
-    #     # creates a HDF5 file 'my_model.h5'
-    #     self.model.model.save(os.path.join(self.save_dir, 'my_model.h5'))
-
-    #     # Save Tokenizer i.e. Vocabulary
-    #     with open('tokenizer.pickle', 'wb') as handle:
-    #         pickle.dump(tokenizer, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # print performance of the latest run
+    def print_performance(self):
+        info("---------------")
+        for type in self.performance:
+            info("{} performance:".format(type))
+            for x in self.performance[type]:
+                info("{} classifier".format(x))
+                info('Accuracy: {:.3f}'.format(self.baseline[x]["acc"][-1]))
+                info('Macro f1: {:.3f}'.format(self.baseline[x]["mi_f1"][-1]))
+                info('Micro f1: {:.3f}'.format(self.baseline[x]["ma_f1"][-1]))
 
 class MLP(DNN):
     name = "mlp"
     def __init__(self, params):
         DNN.__init__(self, params)
+        params = list(map(int, params))
+        self.hidden = params[0]
+        self.layers = params[1]
 
     def make(self, embeddings, targets, num_labels, config):
         info("Building dnn: {}".format(self.name))
         DNN.make(self, embeddings, targets, num_labels, config)
+        self.input_shape = (self.input_dim,)
+        aggr = config.get_aggregation().split(",")
+        aggregation = aggr[0]
+        if aggregation not in ["avg"]:
+            error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))
 
+    # build MLP model
     def get_model(self):
         model = Sequential()
-        model.add(Dense(512, input_shape=(self.input_dim,)))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.3))
-        model.add(Dense(512))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.3))
-        model.add(Dense(self.num_labels))
-        model.add(Activation('softmax'))
-        model.summary()
+        for i in range(self.layers):
+            if i == 0:
+                model.add(Dense(self.hidden, input_shape=self.input_shape))
+                model.add(Activation('relu'))
+                model.add(Dropout(0.3))
+            else:
+                model.add(Dense(self.hidden, input_shape=self.input_shape))
+                model.add(Activation('relu'))
+                model.add(Dropout(0.3))
 
-        model.compile(loss='categorical_crossentropy',
-                    optimizer='adam',
-                    metrics=['accuracy'])
+        model = DNN.add_softmax(self, model)
+        model.summary()
+        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         return model
 
 
 class LSTM(DNN):
     name = "lstm"
+
     def __init__(self, params):
         if len(params) < 2:
             error("Need lstm parameters: hidden size, sequence_length.")
         self.sequence_length = int(params[1])
         self.hidden_length = int(params[0])
+        self.input_shape = (self.sequence_length, self.input_dim)
         DNN.__init__(self, params)
 
-
+    # make network
     def make(self, embeddings, targets, num_labels, config):
         info("Building dnn: {}".format(self.name))
-        # make sure embedding aggregation is compatible with the sequence-based lstm model
+        DNN.make(self, embeddings, targets, num_labels, config)
+        # make sure embedding aggregation is compatible
+        # with the sequence-based lstm model
         aggr = config.get_aggregation().split(",")
         aggregation = aggr[0]
         if aggregation not in ["pad"]:
             error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))
 
-        DNN.make(self, embeddings, targets, num_labels, config)
 
     # get fold data
     def get_fold_indexes(self):
@@ -291,6 +276,7 @@ class LSTM(DNN):
             idxs.append((train_fold_index, train_fold_singlevec_index, test_fold_index, test_fold_singlevec_index))
         return idxs
 
+    # fetch sequence lstm fold data
     def get_fold_data(self, data, labels=None, data_idx=None, label_idx=None):
         # handle indexes by parent's function
         x, y = DNN.get_fold_data(self, data, labels, data_idx, label_idx)
@@ -298,15 +284,16 @@ class LSTM(DNN):
         x = np.reshape(x, (-1, self.sequence_length, self.input_dim))
         return x, y
 
+    # build the lstm model
     def get_model(self):
         model = Sequential()
         # model.add(Dense(512, input_shape=(self.input_dim,)))
         # model.add(Activation('relu'))
         # model.add(Dropout(0.3))
-        model.add(keras_lstm(self.hidden_length, input_shape=(self.sequence_length, self.input_dim)))
+        model.add(keras_lstm(self.hidden_length, input_shape=self.input_shape))
         model.add(Dropout(0.3))
-        model.add(Dense(self.num_labels))
-        model.add(Activation('softmax'))
+
+        model = DNN.add_softmax(self, model)
         model.summary()
 
         model.compile(loss='categorical_crossentropy',

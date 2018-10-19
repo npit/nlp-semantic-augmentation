@@ -18,7 +18,6 @@ class Wordnet:
     assignments = {}
 
 
-
     def apply_freq_filtering(self, freq_dict_list, dataset_freqs, force_reference=False):
         info("Applying synset frequency filtering with a threshold of {}".format(self.semantic_freq_threshold))
         tic()
@@ -48,6 +47,12 @@ class Wordnet:
 
     def make(self, config):
         self.serialization_dir = os.path.join(config.get_serialization_dir(), "semantic_data")
+        self.freq_threshold = config.get_semantic_freq_threshold()
+        self.sem_weights = config.get_semantic_weights()
+        dataset_name = config.get_dataset()
+        freq_filtering = "ALL" if not self.freq_threshold else "freqthres{}".format(self.freq_threshold)
+        sem_weights = "weights{}".format(self.sem_weights)
+        self.serialization_path = os.path.join(self.serialization_dir, "{}_{}_{}_{}.assignments".format(dataset_name, self.name, sem_weights, freq_filtering))
         self.semantic_freq_threshold = config.get_semantic_freq_threshold()
 
     # merge list of document-wise frequency dicts
@@ -72,12 +77,10 @@ class Wordnet:
 
     # map a dataset
     def map_dset(self, dset, dataset_name, store_reference_synsets = False, force_reference_synsets = False):
-        logger = logging.getLogger()
         if force_reference_synsets:
             # restrict discoverable synsets to a predefined selection
             # used for the test set where not encountered synsets are unusable
-            logger.info("Restricting synsets to the reference synset set of {} entries.".format(len(self.reference_synsets)))
-            #import pdb;pdb.set_trace();
+            info("Restricting synsets to the reference synset set of {} entries.".format(len(self.reference_synsets)))
 
         current_synset_freqs = []
         tic()
@@ -136,15 +139,13 @@ class Wordnet:
 
     # function to map words to wordnet concepts
     def map_text(self, datasets_words, dataset_name):
-        logger = logging.getLogger()
-        serialization_path = os.path.join(self.serialization_dir, "{}_{}_assignments".format(dataset_name, self.name))
         # check if data is already extracted & serialized
         if os.path.exists(self.serialization_dir):
             os.makedirs(self.serialization_dir, exist_ok=True)
-        if os.path.exists(serialization_path):
-            info("Loading existing mapped semantic information.")
+        if os.path.exists(self.serialization_path):
+            info("Loading existing mapped semantic information from {}.".format(self.serialization_path))
             tic()
-            with open(serialization_path, "rb") as f:
+            with open(self.serialization_path, "rb") as f:
                 # load'em.
                 # assignments: word -> synset assignment
                 # synset_freqs: frequencies of synsets per document
@@ -164,11 +165,10 @@ class Wordnet:
                           force_reference_synsets=d > 0)
 
         # write results: word assignments, raw, dataset-wise and tf-idf weights
-        logger.info("Writing semantic assignment results.")
+        info("Writing semantic assignment results to {}.".format(self.serialization_path))
         if not os.path.exists(self.serialization_dir):
             os.mkdir(self.serialization_dir)
-        # import pdb; pdb.set_trace()
-        with open(serialization_path, "wb") as f:
+        with open(self.serialization_path, "wb") as f:
             pickle.dump([self.assignments, self.synset_freqs,
                          self.dataset_freqs, self.synset_tfidf_freqs], f)
 
@@ -224,22 +224,22 @@ class Wordnet:
     def get_data(self, config):
         # map dicts to vectors
         synset_order = sorted(self.dataset_freqs[0].keys())
-        for d, dset in enumerate(self.dataset_freqs):
-            #import pdb; pdb.set_trace()
-            if not set(synset_order) == set(dset.keys()):
-                print(len(synset_order))
-                print(len(dset.keys()))
-                error("synset mismatch in dataset and synset order from first")
         semantic_document_vectors = [[] for _ in range(len(self.synset_freqs)) ]
 
-        semtype = config.get_semantic_type()
-        if semtype  == "freq":
-            # get raw frequencies
+        sem_weights = config.get_semantic_weights()
+        if sem_weights  == "freq":
+            # get raw semantic frequencies
             for d in range(len(self.synset_freqs)):
                 for doc_dict in self.synset_freqs[d]:
                     doc_vector = [doc_dict[s] if s in doc_dict else 0 for s in synset_order]
                     semantic_document_vectors[d].append(doc_vector)
+        elif sem_weights == "tfidf":
+            # get tfidf weights
+            for d in range(len(self.synset_tfidf_freqs)):
+                for doc_dict in self.synset_tfidf_freqs[d]:
+                    doc_vector = [doc_dict[s] if s in doc_dict else 0 for s in synset_order]
+                    semantic_document_vectors[d].append(doc_vector)
         else:
-            error("Unimplemented semantic vector method: {}.".format(semtype))
+            error("Unimplemented semantic vector method: {}.".format(sem_weights))
 
         return semantic_document_vectors

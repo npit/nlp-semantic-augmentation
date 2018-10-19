@@ -93,7 +93,6 @@ class Embedding():
                 new_dset_embeddings = np.ndarray((0, composite_dim), np.float32)
                 for doc_idx in range(len(semantic_data[dset_idx])):
                     # debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
-                    # import pdb; pdb.set_trace()
                     embeddings = self.dataset_embeddings[dset_idx][doc_idx]
                     sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
                     if embeddings.ndim > 1:
@@ -117,13 +116,17 @@ class Glove(Embedding):
     def make(self, config):
         Embedding.make(self, config)
         self.dataset_name = self.config.get_dataset()
+        aggr = self.config.get_aggregation().split(",")
+        self.aggregation, self.aggregation_params = aggr[0], aggr[1:]
         if self.config.option("data_limit"):
             self.dataset_name += "_limit{}".format(self.config.option("data_limit"))
         self.serialization_dir = os.path.join(self.config.get_serialization_dir(), "embeddings")
 
         if not os.path.exists(self.serialization_dir):
             os.makedirs(self.serialization_dir, exist_ok=True)
+
         raw_data_path = os.path.join("embeddings/glove.6B.{}d.txt".format(self.embedding_dim))
+
         pickled_path = os.path.join(self.serialization_dir, "glove6B.{}d.pickle".format(self.embedding_dim))
 
         # read pickled existing data
@@ -148,9 +151,10 @@ class Glove(Embedding):
 
     # transform input texts to embeddings
     def map_text(self, dset):
-        serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}.pickle".format(self.dataset_name, self.name))
-        if os.path.exists(serialization_path):
-            with open(serialization_path, "rb") as f:
+        self.serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}_aggr{}.pickle".format(
+            self.dataset_name, self.name, "_".join(list(map(str,[self.aggregation] + self.aggregation_params))) ))
+        if os.path.exists(self.serialization_path):
+            with open(self.serialization_path, "rb") as f:
                 [self.dataset_embeddings, self.missing_words] = pickle.load(f)
             return
 
@@ -194,7 +198,8 @@ class Glove(Embedding):
             self.missing.append(hist_missing)
 
         # write
-        with open(serialization_path, "wb") as f:
+        info("Writing embedding mapping to {}".format(self.serialization_path))
+        with open(self.serialization_path, "wb") as f:
             pickle.dump([self.dataset_embeddings, self.missing], f)
         # log missing words
         for d in range(len(self.missing)):

@@ -101,11 +101,14 @@ class Config:
     def get_serialization_dir(self):
         return self.conf["serialization_dir"]
 
-    def get_parallel(self):
-        return self.conf["parallelization"]
-
     def get_dataset(self):
         return self.conf["dataset"]
+
+    def has_enrichment(self):
+        return "enrichment" in self.conf
+
+    def is_debug(self):
+        return self.conf["log_level"] == "debug"
 
     def get_results_folder(self):
         return self.conf["results_folder"]
@@ -119,8 +122,8 @@ class Config:
     def get_semantic_freq_threshold(self):
         return self.conf["semantic_freq_threshold"] if "semantic_freq_threshold" in self.conf else None 
 
-    def get_semantic_type(self):
-        return self.conf["semantic_type"]
+    def get_semantic_weights(self):
+        return self.conf["semantic_weights"]
 
     def get_enrichment(self):
         return self.conf["enrichment"]
