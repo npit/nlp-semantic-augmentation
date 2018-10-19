@@ -142,4 +142,3 @@ class Config:
 
     def get_train_params(self):
         return self.conf["train"]
-

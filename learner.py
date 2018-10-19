@@ -67,7 +67,6 @@ class DNN:
         return self.callbacks
 
     def make(self, embeddings, targets, num_labels, config):
-
         self.config = config
         self.verbosity = 1 if config.get_log_level() == "debug" else 0
         self.input_dim = embeddings[0][0].shape[-1]
@@ -300,4 +299,3 @@ class LSTM(DNN):
                     optimizer='adam',
                     metrics=['accuracy'])
         return model
-

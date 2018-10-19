@@ -53,7 +53,6 @@ class Embedding():
         aggr = self.config.get_aggregation().split(",")
         aggregation = aggr[0]
         params = aggr[1:] if len(aggr) > 1 else []
-
         info("Aggregating embeddings via the {} method.".format(aggregation))
         if aggregation == "avg":
             self.vectors_per_document = 1

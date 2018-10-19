@@ -18,6 +18,7 @@ class Wordnet:
     assignments = {}
 
 
+    # prune semantic information units wrt a frequency threshold
     def apply_freq_filtering(self, freq_dict_list, dataset_freqs, force_reference=False):
         info("Applying synset frequency filtering with a threshold of {}".format(self.semantic_freq_threshold))
         tic()
@@ -45,6 +46,7 @@ class Wordnet:
         toc("Document-level frequency filtering")
         return  freq_dict_list, dataset_freqs
 
+    # build the semantic resource
     def make(self, config):
         self.serialization_dir = os.path.join(config.get_serialization_dir(), "semantic_data")
         self.freq_threshold = config.get_semantic_freq_threshold()
@@ -75,7 +77,7 @@ class Wordnet:
         return dataset_freqs, freq_dict_list
 
 
-    # map a dataset
+    # map a single dataset portion
     def map_dset(self, dset, dataset_name, store_reference_synsets = False, force_reference_synsets = False):
         if force_reference_synsets:
             # restrict discoverable synsets to a predefined selection
@@ -118,9 +120,11 @@ class Wordnet:
         toc("tf-idf computation")
 
 
+    # choose a synset from a candidate list
     def disambiguate_synsets(self, synsets):
         return synsets[0]._name
 
+    # TODO
     def disambiguate(self, config):
         disam = config.get_disambiguation()
         if disam == 'POS':
