@@ -30,17 +30,17 @@ disambiguation: pos
 
 # learning model
 # dnn or lstm
-# learner: lstm,128,10
+# learner: lstm,128,1,10
 learner: mlp,128,4
 
 train:
-  epochs: 50
+  epochs: 5
   folds: 3
   early_stopping_patience: -1
+  batch_size: 20
 
-batch_size: 20
-# log_level: debug
-log_level: info
+log_level: debug
+# log_level: info
 
 #parallelization: 10
 #parallelization: 4

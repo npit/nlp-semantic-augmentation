@@ -37,6 +37,9 @@ class Config:
 
     # logging initialization
     def setup_logging(self):
+        if "log_dir" in self.conf:
+            self.log_dir = self.conf["log_dir"]
+        os.makedirs(self.log_dir, exist_ok=True)
         formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
 
         # console handler
@@ -136,9 +139,6 @@ class Config:
 
     def get_embedding(self):
         return self.conf["embedding"]
-
-    def get_batch_size(self):
-        return self.conf["batch_size"]
 
     def get_train_params(self):
         return self.conf["train"]

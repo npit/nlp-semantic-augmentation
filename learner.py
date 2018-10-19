@@ -1,36 +1,69 @@
 import logging
+import pickle
+import os
 import random
+
 from sklearn import metrics
-from utils import info, debug, tic, toc
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.model_selection import StratifiedKFold
+import warnings
+warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
 
-from utils import info, error, debug
-import os
 import numpy as np
-import pickle
+import pandas as pd
+
 from keras.models import Sequential
 from keras.layers import Activation, Dense, Dropout
 from keras.layers import LSTM as keras_lstm
 from keras.utils import to_categorical
 from keras import callbacks
 
-import warnings
-warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
+from utils import info, debug, tic, toc, error
 
 
 class DNN:
     save_dir = "models"
     folds = None
     performance = {}
+    cw_performance = {}
+    run_types = ['random', 'majority', 'run']
+    measures = ["precision", "recall", "f1-score", "accuracy"]
+    measure_aggregations = ["macro", "micro", "classwise", "weighted"]
 
     def __init__(self, params):
-        for x in ['random', 'majority', 'run']:
+        for x in self.run_types:
             self.performance[x] = {}
-            for measure in ["acc", "ma_f1", "mi_f1"]:
-                self.performance[x][measure] = []
-                self.performance[x][measure] = []
-                self.performance[x][measure] = []
+            for measure in self.measures:
+                self.performance[x][measure] = {}
+                for aggr in self.measure_aggregations:
+                    self.performance[x][measure][aggr] = []
+
+
+    # aggregated evaluation measure function shortcuts
+    def get_pre_rec_f1(self, preds, metric, gt=None):
+        if gt is None:
+            gt = self.test_labels
+        cr = pd.DataFrame.from_dict(metrics.classification_report(gt, preds, output_dict=True))
+        # classwise, micro, macro, weighted
+        cw = cr.loc[metric].iloc[:-3].as_matrix()
+        mi = cr.loc[metric].iloc[-3]
+        ma = cr.loc[metric].iloc[-2]
+        we = cr.loc[metric].iloc[-1]
+        return cw, mi, ma, we
+
+    def acc(self, preds, gt=None):
+        if gt is None:
+            gt = self.test_labels
+        return metrics.accuracy_score(gt, preds)
+
+
+    def cw_acc(self, preds, gt=None):
+        if gt is None:
+            gt = self.test_labels
+        cm = metrics.confusion_matrix(gt, preds)
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        return cm.diagonal()
+
 
     # define useful keras callbacks for the training process
     def get_callbacks(self, config, fold_index):
@@ -38,7 +71,8 @@ class DNN:
         results_folder = config.get_results_folder()
         models_folder = os.path.join(results_folder, "run_{}_{}".format(self.name, config.get_run_id()), "models")
         logs_folder = os.path.join(results_folder, "run_{}_{}".format(self.name, config.get_run_id()),"logs")
-        [os.makedirs(x, exist_ok=True) for x in  [results_folder, models_folder,logs_folder]]
+        [os.makedirs(x, exist_ok=True) for x in  [results_folder, models_folder, logs_folder]]
+        self.results_folder = results_folder
 
         # model saving with early stopping
         model_path = os.path.join(models_folder,"{}_fold_{}".format(self.name, fold_index))
@@ -73,13 +107,13 @@ class DNN:
         self.train, self.test = embeddings
         self.num_labels = num_labels
         self.train_labels, self.test_labels = targets
-        self.batch_size = config.get_batch_size()
 
         train_params = config.get_train_params()
         self.epochs = train_params["epochs"]
         self.folds = train_params["folds"]
         self.early_stopping = train_params["early_stopping_patience"] if "early_stopping_patience" in train_params and train_params["early_stopping_patience"] > 0 else None
         self.seed = config.get_seed()
+        self.batch_size = train_params["batch_size"]
 
     def do_traintest(self, config):
         model = self.get_model()
@@ -115,9 +149,22 @@ class DNN:
     def report(self):
         info("==============================")
         info("Mean performance across all {} folds:".format(self.folds))
-        for type in self.performance:
-            for measure, perfs in self.performance[type].items():
-                info("{} {} : {:.3f}".format(type, measure, np.mean(perfs)))
+        res = {}
+        for type in self.run_types:
+            for measure in self.measures:
+                for aggr in self.measure_aggregations:
+                    if aggr not in self.performance[type][measure]:
+                        continue
+                    container = self.performance[type][measure][aggr]
+                    if not container:
+                        continue
+                    mean_perf = np.mean(container)
+                    info("{} {} : {:.3f}".format(type, measure, mean_perf))
+                    self.performance[type][measure][aggr].append(mean_perf)
+        # write the results in csv in the results directory
+        # entries in a run_type - measure configuration list are the foldwise scores, followed by the mean
+        pd.DataFrame.from_dict(self.performance).to_csv(os.path.join(self.results_folder, "results.txt"))
+        # write per-class results
 
 
     def do_test(self, model):
@@ -178,23 +225,35 @@ class DNN:
 
     # compute scores and append to per-fold lists
     def add_performance(self, type, preds):
-        acc = metrics.accuracy_score(self.test_labels, preds)
-        ma_f1 = metrics.f1_score(self.test_labels, preds, average='macro')
-        mi_f1 = metrics.f1_score(self.test_labels, preds, average='micro')
-        self.performance[type]['acc'].append(acc)
-        self.performance[type]['mi_f1'].append(mi_f1)
-        self.performance[type]['ma_f1'].append(ma_f1)
+        # get accuracies
+        acc, cw_acc = self.acc(preds), self.cw_acc(preds)
+        self.performance[type]["accuracy"]["classwise"].append(cw_acc)
+        self.performance[type]["accuracy"]["macro"].append(acc)
+        # self.performance[type]["accuracy"]["micro"].append(np.nan)
+        # self.performance[type]["accuracy"]["weighted"].append(np.nan)
 
-    # print performance of the latest run
+        # get everything else
+        for measure in [x for x in self.measures if x !="accuracy"]:
+            cw, ma, mi, ws = self.get_pre_rec_f1(preds, measure)
+            self.performance[type][measure]["classwise"].append(cw)
+            self.performance[type][measure]["macro"].append(ma)
+            self.performance[type][measure]["micro"].append(mi)
+            self.performance[type][measure]["weighted"].append(ws)
+
+
+    # print aggregate performance of the latest run
     def print_performance(self):
         info("---------------")
-        for type in self.performance:
+        for type in self.run_types:
             info("{} performance:".format(type))
-            for x in self.performance[type]:
-                info("{} classifier".format(x))
-                info('Accuracy: {:.3f}'.format(self.baseline[x]["acc"][-1]))
-                info('Macro f1: {:.3f}'.format(self.baseline[x]["mi_f1"][-1]))
-                info('Micro f1: {:.3f}'.format(self.baseline[x]["ma_f1"][-1]))
+            for measure in self.measures:
+                for aggr in self.measure_aggregations:
+                    if aggr not in self.performance[type][measure] or aggr == "classwise":
+                        continue
+                    container = self.performance[type][measure][aggr]
+                    if not container:
+                        continue
+                    info('{} {}: {:.3f}'.format(aggr, measure, self.performance[type][measure][aggr][-1]))
 
 class MLP(DNN):
     name = "mlp"
