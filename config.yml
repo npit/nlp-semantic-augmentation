@@ -1,3 +1,4 @@
+run_id: "run_name"
 # dataset
 # dataset name, param1, param2
 dataset: 20newsgroups

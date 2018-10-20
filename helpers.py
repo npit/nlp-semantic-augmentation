@@ -22,7 +22,7 @@ class Config:
     def initialize(self, config_file):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
-        self.run_id = "run_" + utils.datetime_str()
+        
         self.read_config(config_file)
         self.setup_logging()
         self.setup_seed()
@@ -96,9 +96,13 @@ class Config:
 
     # read yaml configuration
     def read_config(self, yaml_file):
-        print("Reading configuration for run {} from {}".format(self.run_id, yaml_file))
         with open(yaml_file) as f:
             self.conf = yaml.load(f)
+        if self.explicit_run_id():
+            self.run_id = self.conf["run_id"]
+        else:
+            self.run_id = "run_" + utils.datetime_str()
+        print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
 
     # configuration entry getters
     def get_serialization_dir(self):
@@ -142,3 +146,6 @@ class Config:
 
     def get_train_params(self):
         return self.conf["train"]
+
+    def explicit_run_id(self):
+        return "run_id" in self.conf and self.conf["run_id"]
