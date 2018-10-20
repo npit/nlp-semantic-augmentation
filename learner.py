@@ -123,7 +123,6 @@ class DNN:
         self.batch_size = train_params["batch_size"]
 
     def do_traintest(self, config):
-        model = self.get_model()
         tic()
         info("Training {} with input data {} on {} stratified folds".format(self.name, self.train.shape, self.folds))
         skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
@@ -136,6 +135,7 @@ class DNN:
             val_y_onehot = to_categorical(val_y, num_classes = self.num_labels)
 
             # train
+            model = self.get_model()
             info("Trainig fold {}/{}".format(fold_index + 1, self.folds))
             verbosity = 1 if config.get_log_level() == "debug" else 0
             history = model.fit(train_x, train_y_onehot,
