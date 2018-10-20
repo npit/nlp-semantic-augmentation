@@ -15,6 +15,7 @@ class Embedding():
     embeddings = None
     words_to_numeric_idx  = None
     missing = []
+    loaded_mapped_embeddings = False
 
     def make(self, config):
         self.config = config
@@ -42,13 +43,14 @@ class Embedding():
     # prepare embedding data to be ready for classification
     def prepare(self):
         info("Preparing embeddings.")
-        # save the words
-        info("Storing the embedding word list.")
-        for dset in self.dataset_embeddings:
-            self.words.append([])
-            for document in dset:
-                doc_words = document.index.tolist()
-                self.words[-1].append(doc_words)
+        if not self.loaded_mapped_embeddings:
+            # save the words
+            info("Storing the embedding word list.")
+            for dset in self.dataset_embeddings:
+                self.words.append([])
+                for document in dset:
+                    doc_words = document.index.tolist()
+                    self.words[-1].append(doc_words)
 
         aggr = self.config.get_aggregation().split(",")
         aggregation = aggr[0]
@@ -124,8 +126,17 @@ class Glove(Embedding):
         if not os.path.exists(self.serialization_dir):
             os.makedirs(self.serialization_dir, exist_ok=True)
 
-        raw_data_path = os.path.join("embeddings/glove.6B.{}d.txt".format(self.embedding_dim))
+        self.mapped_data_serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}_aggr{}.pickle".format(
+            self.dataset_name, self.name, "_".join(list(map(str,[self.aggregation] + self.aggregation_params))) ))
+        if os.path.exists(self.mapped_data_serialization_path):
+            info("Reading mapped embedding data from {}".format(self.mapped_data_serialization_path))
+            with open(self.mapped_data_serialization_path, "rb") as f:
+                [self.dataset_embeddings, self.missing_words] = pickle.load(f)
+            self.loaded_mapped_embeddings = True
+            return
 
+
+        raw_data_path = os.path.join("embeddings/glove.6B.{}d.txt".format(self.embedding_dim))
         pickled_path = os.path.join(self.serialization_dir, "glove6B.{}d.pickle".format(self.embedding_dim))
 
         # read pickled existing data
@@ -150,13 +161,8 @@ class Glove(Embedding):
 
     # transform input texts to embeddings
     def map_text(self, dset):
-        self.serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}_aggr{}.pickle".format(
-            self.dataset_name, self.name, "_".join(list(map(str,[self.aggregation] + self.aggregation_params))) ))
-        if os.path.exists(self.serialization_path):
-            with open(self.serialization_path, "rb") as f:
-                [self.dataset_embeddings, self.missing_words] = pickle.load(f)
+        if self.loaded_mapped_embeddings:
             return
-
         info("Mapping {} to {} embeddings.".format(dset.name, self.name))
         text_bundles = dset.train, dset.test
         self.dataset_embeddings = []
@@ -197,8 +203,8 @@ class Glove(Embedding):
             self.missing.append(hist_missing)
 
         # write
-        info("Writing embedding mapping to {}".format(self.serialization_path))
-        with open(self.serialization_path, "wb") as f:
+        info("Writing embedding mapping to {}".format(self.mapped_data_serialization_path))
+        with open(self.mapped_data_serialization_path, "wb") as f:
             pickle.dump([self.dataset_embeddings, self.missing], f)
         # log missing words
         for d in range(len(self.missing)):
