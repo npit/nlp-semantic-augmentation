@@ -1,22 +1,27 @@
 # import gensim
 import os
-import copy
 import pickle
-import logging
 from utils import tic, toc, error, info, debug
+import numpy as np
 from nltk.corpus import wordnet as wn
 
+
+class SemanticResource:
+    pass
+
+
 class Wordnet:
-    name="wordnet"
+    name = "wordnet"
     serialization_dir = "serializations/semantic_data"
-    word_synset_cache = {}
+    word_synset_lookup_cache = {}
+    word_synset_embedding_cache = {}
 
     synset_freqs = []
     synset_tfidf_freqs = []
     dataset_freqs = []
     dataset_minmax_freqs = []
     assignments = {}
-
+    synset_context_word_threshold = None
 
     # prune semantic information units wrt a frequency threshold
     def apply_freq_filtering(self, freq_dict_list, dataset_freqs, force_reference=False):
@@ -47,15 +52,41 @@ class Wordnet:
         return  freq_dict_list, dataset_freqs
 
     # build the semantic resource
-    def make(self, config):
+    def make(self, config, embedding):
+        self.embedding = embedding
         self.serialization_dir = os.path.join(config.get_serialization_dir(), "semantic_data")
         self.freq_threshold = config.get_semantic_freq_threshold()
         self.sem_weights = config.get_semantic_weights()
+        disam = config.get_semantic_disambiguation().split(",")
+        self.disambiguation = disam[0]
+        if len(disam) > 1:
+            self.synset_context_word_threshold = int(disam[1])
         dataset_name = config.get_dataset()
         freq_filtering = "ALL" if not self.freq_threshold else "freqthres{}".format(self.freq_threshold)
         sem_weights = "weights{}".format(self.sem_weights)
-        self.serialization_path = os.path.join(self.serialization_dir, "{}_{}_{}_{}.assignments".format(dataset_name, self.name, sem_weights, freq_filtering))
+        disambig = "disam{}".format(self.disambiguation)
+        self.serialization_path = os.path.join(self.serialization_dir, "{}_{}_{}_{}_{}.assignments".format(dataset_name, self.name, sem_weights, freq_filtering, disambig))
         self.semantic_freq_threshold = config.get_semantic_freq_threshold()
+
+        if self.disambiguation == "context-embedding":
+            # preload the concept list
+            context_file = config.get_semantic_word_context()
+            with open(context_file, "rb") as f:
+                data = pickle.load(f)
+                self.semantic_context = {}
+                if self.synset_context_word_threshold is not None:
+                    info("Limiting reference context synsets to a frequency threshold of {}".format(self.synset_context_word_threshold))
+                    for s, wl in data.items():
+                        import pdb; pdb.set_trace()
+                        if len(wl) < self.synset_context_word_threshold:
+                            continue
+                        self.semantic_context[s] = wl
+                self.reference_synsets = self.semantic_context.keys()
+                if not self.reference_synsets:
+                    error("Frequency threshold of synset context: {} resulted in zero reference synsets".format(self.synset_context_word_threshold))
+                info("Applying {} reference synsets from pre-extracted synset words".format(len(self.reference_synsets)))
+            
+            self.semantic_embedding_aggr = config.get_semantic_word_aggregation()
 
     # merge list of document-wise frequency dicts
     # to a single, dataset-wise frequency dict
@@ -141,10 +172,44 @@ class Wordnet:
             error("Undefined disambiguation method: " + disam)
 
 
+    def get_synset_from_context_embeddings(self, word):
+        word_embedding = self.embbedings.get_embeddings(word)
+        self.sem
+        self.embeddings.get_nearest_embedding(word_embedding)
+
+    # generate semantic embeddings from words associated with an synset
+    def compute_semantic_embeddings(self):
+        info("Computing semantic embeddings.")
+        self.synset_embeddings = np.ndarray((0, self.embedding.embedding_dim), np.float32)
+        for s, synset in enumerate(self.reference_synsets):
+            debug("Reference synset {}/{}: {}".format(s+1, len(self.reference_synsets), synset))
+            # get the embeddings for the words of the synset
+            words = self.semantic_context[synset]
+            # get words not in cache
+            word_embeddings = self.embedding.get_embeddings(words)
+
+            # aggregate
+            if self.semantic_embedding_aggr == "avg":
+                embedding = np.mean(word_embeddings.as_matrix(), axis=0)
+                self.synset_embeddings = np.vstack([self.synset_embeddings, embedding])
+            else:
+                error("Undefined semantic embedding aggregation:{}".format(self.semantic_embedding_aggr))
+
+        # save results
+        thr = ""
+        if self.synset_context_word_threshold:
+            thr += "_thresh{}".format(self.synset_context_word_threshold)
+        import pdb; pdb.set_trace()
+        sem_embeddings_path = os.path.join(self.serialization_dir, "semantic_embeddings_{}_{}".format(self.name, self.embedding.name, thr))
+        info("Writing semantic embeddings to {}".format(sem_embeddings_path))
+        with open(sem_embeddings_path, "wb") as f:
+            pickle.dump(self.synset_embeddings, f)
+
+
     # function to map words to wordnet concepts
-    def map_text(self, datasets_words, dataset_name):
+    def map_text(self, dataset_name):
         # check if data is already extracted & serialized
-        if os.path.exists(self.serialization_dir):
+        if not os.path.exists(self.serialization_dir):
             os.makedirs(self.serialization_dir, exist_ok=True)
         if os.path.exists(self.serialization_path):
             info("Loading existing mapped semantic information from {}.".format(self.serialization_path))
@@ -160,13 +225,20 @@ class Wordnet:
             return
 
         # process the data
+        if self.disambiguation == "context-embedding":
+            self.compute_semantic_embeddings()
+
+        datasets_words = self.embedding.get_words()
         self.synset_freqs = []
         for d, dset in enumerate(datasets_words):
-            info("Extracting semantic information from dataset {}/{}".format(d+1, len(datasets_words)))
+            info("Extracting {} semantic information from dataset {}/{}".format(self.name, d+1, len(datasets_words)))
             # process data within a dataset portion
-            self.map_dset(dset, dataset_name + "{}".format(d+1),
-                          store_reference_synsets=d == 0,
-                          force_reference_synsets=d > 0)
+            # should store reference synsets in the train portion (d==0), but only if a reference has not
+            # been already defined, e.g. via semantic embedding precomputations
+            store_as_reference = (d==0 and not self.reference_synsets)
+            # should force mapping to the reference if a reference has been defined
+            force_reference = bool(self.reference_synsets)
+            self.map_dset(dset, dataset_name + "{}".format(d+1), store_as_reference, force_reference)
 
         # write results: word assignments, raw, dataset-wise and tf-idf weights
         info("Writing semantic assignment results to {}.".format(self.serialization_path))
@@ -183,10 +255,10 @@ class Wordnet:
     # function to get a synset from a word, using the wordnet api
     # and a local word cache. Updates synset frequencies as well.
     def get_synset(self, word, freqs, force_reference_synsets = False):
-        if word in self.word_synset_cache:
-            # print("Cache hit:", self.word_synset_cache)
+        if word in self.word_synset_lookup_cache:
+            # print("Cache hit:", self.word_synset_lookup_cache)
             # print("freqs:", freqs)
-            synset = self.word_synset_cache[word]
+            synset = self.word_synset_lookup_cache[word]
 
             if force_reference_synsets:
                 if synset not in self.reference_synsets:
@@ -195,22 +267,33 @@ class Wordnet:
             if synset not in freqs:
                 freqs[synset] = 0
         else:
-            # print("Cache miss:", self.word_synset_cache)
-            # print("freqs:", freqs)
-            synsets = wn.synsets(word)
-            if not synsets:
+            # not in cache, extract
+
+            if self.disambiguation == "embedding-context":
+                # discover synset from its generated embedding and the word embedding
+                synset = self.get_synset_from_context_embeddings(word)
+            else:
+                # look in wordnet 
+                synset = self.lookup_wordnet(word)
+            if not synset:
                 return None, freqs
-            synset = self.disambiguate_synsets(synsets)
+
             if force_reference_synsets:
                 if synset not in self.reference_synsets:
                     return None, freqs
             freqs[synset] = 0
-            self.word_synset_cache[word] = synset
+            self.word_synset_lookup_cache[word] = synset
 
         freqs[synset] += 1
         if word not in self.assignments:
             self.assignments[word] = synset
         return synset, freqs
+
+
+    def lookup_wordnet(self, word):
+        synsets = wn.synsets(word)
+        synset = self.disambiguate_synsets(synsets)
+        return synset
 
     # function that applies the required processing
     # once a synset has been found in the input text
@@ -227,6 +310,8 @@ class Wordnet:
     # get requested information to use
     def get_data(self, config):
         # map dicts to vectors
+        if not self.dataset_freqs:
+            error("Attempted to generate semantic vectors from empty containers")
         synset_order = sorted(self.dataset_freqs[0].keys())
         semantic_document_vectors = [[] for _ in range(len(self.synset_freqs)) ]
 
@@ -247,3 +332,11 @@ class Wordnet:
             error("Unimplemented semantic vector method: {}.".format(sem_weights))
 
         return semantic_document_vectors
+
+
+class GoogleKnowledgeGraph:
+    pass
+class PPDB:
+    # ppdb reading code:
+    # https://github.com/erickrf/ppdb
+    pass

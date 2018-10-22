@@ -123,6 +123,15 @@ class Config:
     def get_semantic_resource(self):
         return self.conf["semantic_resource"]
 
+    def get_semantic_disambiguation(self):
+        return self.conf["semantic_disambiguation"]
+
+    def get_semantic_word_context(self):
+        return self.conf["semantic_word_context_file"]
+
+    def get_semantic_word_aggregation(self):
+        return self.conf["semantic_embedding_aggregation"]
+
     def get_log_level(self):
         return self.conf["log_level"] if "log_level" in self.conf else "info" 
 

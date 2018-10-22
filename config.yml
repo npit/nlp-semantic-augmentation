@@ -18,16 +18,25 @@ aggregation: avg
 # resource,population_strategy,weighting_strategy,pruning_strategy
 
 semantic_resource: wordnet
+
+# what is considered as a semantic information
+semantic_unit: synset
+
 # the form of semantic information to use
 # frequencies or tfidf
 semantic_weights: freq
 # drop synsets with dataset-wise freq less than this threshold
 #semantic_freq_threshold: 15
 # how the semantic information is combined with the textual one
-# enrichment: concat
-# enrichment: concat
-# pos, embedding-centroid
-disambiguation: pos
+enrichment: concat
+
+# pos: get the first that matches the POS tag assigned
+# embedding-centroid, num-threshold: select synset by min proximity to precomputed semantic embeddings
+# params:
+# num-threshold: min. number of context words for a synset 
+semantic_disambiguation: context-embedding,50
+semantic_embedding_aggregation: avg
+semantic_word_context_file: wordnet_synset_examples_definitions.pickle
 
 # learning model
 # dnn or lstm

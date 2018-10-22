@@ -138,3 +138,8 @@ class TwentyNewsGroups(Dataset):
 
         self.apply_limit(config)
 
+class Brown:
+    pass
+
+class Reuters:
+    pass

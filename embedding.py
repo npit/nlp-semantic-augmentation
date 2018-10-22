@@ -17,19 +17,30 @@ class Embedding():
     missing = []
     loaded_mapped_embeddings = False
 
+    def get_nearest_embedding(self, vec):
+        import pdb; pdb.set_trace()
+        pass
+
+
+    def get_embeddings(self, words):
+        return self.embeddings.loc[words]
+
+    def has_word(self, word):
+        return word in self.embeddings.index
+
     def make(self, config):
         self.config = config
 
-    def read_pickled(self, pickled_path):
-        info("Reading pickled embedding data from {}".format(pickled_path))
-        with open(pickled_path, "rb") as f:
+    def read_pickled(self, pickled_raw_path):
+        info("Reading pickled embedding data from {}".format(pickled_raw_path))
+        with open(pickled_raw_path, "rb") as f:
             data =  pickle.load(f)
             self.embeddings, self.words_to_numeric_idx = data[0], data[1]
 
-    def write_pickled(self, pickled_path):
+    def write_pickled(self, pickled_raw_path):
         tic()
-        info("Pickling embedding data to {}".format(pickled_path))
-        with open(pickled_path, "wb") as f:
+        info("Pickling embedding data to {}".format(pickled_raw_path))
+        with open(pickled_raw_path, "wb") as f:
             # pickle.dump([self.words, self.embeddings], f)
             pickle.dump([self.embeddings, self.words_to_numeric_idx], f)
         toc("Pickling")
@@ -40,17 +51,21 @@ class Embedding():
     def get_data(self):
         return self.dataset_embeddings
 
+    # collect the words per dataset and document
+    def collect_dataset_words(self):
+        for dset in self.dataset_embeddings:
+            self.words.append([])
+            for document in dset:
+                doc_words = document.index.tolist()
+                self.words[-1].append(doc_words)
+
     # prepare embedding data to be ready for classification
     def prepare(self):
         info("Preparing embeddings.")
         if not self.loaded_mapped_embeddings:
             # save the words
             info("Storing the embedding word list.")
-            for dset in self.dataset_embeddings:
-                self.words.append([])
-                for document in dset:
-                    doc_words = document.index.tolist()
-                    self.words[-1].append(doc_words)
+            self.collect_dataset_words()
 
         aggr = self.config.get_aggregation().split(",")
         aggregation = aggr[0]
@@ -114,6 +129,28 @@ class Glove(Embedding):
     name = "glove"
     dataset_name = ""
 
+    def load_raw_embeddings(self):
+        raw_data_path = os.path.join("embeddings/glove.6B.{}d.txt".format(self.embedding_dim))
+        pickled_raw_path = os.path.join(self.serialization_dir, "glove6B.{}d.pickle".format(self.embedding_dim))
+
+        # read pickled existing data
+        if os.path.exists(pickled_raw_path):
+            self.read_pickled(pickled_raw_path)
+            return
+
+        # load existing raw data
+        if os.path.exists(raw_data_path):
+            info("Reading raw embedding data from {}".format(raw_data_path))
+            tic()
+            self.embeddings = pd.read_csv(raw_data_path, index_col = 0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
+            self.words_to_numeric_idx = {word:i for word,i in zip(self.embeddings.index.values.tolist(), range(len(self.embeddings.index))) }
+            toc("Reading raw data")
+            # pickle them
+            self.write_pickled(pickled_raw_path)
+        # else, gotta download the raw data
+        error("Downloaded glove embeddings missing from {}. Get them from https://nlp.stanford.edu/projects/glove/".format(raw_data_path))
+
+
     def make(self, config):
         Embedding.make(self, config)
         self.dataset_name = self.config.get_dataset()
@@ -128,35 +165,15 @@ class Glove(Embedding):
 
         self.mapped_data_serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}_aggr{}.pickle".format(
             self.dataset_name, self.name, "_".join(list(map(str,[self.aggregation] + self.aggregation_params))) ))
+
         if os.path.exists(self.mapped_data_serialization_path):
-            info("Reading mapped embedding data from {}".format(self.mapped_data_serialization_path))
+            info("Reading existing mapped embedding data from {}".format(self.mapped_data_serialization_path))
             with open(self.mapped_data_serialization_path, "rb") as f:
                 [self.dataset_embeddings, self.missing_words] = pickle.load(f)
+                self.collect_dataset_words()
             self.loaded_mapped_embeddings = True
-            return
 
-
-        raw_data_path = os.path.join("embeddings/glove.6B.{}d.txt".format(self.embedding_dim))
-        pickled_path = os.path.join(self.serialization_dir, "glove6B.{}d.pickle".format(self.embedding_dim))
-
-        # read pickled existing data
-        if os.path.exists(pickled_path):
-            self.read_pickled(pickled_path)
-            return
-
-        # load existing raw data
-        if os.path.exists(raw_data_path):
-            info("Reading raw embedding data from {}".format(raw_data_path))
-            tic()
-            self.embeddings = pd.read_csv(raw_data_path, index_col = 0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
-            self.words_to_numeric_idx = {word:i for word,i in zip(self.embeddings.index.values.tolist(), range(len(self.embeddings.index))) }
-            toc("Reading raw data")
-            # pickle them
-            self.write_pickled(pickled_path)
-            return
-
-        # else, gotta download the raw data
-        error("Downloaded glove embeddings missing from {}. Get them from https://nlp.stanford.edu/projects/glove/".format(raw_data_path))
+        self.load_raw_embeddings()
 
 
     # transform input texts to embeddings

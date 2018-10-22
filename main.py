@@ -17,7 +17,6 @@ from utils import info
 
 print("Imports done.")
 
-
 def main(config_file):
     print("Running main.")
     # initialize configuration
@@ -42,8 +41,8 @@ def main(config_file):
     if config.has_enrichment():
         info("===== SEMANTIC =====")
         semantic = fetcher.fetch_semantic(config.get_semantic_resource())
-        semantic.make(config)
-        semantic.map_text(embedding.get_words(), dataset.get_name())
+        semantic.make(config, embedding)
+        semantic.map_text(dataset.get_name())
         embedding.enrich(semantic.get_data(config))
 
     # learning
