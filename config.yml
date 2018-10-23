@@ -24,7 +24,7 @@ semantic_unit: synset
 
 # the form of semantic information to use
 # frequencies or tfidf
-semantic_weights: freq
+semantic_weights: embeddings
 # drop synsets with dataset-wise freq less than this threshold
 #semantic_freq_threshold: 15
 # how the semantic information is combined with the textual one
@@ -34,7 +34,7 @@ enrichment: concat
 # embedding-centroid, num-threshold: select synset by min proximity to precomputed semantic embeddings
 # params:
 # num-threshold: min. number of context words for a synset 
-semantic_disambiguation: context-embedding,50
+semantic_disambiguation: context-embedding,25
 semantic_embedding_aggregation: avg
 semantic_word_context_file: wordnet_synset_examples_definitions.pickle
 

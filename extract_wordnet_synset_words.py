@@ -6,6 +6,7 @@ from keras.preprocessing.text import text_to_word_sequence
 Script to extract words related to wordnet synsets through accompanying examples or definition
 """
 
+
 # preprocess string to word list
 def preprocess_text(text):
         stopw = set(stopwords.words('english'))
@@ -14,14 +15,17 @@ def preprocess_text(text):
         processed = [p for p in processed if p not in stopw]
         return processed
 
+
 # print example-wise synset frequencies
 def example_freqs(thedict):
         print("Frequency of number of examples per synset:")
         freqs = [len(thedict[s]) for s in thedict]
-        hist = {f:freqs.count(f) for f in freqs}
+        hist = {f: freqs.count(f) for f in freqs}
         total = sum(hist.values())
-        for val, count in sorted(hist.items(), key = lambda p : p[1], reverse=True):
+        for val, count in sorted(hist.items(), key=lambda p: p[1], reverse=True):
                 print(val, count, "{:.3f} %".format(count/total*100))
+
+
 # print word-wise synset frequencies
 def word_freqs(thedict):
         print("Frequency of number of words per synset:")

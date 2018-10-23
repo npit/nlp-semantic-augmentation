@@ -41,6 +41,9 @@ def info(msg):
 def debug(msg):
     logger = logging.getLogger()
     logger.debug(msg)
+def warning(msg):
+    logger = logging.getLogger()
+    logger.warning(msg)
 
 
 

@@ -13,17 +13,14 @@ class Embedding():
     words = []
     dataset_embeddings = None
     embeddings = None
-    words_to_numeric_idx  = None
+    words_to_numeric_idx = None
     missing = []
     loaded_mapped_embeddings = False
 
-    def get_nearest_embedding(self, vec):
-        import pdb; pdb.set_trace()
-        pass
-
-
     def get_embeddings(self, words):
-        return self.embeddings.loc[words]
+        word_embeddings = self.embeddings.loc[words].dropna()
+        # drop the nans and return
+        return word_embeddings
 
     def has_word(self, word):
         return word in self.embeddings.index
@@ -120,11 +117,6 @@ class Embedding():
                 self.dataset_embeddings[dset_idx] = new_dset_embeddings
 
 
-
-
-
-
-
 class Glove(Embedding):
     name = "glove"
     dataset_name = ""
@@ -147,6 +139,7 @@ class Glove(Embedding):
             toc("Reading raw data")
             # pickle them
             self.write_pickled(pickled_raw_path)
+            return
         # else, gotta download the raw data
         error("Downloaded glove embeddings missing from {}. Get them from https://nlp.stanford.edu/projects/glove/".format(raw_data_path))
 
@@ -236,8 +229,19 @@ class Glove(Embedding):
     def __init__(self, params):
         self.embedding_dim = int(params[0])
 
+class Universal_sentence_encoder:
+    pass
+
+class ELMo:
+    # https://allennlp.org/elmo
+    pass
 
 class Word2vec(Embedding):
     name = "word2vec"
     def __init__(self):
         pass
+
+class FastText:
+    pass
+class Doc2vec:
+    pass

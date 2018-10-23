@@ -1,7 +1,7 @@
 # import gensim
 import os
 import pickle
-from utils import tic, toc, error, info, debug
+from utils import tic, toc, error, info, debug, warning
 import numpy as np
 from nltk.corpus import wordnet as wn
 
@@ -55,18 +55,21 @@ class Wordnet:
     def make(self, config, embedding):
         self.embedding = embedding
         self.serialization_dir = os.path.join(config.get_serialization_dir(), "semantic_data")
+        if not os.path.exists(self.serialization_dir):
+            os.makedirs(self.serialization_dir, exist_ok=True)
         self.freq_threshold = config.get_semantic_freq_threshold()
-        self.sem_weights = config.get_semantic_weights()
+        self.semantic_weights = config.get_semantic_weights()
         disam = config.get_semantic_disambiguation().split(",")
         self.disambiguation = disam[0]
         if len(disam) > 1:
             self.synset_context_word_threshold = int(disam[1])
         dataset_name = config.get_dataset()
         freq_filtering = "ALL" if not self.freq_threshold else "freqthres{}".format(self.freq_threshold)
-        sem_weights = "weights{}".format(self.sem_weights)
+        sem_weights = "weights{}".format(self.semantic_weights)
         disambig = "disam{}".format(self.disambiguation)
         self.serialization_path = os.path.join(self.serialization_dir, "{}_{}_{}_{}_{}.assignments".format(dataset_name, self.name, sem_weights, freq_filtering, disambig))
         self.semantic_freq_threshold = config.get_semantic_freq_threshold()
+        self.semantic_embedding_dim = embedding.embedding_dim
 
         if self.disambiguation == "context-embedding":
             # preload the concept list
@@ -77,15 +80,20 @@ class Wordnet:
                 if self.synset_context_word_threshold is not None:
                     info("Limiting reference context synsets to a frequency threshold of {}".format(self.synset_context_word_threshold))
                     for s, wl in data.items():
-                        import pdb; pdb.set_trace()
                         if len(wl) < self.synset_context_word_threshold:
                             continue
                         self.semantic_context[s] = wl
-                self.reference_synsets = self.semantic_context.keys()
+                else:
+                    self.semantic_context = data;
+                self.reference_synsets = list(self.semantic_context.keys())
                 if not self.reference_synsets:
                     error("Frequency threshold of synset context: {} resulted in zero reference synsets".format(self.synset_context_word_threshold))
                 info("Applying {} reference synsets from pre-extracted synset words".format(len(self.reference_synsets)))
-            
+            # calculate the synset embeddings path
+            thr = ""
+            if self.synset_context_word_threshold:
+                thr += "_thresh{}".format(self.synset_context_word_threshold)
+            self.sem_embeddings_path = os.path.join(self.serialization_dir, "semantic_embeddings_{}_{}{}{}".format(self.name, self.embedding.name, self.semantic_embedding_dim, thr))
             self.semantic_embedding_aggr = config.get_semantic_word_aggregation()
 
     # merge list of document-wise frequency dicts
@@ -108,6 +116,23 @@ class Wordnet:
         return dataset_freqs, freq_dict_list
 
 
+    # tf-idf computation
+    def compute_tfidf_weights(self, current_synset_freqs, dataset_freqs):
+        # compute tf-idf
+        tic()
+        tfidf_freqs = []
+        for doc_dict in range(len(current_synset_freqs)):
+            ddict = {}
+            for synset in current_synset_freqs[doc_dict]:
+                if dataset_freqs[synset] > 0:
+                    ddict[synset] = current_synset_freqs[doc_dict][synset] / dataset_freqs[synset]
+                else:
+                    ddict[synset] = 0
+
+                tfidf_freqs.append(ddict)
+        self.synset_tfidf_freqs.append(tfidf_freqs)
+        toc("tf-idf computation")
+
     # map a single dataset portion
     def map_dset(self, dset, dataset_name, store_reference_synsets = False, force_reference_synsets = False):
         if force_reference_synsets:
@@ -124,6 +149,8 @@ class Wordnet:
                 synset, doc_freqs = self.get_synset(word, doc_freqs, force_reference_synsets)
                 if not synset: continue
                 self.process_synset(synset)
+            if not doc_freqs:
+                warning("No synset information extracted for document {}/{}".format(wl+1, len(dset)))
             current_synset_freqs.append(doc_freqs)
         toc("Document-level mapping and frequency computation")
         # merge to dataset-wise synset frequencies
@@ -135,20 +162,10 @@ class Wordnet:
 
         if store_reference_synsets:
             self.reference_synsets = set((dataset_freqs.keys()))
-        # compute tf-idf
-        tic()
-        tfidf_freqs = []
-        for doc_dict in range(len(current_synset_freqs)):
-            ddict = {}
-            for synset in current_synset_freqs[doc_dict]:
-                if dataset_freqs[synset] > 0:
-                    ddict[synset] = current_synset_freqs[doc_dict][synset] / dataset_freqs[synset]
-                else:
-                    ddict[synset] = 0
 
-                tfidf_freqs.append(ddict)
-        self.synset_tfidf_freqs.append(tfidf_freqs)
-        toc("tf-idf computation")
+        # compute tfidf
+        if self.semantic_weights:
+            self.compute_tfidf_weights(current_synset_freqs, dataset_freqs)
 
 
     # choose a synset from a candidate list
@@ -179,12 +196,19 @@ class Wordnet:
 
     # generate semantic embeddings from words associated with an synset
     def compute_semantic_embeddings(self):
-        info("Computing semantic embeddings.")
+
+        if os.path.exists(self.sem_embeddings_path):
+            info("Loading existing semantic embeddings from {}.".format(self.sem_embeddings_path))
+            with open(self.sem_embeddings_path, "rb") as f:
+                self.synset_embeddings, self.reference_synsets = pickle.load(f)
+                return
+
+        info("Computing semantic embeddings, using {} embeddings of dim {}.".format(self.embedding.name, self.semantic_embedding_dim))
         self.synset_embeddings = np.ndarray((0, self.embedding.embedding_dim), np.float32)
         for s, synset in enumerate(self.reference_synsets):
-            debug("Reference synset {}/{}: {}".format(s+1, len(self.reference_synsets), synset))
             # get the embeddings for the words of the synset
             words = self.semantic_context[synset]
+            debug("Reference synset {}/{}: {}, context words: {}".format(s+1, len(self.reference_synsets), synset, len(words)))
             # get words not in cache
             word_embeddings = self.embedding.get_embeddings(words)
 
@@ -196,21 +220,18 @@ class Wordnet:
                 error("Undefined semantic embedding aggregation:{}".format(self.semantic_embedding_aggr))
 
         # save results
-        thr = ""
-        if self.synset_context_word_threshold:
-            thr += "_thresh{}".format(self.synset_context_word_threshold)
-        import pdb; pdb.set_trace()
-        sem_embeddings_path = os.path.join(self.serialization_dir, "semantic_embeddings_{}_{}".format(self.name, self.embedding.name, thr))
-        info("Writing semantic embeddings to {}".format(sem_embeddings_path))
-        with open(sem_embeddings_path, "wb") as f:
-            pickle.dump(self.synset_embeddings, f)
+        info("Writing semantic embeddings to {}".format(self.sem_embeddings_path))
+        with open(self.sem_embeddings_path, "wb") as f:
+            pickle.dump([self.synset_embeddings, self.reference_synsets], f)
 
 
     # function to map words to wordnet concepts
     def map_text(self, dataset_name):
+        # process semantic embeddings, if applicable
+        if self.disambiguation == "context-embedding":
+            self.compute_semantic_embeddings()
+
         # check if data is already extracted & serialized
-        if not os.path.exists(self.serialization_dir):
-            os.makedirs(self.serialization_dir, exist_ok=True)
         if os.path.exists(self.serialization_path):
             info("Loading existing mapped semantic information from {}.".format(self.serialization_path))
             tic()
@@ -225,9 +246,6 @@ class Wordnet:
             return
 
         # process the data
-        if self.disambiguation == "context-embedding":
-            self.compute_semantic_embeddings()
-
         datasets_words = self.embedding.get_words()
         self.synset_freqs = []
         for d, dset in enumerate(datasets_words):
@@ -256,8 +274,6 @@ class Wordnet:
     # and a local word cache. Updates synset frequencies as well.
     def get_synset(self, word, freqs, force_reference_synsets = False):
         if word in self.word_synset_lookup_cache:
-            # print("Cache hit:", self.word_synset_lookup_cache)
-            # print("freqs:", freqs)
             synset = self.word_synset_lookup_cache[word]
 
             if force_reference_synsets:
@@ -292,8 +308,9 @@ class Wordnet:
 
     def lookup_wordnet(self, word):
         synsets = wn.synsets(word)
-        synset = self.disambiguate_synsets(synsets)
-        return synset
+        if synsets:
+            return self.disambiguate_synsets(synsets)
+        return None
 
     # function that applies the required processing
     # once a synset has been found in the input text
@@ -307,29 +324,50 @@ class Wordnet:
         # ingoing / outgoing graph ratio
         pass
 
-    # get requested information to use
+    # get semantic vector information, wrt to the configuration
     def get_data(self, config):
         # map dicts to vectors
         if not self.dataset_freqs:
             error("Attempted to generate semantic vectors from empty containers")
-        synset_order = sorted(self.dataset_freqs[0].keys())
+        info("Getting {} semantic data.".format(self.semantic_weights))
+        synset_order = sorted(self.reference_synsets)
         semantic_document_vectors = [[] for _ in range(len(self.synset_freqs)) ]
 
-        sem_weights = config.get_semantic_weights()
-        if sem_weights  == "freq":
+        if self.semantic_weights  == "freq":
             # get raw semantic frequencies
             for d in range(len(self.synset_freqs)):
                 for doc_dict in self.synset_freqs[d]:
                     doc_vector = [doc_dict[s] if s in doc_dict else 0 for s in synset_order]
                     semantic_document_vectors[d].append(doc_vector)
-        elif sem_weights == "tfidf":
+
+        elif self.semantic_weights == "tfidf":
             # get tfidf weights
             for d in range(len(self.synset_tfidf_freqs)):
                 for doc_dict in self.synset_tfidf_freqs[d]:
                     doc_vector = [doc_dict[s] if s in doc_dict else 0 for s in synset_order]
                     semantic_document_vectors[d].append(doc_vector)
+
+        elif self.semantic_weights == "embeddings":
+            if self.disambiguation != "context-embedding":
+                error("Embedding information requires the context-embedding semantic disambiguation. It is {} instead.".format(self.disambiguation))
+            # get raw semantic frequencies
+            for d in range(len(self.synset_freqs)):
+                for doc_index, doc_dict in enumerate(self.synset_freqs[d]):
+                    doc_sem_embeddings = np.ndarray((0, self.semantic_embedding_dim), np.float32)
+                    if not doc_dict:
+                        warning("Attempting to get semantic embedding vectors of document {}/{} with no semantic mappings. Defaulting to zero vector.".format(doc_index+1, len(self.synset_freqs[d])))
+                        doc_vector = np.zeros((self.semantic_embedding_dim,), np.float32)
+                    else:
+                        # gather semantic embeddings of all document synsets
+                        for synset in doc_dict:
+                            synset_index = synset_order.index(synset)
+                            doc_sem_embeddings = np.vstack([doc_sem_embeddings, self.synset_embeddings[synset_index, :]])
+                        # aggregate them
+                        if self.semantic_embedding_aggr == "avg":
+                            doc_vector = np.mean(doc_sem_embeddings, axis=0)
+                    semantic_document_vectors[d].append(doc_vector)
         else:
-            error("Unimplemented semantic vector method: {}.".format(sem_weights))
+            error("Unimplemented semantic vector method: {}.".format(self.semantic_weights))
 
         return semantic_document_vectors
 
