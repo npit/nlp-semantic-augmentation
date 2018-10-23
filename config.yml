@@ -1,7 +1,8 @@
 run_id: "run_name"
 # dataset
 # dataset name, param1, param2
-dataset: 20newsgroups
+# dataset: 20newsgroups
+dataset: reuters
 
 # embeddings
 embedding: glove,50

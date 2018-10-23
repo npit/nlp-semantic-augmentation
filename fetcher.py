@@ -1,4 +1,4 @@
-from dataset import TwentyNewsGroups
+from dataset import TwentyNewsGroups, Reuters
 from embedding import Glove, Word2vec
 from semantic import Wordnet
 from utils import error
@@ -18,6 +18,8 @@ class Fetcher:
         name, params = self.get_params(name)
         if name == TwentyNewsGroups.name:
             return TwentyNewsGroups()
+        elif name == Reuters.name:
+            return Reuters()
         else:
             error("Undefined dataset: {}".format(name))
 

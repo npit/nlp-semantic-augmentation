@@ -113,7 +113,7 @@ class DNN:
         self.input_dim = embeddings[0][0].shape[-1]
         self.train, self.test = embeddings
         self.num_labels = num_labels
-        self.train_labels, self.test_labels = targets
+        self.train_labels, self.test_labels = [np.asarray(x, np.int32) for x in targets]
 
         train_params = config.get_train_params()
         self.epochs = train_params["epochs"]
