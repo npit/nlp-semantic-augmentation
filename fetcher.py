@@ -1,5 +1,5 @@
 from dataset import TwentyNewsGroups, Reuters
-from embedding import Glove, Word2vec
+from embedding import Glove, Word2vec, Train
 from semantic import Wordnet
 from utils import error
 from learner import MLP, LSTM
@@ -38,6 +38,8 @@ class Fetcher:
             return Glove(params)
         if name == Word2vec.name:
             return Word2vec(params)
+        if name == Train.name:
+            return Train(params)
         else:
             error("Undefined embedding: {}".format(name))
 

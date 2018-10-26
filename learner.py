@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from keras.models import Sequential
-from keras.layers import Activation, Dense, Dropout
+from keras.layers import Activation, Dense, Dropout, Embedding, Reshape,Flatten
 from keras.layers import LSTM as keras_lstm
 from keras.utils import to_categorical
 from keras import callbacks
@@ -29,6 +29,11 @@ class DNN:
     run_types = ['random', 'majority', 'run']
     measures = ["precision", "recall", "f1-score", "accuracy"]
     measure_aggregations = ["macro", "micro", "classwise", "weighted"]
+    sequence_length = None
+
+
+    do_train_embeddings = False
+    train_embeddings_params = []
 
     def __init__(self, params):
         for x in self.run_types:
@@ -37,7 +42,6 @@ class DNN:
                 self.performance[x][measure] = {}
                 for aggr in self.measure_aggregations:
                     self.performance[x][measure][aggr] = []
-
 
     # aggregated evaluation measure function shortcuts
     def get_pre_rec_f1(self, preds, metric, gt=None):
@@ -65,8 +69,13 @@ class DNN:
         return cm.diagonal()
 
 
+    def check_embedding_training(self, model):
+        if self.do_train_embeddings:
+            model.add(Embedding(self.vocabulary_size + 1, self.embedding_dim, input_length = self.sequence_length))
+            return model
+
     # define useful keras callbacks for the training process
-    def get_callbacks(self, config, fold_index):
+    def get_callbacks(self, config, fold_index="x"):
         self.callbacks = []
         results_folder = config.get_results_folder()
         if config.explicit_run_id():
@@ -107,13 +116,26 @@ class DNN:
 
         return self.callbacks
 
-    def make(self, embeddings, targets, num_labels, config):
+    def make(self, embedding, targets, num_labels, config):
         self.config = config
+        if embedding.name == "train":
+            info("Will train embeddings.")
+            self.do_train_embeddings = True
+            self.do_train_embeddings = True
+            self.embedding_dim = embedding.get_dim()
+            self.vocabulary_size = embedding.get_vocabulary_size()
+            emb_seqlen = embedding.sequence_length
+            if self.sequence_length is not None:
+                if emb_seqlen != self.sequence_length:
+                    error("Specified embedding sequence of length {}, but learner sequence is of length {}".format(emb_seqlen, self.sequence_length))
+            self.sequence_length = emb_seqlen
+
+        #import pdb; pdb.set_trace()
         self.verbosity = 1 if config.get_log_level() == "debug" else 0
-        self.input_dim = embeddings[0][0].shape[-1]
-        self.train, self.test = embeddings
+        self.train, self.test = embedding.get_data()
         self.num_labels = num_labels
         self.train_labels, self.test_labels = [np.asarray(x, np.int32) for x in targets]
+        self.input_dim = embedding.get_dim()
 
         train_params = config.get_train_params()
         self.epochs = train_params["epochs"]
@@ -121,28 +143,61 @@ class DNN:
         self.early_stopping = train_params["early_stopping_patience"] if "early_stopping_patience" in train_params and train_params["early_stopping_patience"] > 0 else None
         self.seed = config.get_seed()
         self.batch_size = train_params["batch_size"]
+        self.validation_portion = train_params["validation_portion"]
+
+    def process_input(self, data):
+        if self.do_train_embeddings:
+            # reshape as per the sequence
+            return np.reshape(data, (-1, self.sequence_length))
+        return data
+
+    def train_model(self, config):
+        tic()
+        model = self.get_model()
+        train_y_onehot = to_categorical(self.train_labels, num_classes = self.num_labels)
+
+        # shape accordingly
+        self.train = self.process_input(self.train)
+        history = model.fit(self.train, train_y_onehot,
+                            batch_size=self.batch_size,
+                            epochs=self.epochs,
+                            verbose = self.verbosity,
+                            validation_split= self.validation_portion,
+                            callbacks = self.get_callbacks(config))
+        if self.early_stopping:
+            info("Stopped on epoch {}".format(self.early_stopping.stopped_epoch))
+        self.do_test(model)
+        toc("Total training")
+        return model
 
     def do_traintest(self, config):
+        if self.folds > 1:
+            self.train_model_crossval(config)
+        else:
+            self.train_model(config)
+
+
+    def train_model_crossval(self, config):
         tic()
-        info("Training {} with input data {} on {} stratified folds".format(self.name, self.train.shape, self.folds))
-        skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
+        info("Training {} with input data: {} on {} stratified folds".format(self.name, len(self.train), self.folds))
+
         fold_data = self.get_fold_indexes()
-        for fold_index, (train_data_idx, train_label_idx, val_data_idx, val_label_idx) in enumerate(fold_data):
-            train_x, train_y = self.get_fold_data(self.train, self.train_labels, train_data_idx, train_label_idx)
-            val_x, val_y = self.get_fold_data(self.train, self.train_labels, val_data_idx, val_label_idx)
+        for fold_index, (train_d_idx, train_l_idx, val_d_idx, val_l_idx) in enumerate(fold_data):
+            train_x, train_y = self.get_fold_data(self.train, self.train_labels, train_d_idx, train_l_idx)
+            val_x, val_y = self.get_fold_data(self.train, self.train_labels, val_d_idx, val_l_idx)
             # convert labels to one-hot
             train_y_onehot = to_categorical(train_y, num_classes = self.num_labels)
             val_y_onehot = to_categorical(val_y, num_classes = self.num_labels)
 
             # train
             model = self.get_model()
+            #print(val_x, val_y)
             info("Trainig fold {}/{}".format(fold_index + 1, self.folds))
-            verbosity = 1 if config.get_log_level() == "debug" else 0
             history = model.fit(train_x, train_y_onehot,
                                 batch_size=self.batch_size,
                                 epochs=self.epochs,
-                                verbose=self.verbosity,
                                 validation_data = (val_x, val_y_onehot),
+                                verbose = self.verbosity,
                                 callbacks = self.get_callbacks(config, fold_index))
 
             if self.early_stopping:
@@ -177,7 +232,10 @@ class DNN:
 
 
     def do_test(self, model):
-        test_data, _ = self.get_fold_data(self.test)
+        if self.folds > 1:
+            test_data, _ = self.get_fold_data(self.test)
+        else:
+            test_data = self.process_input(self.test)
         predictions = model.predict(test_data, batch_size=self.batch_size, verbose=self.verbosity)
         predictions_amax = np.argmax(predictions, axis=1)
         # get baseline performances
@@ -185,10 +243,33 @@ class DNN:
         if self.config.is_debug():
             self.print_performance()
 
+    # get fold data
+    def get_fold_indexes_sequence(self):
+        idxs = []
+        skf = StratifiedKFold(self.folds, shuffle=False, random_state=self.seed)
+        # get first-vector positions
+        data_full_index = np.asarray((range(len(self.train))))
+        single_vector_data = list(range(0, len(self.train), self.sequence_length))
+        fold_data = list(skf.split(single_vector_data, self.train_labels))
+        for train_test in fold_data:
+            # get train indexes
+            train_fold_singlevec_index, test_fold_singlevec_index = train_test
+            # transform to full-sequence indexes
+            train_fold_index = data_full_index[train_fold_singlevec_index]
+            test_fold_index = data_full_index[test_fold_singlevec_index]
+            # expand to the rest of the sequence members
+            train_fold_index = [j for i in train_fold_index for j in list(range(i, i + self.sequence_length))]
+            test_fold_index = [j for i in test_fold_index for j in list(range(i, i + self.sequence_length))]
+            idxs.append((train_fold_index, train_fold_singlevec_index, test_fold_index, test_fold_singlevec_index))
+        return idxs
+
     # fold generator function
     def get_fold_indexes(self):
-        skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
-        return [(train, train, val, val) for (train, val) in skf.split(self.train, self.train_labels)]
+        if len(self.train) != len(self.train_labels):
+            return self.get_fold_indexes_sequence()
+        else:
+            skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
+            return [(train, train, val, val) for (train, val) in skf.split(self.train, self.train_labels)]
 
     # data preprocessing function
     def get_fold_data(self, data, labels=None, data_idx=None, label_idx=None):
@@ -272,25 +353,35 @@ class MLP(DNN):
         self.hidden = params[0]
         self.layers = params[1]
 
+    def check_embedding_training(self, model):
+        model = DNN.check_embedding_training(self, model)
+        # vectorize
+        model.summary()
+        model.add(Reshape(target_shape=(-1, self.embedding_dim)))
+        return model
+
     def make(self, embeddings, targets, num_labels, config):
         info("Building dnn: {}".format(self.name))
         DNN.make(self, embeddings, targets, num_labels, config)
         self.input_shape = (self.input_dim,)
         aggr = config.get_aggregation().split(",")
         aggregation = aggr[0]
-        if aggregation not in ["avg"]:
+        if aggregation not in ["avg"] and not self.do_train_embeddings:
             error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))
+        if embeddings.name == "train":
+            error("{} cannot be used to train embeddings.".format(self.name))
 
     # build MLP model
     def get_model(self):
         model = Sequential()
+        model = self.check_embedding_training(model)
         for i in range(self.layers):
-            if i == 0:
+            if i == 0 and not self.do_train_embeddings:
                 model.add(Dense(self.hidden, input_shape=self.input_shape))
                 model.add(Activation('relu'))
                 model.add(Dropout(0.3))
             else:
-                model.add(Dense(self.hidden, input_shape=self.input_shape))
+                model.add(Dense(self.hidden))
                 model.add(Activation('relu'))
                 model.add(Dropout(0.3))
 
@@ -306,9 +397,9 @@ class LSTM(DNN):
     def __init__(self, params):
         if len(params) < 2:
             error("Need lstm parameters: hidden size, sequence_length.")
-        self.sequence_length = int(params[1])
-        self.hidden_length = int(params[0])
-        self.input_shape = (self.sequence_length, self.input_dim)
+        self.hidden = int(params[0])
+        self.layers = int(params[1])
+        self.sequence_length = int(params[2])
         DNN.__init__(self, params)
 
     # make network
@@ -317,53 +408,63 @@ class LSTM(DNN):
         DNN.make(self, embeddings, targets, num_labels, config)
         # make sure embedding aggregation is compatible
         # with the sequence-based lstm model
+        self.input_shape = (self.sequence_length, self.input_dim)
         aggr = config.get_aggregation().split(",")
         aggregation = aggr[0]
         if aggregation not in ["pad"]:
             error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))
+        if config.get_embedding().startswith("train") in ["train"]:
+            error("Embedding {} incompatible with {} model.".format(aggregation, self.name))
 
 
-    # get fold data
-    def get_fold_indexes(self):
-        idxs = []
-        skf = StratifiedKFold(self.folds, shuffle=False, random_state=self.seed)
-        # get first-vector positions
-        data_full_index = np.asarray((range(len(self.train))))
-        single_vector_data = list(range(0, len(self.train), self.sequence_length))
-        fold_data = list(skf.split(single_vector_data, self.train_labels))
-        for train_test in fold_data:
-            # get train indexes
-            train_fold_singlevec_index, test_fold_singlevec_index = train_test
-            # transform to full-sequence indexes
-            train_fold_index = data_full_index[train_fold_singlevec_index]
-            test_fold_index = data_full_index[test_fold_singlevec_index]
-            # expand to the rest of the sequence members
-            train_fold_index = [j for i in train_fold_index for j in list(range(i, i + self.sequence_length))]
-            test_fold_index = [j for i in test_fold_index for j in list(range(i, i + self.sequence_length))]
-            idxs.append((train_fold_index, train_fold_singlevec_index, test_fold_index, test_fold_singlevec_index))
-        return idxs
 
     # fetch sequence lstm fold data
     def get_fold_data(self, data, labels=None, data_idx=None, label_idx=None):
         # handle indexes by parent's function
         x, y = DNN.get_fold_data(self, data, labels, data_idx, label_idx)
         # reshape input data to num_docs x vec_dim x seq_len
-        x = np.reshape(x, (-1, self.sequence_length, self.input_dim))
+        if not self.do_train_embeddings:
+            x = np.reshape(x, (-1, self.sequence_length, self.input_dim))
+        else:
+            x = np.reshape(x, (-1, self.sequence_length))
+            # replicate labels to match each input
+            # y = np.stack([y for _ in range(self.sequence_length)])
+            # y = np.reshape(np.transpose(y), (-1,1))
+            pass
+
+
         return x, y
+
+    # preprocess input
+    def process_input(self, data):
+        if self.do_train_embeddings:
+            return DNN.process_input(self, data)
+        return np.reshape(data, (-1, self.sequence_length, self.input_dim))
 
     # build the lstm model
     def get_model(self):
         model = Sequential()
-        # model.add(Dense(512, input_shape=(self.input_dim,)))
-        # model.add(Activation('relu'))
-        # model.add(Dropout(0.3))
-        model.add(keras_lstm(self.hidden_length, input_shape=self.input_shape))
-        model.add(Dropout(0.3))
+        model = self.check_embedding_training(model)
+        for i in range(self.layers):
+            if self.layers == 1:
+                # one and only layer
+                model.add(keras_lstm(self.hidden, input_shape=self.input_shape))
+            elif i == 0 and self.layers > 1:
+                # first layer, more follow
+                model.add(keras_lstm(self.hidden, input_shape=self.input_shape, return_sequences=True))
+            elif i == self.layers - 1:
+                # last layer
+                model.add(keras_lstm(self.hidden))
+            else:
+                # intermmediate layer
+                model.add(keras_lstm(self.hidden, return_sequences=True))
+            model.add(Dropout(0.3))
 
         model = DNN.add_softmax(self, model)
         model.summary()
 
         model.compile(loss='categorical_crossentropy',
-                    optimizer='adam',
-                    metrics=['accuracy'])
+                      optimizer='adam',
+                      metrics=['accuracy'])
         return model
+

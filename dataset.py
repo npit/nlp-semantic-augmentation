@@ -12,19 +12,26 @@ from nltk.corpus import stopwords, reuters
 
 class Dataset:
     name = ""
+    vocabulary = set()
+    vocabulary_index = []
+    word_to_index = {}
     limited_name = ""
     serialization_dir = "serialization/datasets"
+    undefined_word_index = None
     preprocessed = False
     train, test = None, None
-
 
     def load_preprocessed(self):
         if os.path.exists(self.serialization_path_preprocessed):
             info("Loading preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
             with open(self.serialization_path_preprocessed, "rb") as f:
-                self.train, self.train_target, self.train_label_names, self.test, self.test_target, self.test_label_names = pickle.load(f)
+                self.train, self.train_target, self.train_label_names, \
+                self.test, self.test_target, self.test_label_names, \
+                self.vocabulary, self.vocabulary_index, self.undefined_word_index = pickle.load(f)
                 self.num_labels = len(self.train_label_names)
                 self.preprocessed = True
+                for index, word in enumerate(self.vocabulary):
+                    self.word_to_index[word] = index
                 info("Loaded {} train and {} test data, with {} labels".format(len(self.train), len(self.test), self.num_labels))
                 return True
         return False
@@ -76,8 +83,9 @@ class Dataset:
             self.limited_name = self.name + "_limited_" + str(value)
             self.set_paths(self.limited_name)
 
+    # preprocess raw texts into word list
     def preprocess(self):
-        stopw = set(stopwords.words('english'))
+        stopw = set(stopwords.words(self.language))
         if self.preprocessed:
             info("Skipping preprocessing, loading existing data from {}.".format(self.serialization_path_preprocessed))
             return
@@ -89,16 +97,25 @@ class Dataset:
             processed = text_to_word_sequence(self.train[i], filters=filter, lower=True, split=' ')
             processed = [p for p in processed if p not in stopw]
             self.train[i] = processed
+            self.vocabulary.update(processed)
         info("Mapping test set to word sequence.")
         for i in range(len(self.test)):
             processed = text_to_word_sequence(self.test[i], filters=filter, lower=True, split=' ')
             processed = [p for p in processed if p not in stopw]
             self.test[i] = processed
+        # fix word order and get word indexes
+        self.vocabulary = list(self.vocabulary)
+        for index, word in enumerate(self.vocabulary):
+            self.word_to_index[word] = index
+            self.vocabulary_index.append(index)
+        # add another for the missing
+        self.undefined_word_index = len(self.vocabulary)
         toc("Preprocessing")
         # serialize
         with open(self.serialization_path_preprocessed, "wb") as f:
             pickle.dump([self.train, self.train_target, self.train_label_names,
-                         self.test, self.test_target, self.test_label_names], f)
+                         self.test, self.test_target, self.test_label_names,
+                         self.vocabulary, self.vocabulary_index, self.undefined_word_index], f)
 
 
     def get_name(self):

@@ -23,6 +23,8 @@ class Wordnet:
     assignments = {}
     synset_context_word_threshold = None
 
+    reference_synsets = None
+
     # prune semantic information units wrt a frequency threshold
     def apply_freq_filtering(self, freq_dict_list, dataset_freqs, force_reference=False):
         info("Applying synset frequency filtering with a threshold of {}".format(self.semantic_freq_threshold))
@@ -72,6 +74,9 @@ class Wordnet:
         self.semantic_embedding_dim = embedding.embedding_dim
 
         if self.disambiguation == "context-embedding":
+            # incompatible with embedding training
+            if config.get_embedding().startswith("train"):
+                error("Embedding traing mode incompatible with semantic embeddings.")
             # preload the concept list
             context_file = config.get_semantic_word_context()
             with open(context_file, "rb") as f:
@@ -164,13 +169,14 @@ class Wordnet:
             self.reference_synsets = set((dataset_freqs.keys()))
 
         # compute tfidf
-        if self.semantic_weights:
+        if self.semantic_weights == "tfidf":
             self.compute_tfidf_weights(current_synset_freqs, dataset_freqs)
 
 
     # choose a synset from a candidate list
     def disambiguate_synsets(self, synsets):
-        return synsets[0]._name
+        if self.disambiguation == "first":
+            return synsets[0]._name
 
     # TODO
     def disambiguate(self, config):
@@ -191,18 +197,17 @@ class Wordnet:
 
     def get_synset_from_context_embeddings(self, word):
         word_embedding = self.embbedings.get_embeddings(word)
-        self.sem
         self.embeddings.get_nearest_embedding(word_embedding)
 
     # generate semantic embeddings from words associated with an synset
     def compute_semantic_embeddings(self):
-
         if os.path.exists(self.sem_embeddings_path):
             info("Loading existing semantic embeddings from {}.".format(self.sem_embeddings_path))
             with open(self.sem_embeddings_path, "rb") as f:
                 self.synset_embeddings, self.reference_synsets = pickle.load(f)
                 return
 
+        #import pdb; pdb.set_trace()
         info("Computing semantic embeddings, using {} embeddings of dim {}.".format(self.embedding.name, self.semantic_embedding_dim))
         self.synset_embeddings = np.ndarray((0, self.embedding.embedding_dim), np.float32)
         for s, synset in enumerate(self.reference_synsets):
@@ -241,7 +246,7 @@ class Wordnet:
                 # synset_freqs: frequencies of synsets per document
                 # dataset_freqs: frequencies of synsets aggregated per dataset
                 # synset_tfidf: tf-idf frequencies of synsets per document (df is per dataset)
-                self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs = pickle.load(f)
+                self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets = pickle.load(f)
                 toc("Loading")
             return
 
@@ -263,8 +268,7 @@ class Wordnet:
         if not os.path.exists(self.serialization_dir):
             os.mkdir(self.serialization_dir)
         with open(self.serialization_path, "wb") as f:
-            pickle.dump([self.assignments, self.synset_freqs,
-                         self.dataset_freqs, self.synset_tfidf_freqs], f)
+            pickle.dump([self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets], f)
 
         info("Semantic mapping completed.")
 

@@ -17,6 +17,8 @@ from utils import info
 
 print("Imports done.")
 
+print("googlesemantic, spreading act")
+
 def main(config_file):
     print("Running main.")
     # initialize configuration
@@ -38,21 +40,24 @@ def main(config_file):
     embedding.prepare()
 
     # semantic enrichment
+    semantic_data = None
     if config.has_enrichment():
         info("===== SEMANTIC =====")
         semantic = fetcher.fetch_semantic(config.get_semantic_resource())
         semantic.make(config, embedding)
         semantic.map_text(dataset.get_name())
-        embedding.enrich(semantic.get_data(config))
+        semantic_data = semantic.get_data(config)
+    embedding.finalize(semantic_data)
 
     # learning
     info("===== LEARNING =====")
     # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
     learner = fetcher.fetch_learner(config.get_learner())
-    learner.make(embedding.get_data(), dataset.get_targets(), dataset.get_num_labels(), config)
+    learner.make(embedding, dataset.get_targets(), dataset.get_num_labels(), config)
 
     learner.do_traintest(config)
     info("Done.")
+
 
 
 if __name__ == "__main__":

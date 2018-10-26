@@ -112,7 +112,7 @@ class Config:
         return self.conf["dataset"]
 
     def has_enrichment(self):
-        return "enrichment" in self.conf
+        return self.has_value("enrichment")
 
     def is_debug(self):
         return self.conf["log_level"] == "debug"
@@ -133,16 +133,16 @@ class Config:
         return self.conf["semantic_embedding_aggregation"]
 
     def get_log_level(self):
-        return self.conf["log_level"] if "log_level" in self.conf else "info" 
+        return self.get_value("log_level", "info")
 
     def get_semantic_freq_threshold(self):
-        return self.conf["semantic_freq_threshold"] if "semantic_freq_threshold" in self.conf else None 
+        return self.get_value("semantic_freq_threshold")
 
     def get_semantic_weights(self):
         return self.conf["semantic_weights"]
 
     def get_enrichment(self):
-        return self.conf["enrichment"]
+        return self.get_value("enrichment")
 
     def get_learner(self):
         return self.conf["learner"]
@@ -151,10 +151,16 @@ class Config:
         return self.conf["aggregation"]
 
     def get_embedding(self):
-        return self.conf["embedding"]
+        return self.get_value("embedding")
 
     def get_train_params(self):
         return self.conf["train"]
 
     def explicit_run_id(self):
-        return "run_id" in self.conf and self.conf["run_id"]
+        return self.has_value("run_id")
+
+    def get_value(self, name, default = None):
+        return self.conf[name] if name in self.conf else default
+
+    def has_value(self, name):
+        return name in self.conf and self.conf[name]

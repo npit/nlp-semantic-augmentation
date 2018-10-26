@@ -16,6 +16,17 @@ class Embedding():
     words_to_numeric_idx = None
     missing = []
     loaded_mapped_embeddings = False
+    embedding_dim = None
+    sequence_length = None
+
+    def __init__(self, params):
+        self.embedding_dim = int(params[0])
+
+    def get_zero_pad_element(self):
+        return np.ndarray((1, self.embedding_dim), np.float32)
+
+    def get_vocabulary_size(self):
+        return len(self.words[0])
 
     def get_embeddings(self, words):
         word_embeddings = self.embeddings.loc[words].dropna()
@@ -27,19 +38,32 @@ class Embedding():
 
     def make(self, config):
         self.config = config
+        self.dataset_name = self.config.get_dataset()
+        aggr = self.config.get_aggregation().split(",")
+        self.aggregation, self.aggregation_params = aggr[0], aggr[1:]
+        if self.config.option("data_limit"):
+            self.dataset_name += "_limit{}".format(self.config.option("data_limit"))
+        self.serialization_dir = os.path.join(self.config.get_serialization_dir(), "embeddings")
+        if not os.path.exists(self.serialization_dir):
+            os.makedirs(self.serialization_dir, exist_ok=True)
 
-    def read_pickled(self, pickled_raw_path):
-        info("Reading pickled embedding data from {}".format(pickled_raw_path))
-        with open(pickled_raw_path, "rb") as f:
-            data =  pickle.load(f)
-            self.embeddings, self.words_to_numeric_idx = data[0], data[1]
+        self.mapped_data_serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}.pickle".format(
+            self.dataset_name, self.name))
 
-    def write_pickled(self, pickled_raw_path):
+
+
+    def read_raw_pickled(self, pickled_path):
+        # pickle them
+        info("Reading pickled embedding data from {}".format(pickled_path))
+        with open(pickled_path, "rb") as f:
+            data = pickle.load(f)
+            self.embeddings, self.words, self.words_to_numeric_idx = data[0], data[1]
+
+    def write_pickled(self, pickled_path, data):
         tic()
-        info("Pickling embedding data to {}".format(pickled_raw_path))
-        with open(pickled_raw_path, "wb") as f:
-            # pickle.dump([self.words, self.embeddings], f)
-            pickle.dump([self.embeddings, self.words_to_numeric_idx], f)
+        info("Pickling embedding data to {}".format(pickled_path))
+        with open(pickled_path, "wb") as f:
+            pickle.dump(data , f)
         toc("Pickling")
 
     def get_words(self):
@@ -82,7 +106,8 @@ class Embedding():
             num, filter = int(params[0]), params[1]
             info("Aggregation with pad: {} {}".format(num, filter))
             self.vectors_per_document = num
-            zero_pad = np.ndarray((1, self.embedding_dim), np.float32)
+            zero_pad = self.get_zero_pad_element()
+
             for dset_idx in range(len(self.dataset_embeddings)):
                 for doc_idx in range(len(self.dataset_embeddings[dset_idx])):
                     if len(self.dataset_embeddings[dset_idx][doc_idx]) > num:
@@ -95,14 +120,19 @@ class Embedding():
                         self.dataset_embeddings[dset_idx][doc_idx] = pd.concat([self.dataset_embeddings[dset_idx][doc_idx], pad])
 
 
-    # infuse semantic information in the embeddings
-    def enrich(self, semantic_data):
-        info("Aggregating semantic information to embeddings.")
+    # finalize embeddings to use for training, aggregating all data to a single ndarray
+    # if semantic enrichment is selected, do the infusion
+    def finalize(self, semantic_data):
+        do_enrichment = semantic_data is not None
+        if do_enrichment:
+            info("Enriching embeddings with semantic information.")
+            if self.name == "train":
+                error("Semantic enrichment undefined for embedding training, for now.")
+
         if self.config.get_enrichment() == "concat":
             composite_dim = self.embedding_dim + len(semantic_data[0][0])
             for dset_idx in range(len(semantic_data)):
                 info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx+1, len(semantic_data), composite_dim))
-                num_data = len(self.dataset_embeddings[dset_idx])
                 new_dset_embeddings = np.ndarray((0, composite_dim), np.float32)
                 for doc_idx in range(len(semantic_data[dset_idx])):
                     # debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
@@ -116,6 +146,20 @@ class Embedding():
                         new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors])])
                 self.dataset_embeddings[dset_idx] = new_dset_embeddings
 
+        else:
+            info("Finalizing embeddings.")
+            for dset_idx in range(len(self.dataset_embeddings)):
+                dim = self.embedding_dim if not self.name == "train" else 1
+                new_dset_embeddings = np.ndarray((0, dim), np.float32)
+                for doc_idx in range(len(self.dataset_embeddings[dset_idx])):
+                    # debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
+                    embeddings = self.dataset_embeddings[dset_idx][doc_idx]
+                    new_dset_embeddings = np.vstack([new_dset_embeddings, embeddings])
+                self.dataset_embeddings[dset_idx] = new_dset_embeddings
+
+
+    def get_dim(self):
+        return self.embedding_dim
 
 class Glove(Embedding):
     name = "glove"
@@ -137,8 +181,6 @@ class Glove(Embedding):
             self.embeddings = pd.read_csv(raw_data_path, index_col = 0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
             self.words_to_numeric_idx = {word:i for word,i in zip(self.embeddings.index.values.tolist(), range(len(self.embeddings.index))) }
             toc("Reading raw data")
-            # pickle them
-            self.write_pickled(pickled_raw_path)
             return
         # else, gotta download the raw data
         error("Downloaded glove embeddings missing from {}. Get them from https://nlp.stanford.edu/projects/glove/".format(raw_data_path))
@@ -146,23 +188,12 @@ class Glove(Embedding):
 
     def make(self, config):
         Embedding.make(self, config)
-        self.dataset_name = self.config.get_dataset()
-        aggr = self.config.get_aggregation().split(",")
-        self.aggregation, self.aggregation_params = aggr[0], aggr[1:]
-        if self.config.option("data_limit"):
-            self.dataset_name += "_limit{}".format(self.config.option("data_limit"))
-        self.serialization_dir = os.path.join(self.config.get_serialization_dir(), "embeddings")
 
-        if not os.path.exists(self.serialization_dir):
-            os.makedirs(self.serialization_dir, exist_ok=True)
-
-        self.mapped_data_serialization_path = os.path.join(self.serialization_dir, "embeddings_mapped_{}_{}_aggr{}.pickle".format(
-            self.dataset_name, self.name, "_".join(list(map(str,[self.aggregation] + self.aggregation_params))) ))
 
         if os.path.exists(self.mapped_data_serialization_path):
             info("Reading existing mapped embedding data from {}".format(self.mapped_data_serialization_path))
             with open(self.mapped_data_serialization_path, "rb") as f:
-                [self.dataset_embeddings, self.missing_words] = pickle.load(f)
+                [self.dataset_embeddings, self.words, self.missing_words] = pickle.load(f)
                 self.collect_dataset_words()
             self.loaded_mapped_embeddings = True
 
@@ -171,6 +202,7 @@ class Glove(Embedding):
 
     # transform input texts to embeddings
     def map_text(self, dset):
+
         if self.loaded_mapped_embeddings:
             return
         info("Mapping {} to {} embeddings.".format(dset.name, self.name))
@@ -209,13 +241,11 @@ class Glove(Embedding):
 
             debug("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit/num_total*100, num_total, num_words_hit))
             debug("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss/num_total*100, num_total, num_words_miss))
-
             self.missing.append(hist_missing)
 
         # write
         info("Writing embedding mapping to {}".format(self.mapped_data_serialization_path))
-        with open(self.mapped_data_serialization_path, "wb") as f:
-            pickle.dump([self.dataset_embeddings, self.missing], f)
+        self.write_pickled(self.mapped_data_serialization_path, [self.dataset_embeddings, self.words, self.missing])
         # log missing words
         for d in range(len(self.missing)):
             l = ['train', 'text']
@@ -224,10 +254,82 @@ class Glove(Embedding):
             with open(missing_filename, "w") as f:
                 f.write("\n".join(self.missing[d].keys()))
 
+    def __init__(self, params):
+        Embedding.__init__(self, params)
 
+
+class Train(Embedding):
+    name = "train"
 
     def __init__(self, params):
-        self.embedding_dim = int(params[0])
+        Embedding.__init__(self, params)
+        self.sequence_length = int(params[1])
+
+    def make(self, config):
+        self.config = config
+        Embedding.make(self, config)
+        if self.aggregation not in ["pad"]:
+            error("Aggregation {} incompatible with {} embedding".format(self.aggregation, self.name))
+        self.dataset_name = self.config.get_dataset()
+        if self.config.option("data_limit"):
+            self.dataset_name += "_limit{}".format(self.config.option("data_limit"))
+        self.serialization_dir = os.path.join(self.config.get_serialization_dir(), "embeddings")
+
+        if not os.path.exists(self.serialization_dir):
+            os.makedirs(self.serialization_dir, exist_ok=True)
+
+        if os.path.exists(self.mapped_data_serialization_path):
+            info("Reading existing mapped embedding data from {}".format(self.mapped_data_serialization_path))
+            with open(self.mapped_data_serialization_path, "rb") as f:
+                [self.dataset_embeddings, self.words, self.missing_words, self.undefined_word_index] = pickle.load(f)
+            self.loaded_mapped_embeddings = True
+
+    # transform input texts to embeddings
+    def map_text(self, dset):
+
+        # assign all embeddings
+        self.embeddings = pd.DataFrame(dset.vocabulary_index, dset.vocabulary)
+
+        if self.loaded_mapped_embeddings:
+            return
+        info("Mapping {} to {} embeddings.".format(dset.name, self.name))
+        text_bundles = dset.train, dset.test
+        self.dataset_embeddings = []
+        self.undefined_word_index = dset.undefined_word_index
+        non_train_words = []
+        # loop over input text bundles (e.g. train & test)
+        for i in range(len(text_bundles)):
+            self.dataset_embeddings.append([])
+            tic()
+            info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
+            for j in range(len(text_bundles[i])):
+                word_list = text_bundles[i][j]
+                index_list = [ [dset.word_to_index[w]] if w in dset.vocabulary else [dset.undefined_word_index] for w in word_list]
+                print(index_list)
+                embedding = pd.DataFrame(index_list, index = word_list)
+                debug("Text {}/{}".format(j+1, len(text_bundles[i])))
+                self.dataset_embeddings[-1].append(embedding)
+                if i > 0:
+                    for w in word_list:
+                        if w not in non_train_words:
+                            non_train_words.append(w)
+                    # get test words, perhaps
+
+
+
+            toc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles)))
+        self.words = [dset.vocabulary, non_train_words]
+
+        # write mapped data
+        info("Writing embedding mapping to {}".format(self.mapped_data_serialization_path))
+        
+        self.write_pickled(self.mapped_data_serialization_path, [self.dataset_embeddings, self.words, None, self.undefined_word_index])
+
+    def get_zero_pad_element(self):
+        return self.undefined_word_index
+
+
+
 
 class Universal_sentence_encoder:
     pass
@@ -238,10 +340,11 @@ class ELMo:
 
 class Word2vec(Embedding):
     name = "word2vec"
-    def __init__(self):
-        pass
+    def __init__(self, params):
+        Embedding.__init__(self, params)
 
 class FastText:
+    # https://fasttext.cc/docs/en/english-vectors.html
     pass
 class Doc2vec:
     pass

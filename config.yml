@@ -5,15 +5,16 @@ run_id: "run_name"
 dataset: reuters
 
 # embeddings
-embedding: glove,50
+#embedding: glove,50
+embedding: train,50,10
 # embedding aggregation method to document-level representations
 # - avg: average word embeddings to a single doc vector
 # - pad,NUM,filter: force NUM words / embeddings per document, padding / pruning where necessary 
 # NUM words are selected by filter:
 # first: just get the first NUM words
 # freq: get the NUM words that are most frequent in the dataset
+aggregation: pad,10,first
 # aggregation: pad,10,first
-aggregation: avg
 
 # semantic resource settings
 # resource,population_strategy,weighting_strategy,pruning_strategy
@@ -25,28 +26,34 @@ semantic_unit: synset
 
 # the form of semantic information to use
 # frequencies or tfidf
-semantic_weights: embeddings
+# semantic_weights: embeddings
+semantic_weights: tfidf
 # drop synsets with dataset-wise freq less than this threshold
 #semantic_freq_threshold: 15
 # how the semantic information is combined with the textual one
-enrichment: concat
+# enrichment: concat
 
 # pos: get the first that matches the POS tag assigned
 # embedding-centroid, num-threshold: select synset by min proximity to precomputed semantic embeddings
 # params:
 # num-threshold: min. number of context words for a synset 
-semantic_disambiguation: context-embedding,25
+semantic_disambiguation: first
+#semantic_disambiguation: context-embedding,25
 semantic_embedding_aggregation: avg
 semantic_word_context_file: wordnet_synset_examples_definitions.pickle
 
 # learning model
+# dnn,hiddensize,numlayers
+# lstm,hiddensize,numlayers
+# embedding,hiddensize,numlayers
 # dnn or lstm
-# learner: lstm,128,1,10
-learner: mlp,128,4
+learner: lstm,128,4,10
+# learner: mlp,128,2
 
 train:
-  epochs: 5
-  folds: 3
+  epochs: 1
+  folds: 1
+  validation_portion: 0.1
   early_stopping_patience: -1
   batch_size: 20
 
