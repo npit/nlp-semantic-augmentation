@@ -72,7 +72,7 @@ class DNN:
     def check_embedding_training(self, model):
         if self.do_train_embeddings:
             model.add(Embedding(self.vocabulary_size + 1, self.embedding_dim, input_length = self.sequence_length))
-            return model
+        return model
 
     # define useful keras callbacks for the training process
     def get_callbacks(self, config, fold_index="x"):

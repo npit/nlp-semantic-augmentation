@@ -52,7 +52,7 @@ class Embedding():
 
 
 
-    def read_raw_pickled(self, pickled_path):
+    def read_pickled(self, pickled_path):
         # pickle them
         info("Reading pickled embedding data from {}".format(pickled_path))
         with open(pickled_path, "rb") as f:
