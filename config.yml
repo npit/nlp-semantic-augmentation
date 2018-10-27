@@ -3,6 +3,7 @@ run_id: "run_name"
 # dataset name, param1, param2
 # dataset: 20newsgroups
 dataset:
+  #name: 20newsgroups
   name: reuters
   limit: 100
 
@@ -18,8 +19,8 @@ embedding:
   # first: just get the first NUM words
   # freq: get the NUM words that are most frequent in the dataset
   aggregation: [pad, 10, first]
+  #aggregation: avg
 
-# aggregation: pad,10,first
 
 # semantic resource settings
 # resource,population_strategy,weighting_strategy,pruning_strategy
@@ -32,11 +33,11 @@ semantic:
   # frequencies or tfidf
   # semantic_weights: embeddings
   weights: tfidf
-  frequency_threshold: 10
+  frequency_threshold: 15
   # drop synsets with dataset-wise freq less than this threshold
   #semantic_freq_threshold: 15
   # how the semantic information is combined with the textual one
-  # enrichment: concat
+  enrichment: concat
   disambiguation: first
 
   # pos: get the first that matches the POS tag assigned
@@ -56,7 +57,7 @@ semantic:
 # dnn or lstm
 learner:
   name: lstm
-  hidden_dim:  128
+  hidden_dim:  25
   layers: 4
   sequence_length: 10
 

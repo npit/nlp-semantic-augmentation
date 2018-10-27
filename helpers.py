@@ -38,6 +38,13 @@ class Config:
         serialization = None
         logs = None
 
+    class train:
+        epochs = None
+        folds = None
+        early_stopping_patience = None
+        validation_portion = None
+        batch_size = None
+
     def get_run_id(self):
         return self.run_id
 
@@ -93,7 +100,7 @@ class Config:
             with open(self.seed_file) as f:
                 seed = f.readlines()[0]
             self.logger.info("Read seed from file {} : {}".format(self.seed_file, seed))
-            self.seed = seed
+            self.seed = int(seed)
         else:
             # generate new seed
             self.seed = random.randint(0, 5000)
@@ -131,13 +138,14 @@ class Config:
         need(self.has_value("embedding"), "Need embedding information")
         embedding_opts = self.conf["embedding"]
         self.embedding.name = embedding_opts["name"]
-        self.embedding.aggregation = embedding_opts["aggregation"]
+        self.embedding.aggregation = embedding_opts["aggregation"] if type(embedding_opts["aggregation"]) == list else [embedding_opts["aggregation"]]
         self.embedding.dimension = embedding_opts["dimension"]
 
         if self.has_value("semantic"):
             semantic_opts = self.conf["semantic"]
             self.semantic.name = semantic_opts["name"]
             self.semantic.unit = semantic_opts["unit"]
+            self.semantic.enrichment = semantic_opts["enrichment"]
             self.semantic.disambiguation = semantic_opts["disambiguation"]
             self.semantic.weights = semantic_opts["weights"]
             self.semantic.frequency_threshold = semantic_opts["frequency_threshold"]
@@ -149,17 +157,17 @@ class Config:
         need(self.has_value("learner"), "Need learner information")
         learner_opts = self.conf["learner"]
         self.learner.name = learner_opts["name"]
-        self.learner.hidden = learner_opts["hidden_dim"]
+        self.learner.hidden_dim = learner_opts["hidden_dim"]
         self.learner.num_layers = learner_opts["layers"]
         self.learner.sequence_length = learner_opts["sequence_length"]
 
         need(self.has_value("train"), "Need training information")
         training_opts = self.conf["train"]
-        self.learner.epochs = training_opts["epochs"]
-        self.learner.folds = training_opts["folds"]
-        self.learner.validation_portion = training_opts["validation_portion"]
-        self.learner.early_stopping_patience = training_opts["early_stopping_patience"]
-        self.learner.batch_size = training_opts["batch_size"]
+        self.train.epochs = training_opts["epochs"]
+        self.train.folds = training_opts["folds"]
+        self.train.validation_portion = training_opts["validation_portion"]
+        self.train.early_stopping_patience = training_opts["early_stopping_patience"]
+        self.train.batch_size = training_opts["batch_size"]
 
         if self.has_value("folders"):
             folder_opts = self.conf["folders"]
@@ -186,9 +194,6 @@ class Config:
     def is_debug(self):
         return self.conf["log_level"] == "debug"
 
-    def get_results_folder(self):
-        return self.conf["results_folder"]
-
     def get_semantic_resource(self):
         return self.conf["semantic_resource"]
 
@@ -212,9 +217,6 @@ class Config:
 
     def get_learner(self):
         return self.conf["learner"]
-
-    def get_aggregation(self):
-        return self.conf["aggregation"]
 
     def get_embedding(self):
         return self.get_value("embedding")

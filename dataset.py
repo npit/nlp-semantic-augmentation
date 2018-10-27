@@ -165,6 +165,9 @@ class TwentyNewsGroups(Dataset):
     language = "english"
 
     def fetch_raw(self):
+        # only applicable for raw dataset
+        if self.name != self.base_name:
+            return None
         info("Downloading {} via sklearn".format(self.name))
         seed = self.config.get_seed()
         train = fetch_20newsgroups(subset='train', shuffle=True, random_state=seed)

@@ -35,7 +35,7 @@ class Embedding(Serializable):
     def set_params(self):
         self.embedding_dim = self.config.embedding.dimension
         self.dataset_name = self.config.dataset.name
-        self.aggregation = list(self.config.embedding.aggregation)
+        self.aggregation = self.config.embedding.aggregation
         self.base_name = self.name
         if self.config.dataset.limit:
             self.dataset_name += "_limit{}".format(self.config.dataset.limit)
@@ -106,20 +106,19 @@ class Embedding(Serializable):
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion
     def finalize(self, semantic_data):
-        do_enrichment = semantic_data is not None
-        if do_enrichment:
-            info("Enriching embeddings with semantic information.")
-            if self.name == "train":
-                error("Semantic enrichment undefined for embedding training, for now.")
 
         if self.config.semantic.enrichment is not None:
+            if self.name == "train":
+                error("Semantic enrichment undefined for embedding training, for now.")
+            info("Enriching embeddings with semantic information.")
             if self.config.semantic.enrichment == "concat":
                 composite_dim = self.embedding_dim + len(semantic_data[0][0])
+                self.final_dim = composite_dim
                 for dset_idx in range(len(semantic_data)):
                     info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx+1, len(semantic_data), composite_dim))
                     new_dset_embeddings = np.ndarray((0, composite_dim), np.float32)
                     for doc_idx in range(len(semantic_data[dset_idx])):
-                        # debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
+                        debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
                         embeddings = self.dataset_embeddings[dset_idx][doc_idx]
                         sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
                         if embeddings.ndim > 1:
@@ -132,7 +131,8 @@ class Embedding(Serializable):
             else:
                 error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
         else:
-            info("Finalizing embeddings.")
+            info("Finalizing embeddings with no semantic information.")
+            self.final_dim = self.embedding_dim
             # concatenating embeddings for each dataset portion into a single dataframe
             for dset_idx in range(len(self.dataset_embeddings)):
                 dim = self.embedding_dim if not self.name == "train" else 1
@@ -141,6 +141,10 @@ class Embedding(Serializable):
                     embeddings = self.dataset_embeddings[dset_idx][doc_idx]
                     new_dset_embeddings = np.vstack([new_dset_embeddings, embeddings])
                 self.dataset_embeddings[dset_idx] = new_dset_embeddings
+
+
+    def get_final_dim(self):
+        return self.final_dim
 
     def get_dim(self):
         return self.embedding_dim

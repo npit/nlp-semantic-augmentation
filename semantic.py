@@ -93,15 +93,14 @@ class Wordnet(SemanticResource):
         # load if existing
         self.acquire(fatal_error=False)
 
+
+
+    def fetch_raw(self):
         # set name and paths to load sem. emb.
         # or set a sem. emb. serializable class
         if self.disambiguation == "context-embedding":
             self.compute_semantic_embeddings()
 
-
-
-    def fetch_raw(self):
-        pass
     def handle_preprocessed(self, preprocessed):
         self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets = preprocessed
 
@@ -136,6 +135,7 @@ class Wordnet(SemanticResource):
                 if synset in doc_dict:
                     del doc_dict[synset]
         toc("Document-level frequency filtering")
+        info("Synset frequency filtering resulted in {} synsets.".format(len(dataset_freqs)))
         return  freq_dict_list, dataset_freqs
 
     # merge list of document-wise frequency dicts
@@ -159,7 +159,7 @@ class Wordnet(SemanticResource):
 
 
     # tf-idf computation
-    def compute_tfidf_weights(self, current_synset_freqs, dataset_freqs):
+    def compute_tfidf_weights(self, current_synset_freqs, dataset_freqs, force_reference=False):
         # compute tf-idf
         tic()
         tfidf_freqs = []
@@ -171,7 +171,7 @@ class Wordnet(SemanticResource):
                 else:
                     ddict[synset] = 0
 
-                tfidf_freqs.append(ddict)
+            tfidf_freqs.append(ddict)
         self.synset_tfidf_freqs.append(tfidf_freqs)
         toc("tf-idf computation")
 
@@ -207,7 +207,7 @@ class Wordnet(SemanticResource):
 
         # compute tfidf
         if self.semantic_weights == "tfidf":
-            self.compute_tfidf_weights(current_synset_freqs, dataset_freqs)
+            self.compute_tfidf_weights(current_synset_freqs, dataset_freqs, force_reference=force_reference_synsets)
 
 
     # choose a synset from a candidate list

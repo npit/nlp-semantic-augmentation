@@ -10,13 +10,14 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from fetcher import Fetcher
 from dataset import Dataset
-from embedding import Embedding
 from dataset import Dataset
+from embedding import Embedding
+from semantic import SemanticResource
+from learner import DNN
 from helpers import Config
 import argparse
 import logging
 from utils import info
-from semantic import SemanticResource
 
 
 print("Imports done.")
@@ -53,9 +54,8 @@ def main(config_file):
     info("===== LEARNING =====")
     # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
     learner = DNN.create(config)
-    learner.make(embedding, dataset.get_targets(), dataset.get_num_labels(), config)
-
-    learner.do_traintest(config)
+    learner.make(embedding, dataset.get_targets(), dataset.get_num_labels())
+    learner.do_traintest()
     info("Done.")
 
 
