@@ -1,16 +1,29 @@
 # import gensim
-import os
+from os.path import join, exists
+from os import makedirs
 import pickle
-from utils import tic, toc, error, info, debug, warning
+from utils import tic, toc, error, info, debug, warning, write_pickled
 import numpy as np
+from serializable import Serializable
 from nltk.corpus import wordnet as wn
 
 
-class SemanticResource:
+class SemanticResource(Serializable):
+    serialization_subdir = "semantic"
+
+    def __init__(self, config):
+        Serializable.__init__(self, join(config.folders.serialization, self.serialization_subdir))
+
+    def create(config):
+        name = config.semantic.name
+        if name == Wordnet.name:
+            return Wordnet(config)
+        else:
+            error("Undefined semantic resource: {}".format(name))
     pass
 
 
-class Wordnet:
+class Wordnet(SemanticResource):
     name = "wordnet"
     serialization_dir = "serializations/semantic_data"
     word_synset_lookup_cache = {}
@@ -24,6 +37,78 @@ class Wordnet:
     synset_context_word_threshold = None
 
     reference_synsets = None
+
+    def __init__(self, config):
+        SemanticResource.__init__(self, config)
+        self.config = config
+
+        self.base_name = self.name
+
+        self.serialization_dir = join(config.folders.serialization, "semantic_data")
+        if not exists(self.serialization_dir):
+            makedirs(self.serialization_dir, exist_ok=True)
+        self.semantic_freq_threshold = config.semantic.frequency_threshold
+        self.semantic_weights = config.semantic.weights
+        self.semantic_unit = config.semantic.unit
+        self.disambiguation = config.semantic.disambiguation
+
+        self.dataset_name = config.dataset.name
+        if config.dataset.limit:
+            self.dataset_name += "_{}".format(config.dataset.limit)
+
+        freq_filtering = "ALL" if not self.semantic_freq_threshold else "fthres{}".format(self.semantic_freq_threshold)
+        sem_weights = "w{}".format(self.semantic_weights)
+        disambig = "disam{}".format(self.disambiguation)
+        self.name = "{}_{}_{}_{}_{}".format(self.dataset_name, self.name, sem_weights, freq_filtering, disambig)
+
+        if self.disambiguation == "context-embedding":
+            self.semantic_embedding_dim = self.config.embedding.dimension
+            # incompatible with embedding training
+            if config.embedding.name == "train":
+                error("Embedding train mode incompatible with semantic embeddings.")
+            # preload the concept list
+            context_file = config.semantic.context_file
+            with open(context_file, "rb") as f:
+                data = pickle.load(f)
+                self.semantic_context = {}
+                if self.synset_context_word_threshold is not None:
+                    info("Limiting reference context synsets to a frequency threshold of {}".format(self.synset_context_word_threshold))
+                    for s, wl in data.items():
+                        if len(wl) < self.synset_context_word_threshold:
+                            continue
+                        self.semantic_context[s] = wl
+                else:
+                    self.semantic_context = data;
+                self.reference_synsets = list(self.semantic_context.keys())
+                if not self.reference_synsets:
+                    error("Frequency threshold of synset context: {} resulted in zero reference synsets".format(self.synset_context_word_threshold))
+                info("Applying {} reference synsets from pre-extracted synset words".format(len(self.reference_synsets)))
+            # calculate the synset embeddings path
+            thr = ""
+            if self.synset_context_word_threshold:
+                thr += "_thresh{}".format(self.synset_context_word_threshold)
+            self.sem_embeddings_path = join(self.serialization_dir, "semantic_embeddings_{}_{}{}{}".format(self.name, self.embedding.name, self.semantic_embedding_dim, thr))
+            self.semantic_embedding_aggr = config.semantic.context_aggregation
+
+        # load if existing
+        self.acquire(fatal_error=False)
+
+        # set name and paths to load sem. emb.
+        # or set a sem. emb. serializable class
+        if self.disambiguation == "context-embedding":
+            self.compute_semantic_embeddings()
+
+
+
+    def fetch_raw(self):
+        pass
+    def handle_preprocessed(self, preprocessed):
+        self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets = preprocessed
+
+    def handle_raw_serialized(self, raw_serialized):
+        pass
+    def handle_raw(self, raw_data):
+        pass
 
     # prune semantic information units wrt a frequency threshold
     def apply_freq_filtering(self, freq_dict_list, dataset_freqs, force_reference=False):
@@ -52,54 +137,6 @@ class Wordnet:
                     del doc_dict[synset]
         toc("Document-level frequency filtering")
         return  freq_dict_list, dataset_freqs
-
-    # build the semantic resource
-    def make(self, config, embedding):
-        self.embedding = embedding
-        self.serialization_dir = os.path.join(config.get_serialization_dir(), "semantic_data")
-        if not os.path.exists(self.serialization_dir):
-            os.makedirs(self.serialization_dir, exist_ok=True)
-        self.freq_threshold = config.get_semantic_freq_threshold()
-        self.semantic_weights = config.get_semantic_weights()
-        disam = config.get_semantic_disambiguation().split(",")
-        self.disambiguation = disam[0]
-        if len(disam) > 1:
-            self.synset_context_word_threshold = int(disam[1])
-        dataset_name = config.get_dataset()
-        freq_filtering = "ALL" if not self.freq_threshold else "freqthres{}".format(self.freq_threshold)
-        sem_weights = "weights{}".format(self.semantic_weights)
-        disambig = "disam{}".format(self.disambiguation)
-        self.serialization_path = os.path.join(self.serialization_dir, "{}_{}_{}_{}_{}.assignments".format(dataset_name, self.name, sem_weights, freq_filtering, disambig))
-        self.semantic_freq_threshold = config.get_semantic_freq_threshold()
-        self.semantic_embedding_dim = embedding.embedding_dim
-
-        if self.disambiguation == "context-embedding":
-            # incompatible with embedding training
-            if config.get_embedding().startswith("train"):
-                error("Embedding traing mode incompatible with semantic embeddings.")
-            # preload the concept list
-            context_file = config.get_semantic_word_context()
-            with open(context_file, "rb") as f:
-                data = pickle.load(f)
-                self.semantic_context = {}
-                if self.synset_context_word_threshold is not None:
-                    info("Limiting reference context synsets to a frequency threshold of {}".format(self.synset_context_word_threshold))
-                    for s, wl in data.items():
-                        if len(wl) < self.synset_context_word_threshold:
-                            continue
-                        self.semantic_context[s] = wl
-                else:
-                    self.semantic_context = data;
-                self.reference_synsets = list(self.semantic_context.keys())
-                if not self.reference_synsets:
-                    error("Frequency threshold of synset context: {} resulted in zero reference synsets".format(self.synset_context_word_threshold))
-                info("Applying {} reference synsets from pre-extracted synset words".format(len(self.reference_synsets)))
-            # calculate the synset embeddings path
-            thr = ""
-            if self.synset_context_word_threshold:
-                thr += "_thresh{}".format(self.synset_context_word_threshold)
-            self.sem_embeddings_path = os.path.join(self.serialization_dir, "semantic_embeddings_{}_{}{}{}".format(self.name, self.embedding.name, self.semantic_embedding_dim, thr))
-            self.semantic_embedding_aggr = config.get_semantic_word_aggregation()
 
     # merge list of document-wise frequency dicts
     # to a single, dataset-wise frequency dict
@@ -139,7 +176,7 @@ class Wordnet:
         toc("tf-idf computation")
 
     # map a single dataset portion
-    def map_dset(self, dset, dataset_name, store_reference_synsets = False, force_reference_synsets = False):
+    def map_dset(self, dset, store_reference_synsets = False, force_reference_synsets = False):
         if force_reference_synsets:
             # restrict discoverable synsets to a predefined selection
             # used for the test set where not encountered synsets are unusable
@@ -201,7 +238,7 @@ class Wordnet:
 
     # generate semantic embeddings from words associated with an synset
     def compute_semantic_embeddings(self):
-        if os.path.exists(self.sem_embeddings_path):
+        if exists(self.sem_embeddings_path):
             info("Loading existing semantic embeddings from {}.".format(self.sem_embeddings_path))
             with open(self.sem_embeddings_path, "rb") as f:
                 self.synset_embeddings, self.reference_synsets = pickle.load(f)
@@ -231,27 +268,16 @@ class Wordnet:
 
 
     # function to map words to wordnet concepts
-    def map_text(self, dataset_name):
+    def map_text(self, embedding):
+        self.embedding = embedding
         # process semantic embeddings, if applicable
         if self.disambiguation == "context-embedding":
             self.compute_semantic_embeddings()
 
-        # check if data is already extracted & serialized
-        if os.path.exists(self.serialization_path):
-            info("Loading existing mapped semantic information from {}.".format(self.serialization_path))
-            tic()
-            with open(self.serialization_path, "rb") as f:
-                # load'em.
-                # assignments: word -> synset assignment
-                # synset_freqs: frequencies of synsets per document
-                # dataset_freqs: frequencies of synsets aggregated per dataset
-                # synset_tfidf: tf-idf frequencies of synsets per document (df is per dataset)
-                self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets = pickle.load(f)
-                toc("Loading")
+        if self.loaded_preprocessed:
             return
-
         # process the data
-        datasets_words = self.embedding.get_words()
+        datasets_words = embedding.get_words()
         self.synset_freqs = []
         for d, dset in enumerate(datasets_words):
             info("Extracting {} semantic information from dataset {}/{}".format(self.name, d+1, len(datasets_words)))
@@ -261,17 +287,15 @@ class Wordnet:
             store_as_reference = (d==0 and not self.reference_synsets)
             # should force mapping to the reference if a reference has been defined
             force_reference = bool(self.reference_synsets)
-            self.map_dset(dset, dataset_name + "{}".format(d+1), store_as_reference, force_reference)
+            self.map_dset(dset, store_as_reference, force_reference)
 
         # write results: word assignments, raw, dataset-wise and tf-idf weights
         info("Writing semantic assignment results to {}.".format(self.serialization_path))
-        if not os.path.exists(self.serialization_dir):
-            os.mkdir(self.serialization_dir)
-        with open(self.serialization_path, "wb") as f:
-            pickle.dump([self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets], f)
-
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
         info("Semantic mapping completed.")
 
+    def get_all_preprocessed(self):
+        return [self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets]
 
 
     # function to get a synset from a word, using the wordnet api

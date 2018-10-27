@@ -1,4 +1,5 @@
 import time
+import pickle
 import logging
 
 
@@ -31,6 +32,9 @@ def datetime_str():
 
 
 # Logging
+def need(condition, msg):
+    if not condition:
+       error(msg)
 def error(msg):
     logger = logging.getLogger()
     logger.error(msg)
@@ -45,6 +49,17 @@ def warning(msg):
     logger = logging.getLogger()
     logger.warning(msg)
 
+# read pickled data
+def read_pickled(path):
+    info("Reading serialized from {}".format(path))
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+# write pickled data
+def write_pickled(path, data):
+    info("Serializing to {}".format(path))
+    with open(path, "wb") as f:
+        pickle.dump(data, f)
 
 
 # object to store times for tic-tocs

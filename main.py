@@ -9,10 +9,14 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # import numpy as np
 
 from fetcher import Fetcher
+from dataset import Dataset
+from embedding import Embedding
+from dataset import Dataset
 from helpers import Config
 import argparse
 import logging
 from utils import info
+from semantic import SemanticResource
 
 
 print("Imports done.")
@@ -28,14 +32,11 @@ def main(config_file):
 
     # datasets loading & preprocessing
     info("===== DATASET =====")
-    dataset = fetcher.fetch_dataset(config.get_dataset())
-    dataset.make(config)
-    dataset.preprocess()
+    dataset = Dataset.create(config)
 
     # embedding
     info("===== EMBEDDING =====")
-    embedding = fetcher.fetch_embedding(config.get_embedding())
-    embedding.make(config)
+    embedding = Embedding.create(config)
     embedding.map_text(dataset)
     embedding.prepare()
 
@@ -43,21 +44,19 @@ def main(config_file):
     semantic_data = None
     if config.has_enrichment():
         info("===== SEMANTIC =====")
-        semantic = fetcher.fetch_semantic(config.get_semantic_resource())
-        semantic.make(config, embedding)
-        semantic.map_text(dataset.get_name())
+        semantic = SemanticResource.create(config)
+        semantic.map_text(embedding)
         semantic_data = semantic.get_data(config)
     embedding.finalize(semantic_data)
 
     # learning
     info("===== LEARNING =====")
     # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
-    learner = fetcher.fetch_learner(config.get_learner())
+    learner = DNN.create(config)
     learner.make(embedding, dataset.get_targets(), dataset.get_num_labels(), config)
 
     learner.do_traintest(config)
     info("Done.")
-
 
 
 if __name__ == "__main__":

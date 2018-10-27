@@ -34,8 +34,16 @@ class DNN:
 
     do_train_embeddings = False
     train_embeddings_params = []
+    def create(config):
+        name = config.learner.name
+        if name == LSTM.name:
+            return LSTM(config)
+        elif name == MLP.name:
+            return MLP(config)
+        else:
+            error("Undefined learner: {}".format(name))
 
-    def __init__(self, params):
+    def __init__(self):
         for x in self.run_types:
             self.performance[x] = {}
             for measure in self.measures:
@@ -347,8 +355,18 @@ class DNN:
 
 class MLP(DNN):
     name = "mlp"
-    def __init__(self, params):
-        DNN.__init__(self, params)
+    def __init__(self, config):
+        self.config = config
+        DNN.__init__(self)
+
+        self.config = config
+        self.hidden = config.learner.hidden_dim
+        self.layers = config.learner.num_layers
+        self.sequence_length = config.learner.sequence_length
+        DNN.__init__(self)
+
+
+
         params = list(map(int, params))
         self.hidden = params[0]
         self.layers = params[1]
@@ -394,13 +412,12 @@ class MLP(DNN):
 class LSTM(DNN):
     name = "lstm"
 
-    def __init__(self, params):
-        if len(params) < 2:
-            error("Need lstm parameters: hidden size, sequence_length.")
-        self.hidden = int(params[0])
-        self.layers = int(params[1])
-        self.sequence_length = int(params[2])
-        DNN.__init__(self, params)
+    def __init__(self, config):
+        self.config = config
+        self.hidden = config.learner.hidden_dim
+        self.layers = config.learner.num_layers
+        self.sequence_length = config.learner.sequence_length
+        DNN.__init__(self)
 
     # make network
     def make(self, embeddings, targets, num_labels, config):

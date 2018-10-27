@@ -2,63 +2,93 @@ import logging
 import numpy as np
 import pickle
 import os
+from os.path import exists, isfile, join
+from os import makedirs
 from helpers import Config
-from utils import error, tic, toc, info, warning
+from utils import error, tic, toc, info, warning, read_pickled, write_pickled
 from sklearn.datasets import fetch_20newsgroups
 from keras.preprocessing.text import text_to_word_sequence
 from nltk.corpus import stopwords, reuters
 
+from serializable import Serializable
 
 
-class Dataset:
+
+class Dataset(Serializable):
     name = ""
     vocabulary = set()
     vocabulary_index = []
     word_to_index = {}
     limited_name = ""
-    serialization_dir = "serialization/datasets"
+    serialization_subdir = "datasets"
     undefined_word_index = None
     preprocessed = False
     train, test = None, None
 
-    def load_preprocessed(self):
-        if os.path.exists(self.serialization_path_preprocessed):
-            info("Loading preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
-            with open(self.serialization_path_preprocessed, "rb") as f:
-                self.train, self.train_target, self.train_label_names, \
-                self.test, self.test_target, self.test_label_names, \
-                self.vocabulary, self.vocabulary_index, self.undefined_word_index = pickle.load(f)
-                self.num_labels = len(self.train_label_names)
-                self.preprocessed = True
-                for index, word in enumerate(self.vocabulary):
-                    self.word_to_index[word] = index
-                info("Loaded {} train and {} test data, with {} labels".format(len(self.train), len(self.test), self.num_labels))
-                return True
-        return False
+    def create(config):
+        name = config.dataset.name
+        if name == TwentyNewsGroups.name:
+            return TwentyNewsGroups(config)
+        elif name == Reuters.name:
+            return Reuters(config)
+        else:
+            error("Undefined dataset: {}".format(name))
 
 
-    def serialize_raw_dataset(self, data):
-        info("Writing {} raw dataset to serialization path {}".format(self.name, self.serialization_path))
-        with open(self.serialization_path, "wb") as f:
-                pickle.dump(data, f)
+    # dataset creation
+    def __init__(self, name = None):
+        self.serialization_dir = join(self.config.folders.serialization, self.serialization_subdir)
+        Serializable.__init__(self, self.serialization_dir)
+        # if a limit is defined, check for such a serialized dataset
+        if self.config.dataset.limit:
+            self.apply_limit()
+            res = self.acquire(fatal_error = False)
+            if res:
+                return
+        self.suspend_limit()
+        self.acquire(do_preprocess=False)
+        # limit, if applicable
+        self.apply_limit()
+        self.preprocess()
+
+
+    def handle_preprocessed(self, preprocessed):
+        info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
+        self.train, self.train_target, self.train_label_names, \
+        self.test, self.test_target, self.test_label_names, \
+        self.vocabulary, self.vocabulary_index, self.undefined_word_index = preprocessed
+        self.num_labels = len(self.train_label_names)
+        self.preprocessed = True
+        for index, word in enumerate(self.vocabulary):
+            self.word_to_index[word] = index
+        info("Loaded {} train and {} test data, with {} labels".format(len(self.train), len(self.test), self.num_labels))
 
     def suspend_limit(self):
-        self.set_paths(self.name)
+        self.name = self.base_name
 
+    # set paths according to current dataset name
     def set_paths(self, name):
         if not os.path.exists(self.serialization_dir):
             os.makedirs(self.serialization_dir, exist_ok=True)
+        # raw dataset 
         self.serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
+        # preprocessed dataset
         self.serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
 
-    def __init__(self, name):
-        self.name = name
-        self.set_paths(name)
+    def set_raw_path(self):
+        error("Need to override raw path dataset setter for {}".format(self.name))
 
-    def make(self, config):
-        self.serialization_dir = os.path.join(config.get_serialization_dir(), "datasets")
-        self.set_paths(self.name)
-        info("Loaded {} train and {} test documents with {} labels for {}".format(len(self.train), len(self.test), self.num_labels, self.name))
+    def fetch_raw(self):
+        error("Need to override raw data fetcher for {}".format(self.name))
+
+    def handle_raw(self, raw_data):
+        error("Need to override raw data handler for {}".format(self.name))
+
+    def load_serialized(self):
+        error("Need to override serialized data loader for {}".format(self.name))
+
+    def handle_raw_serialized(self, raw_serialized):
+        error("Need to override raw serialized data handler for {}".format(self.name))
 
     # data getter
     def get_data(self):
@@ -70,18 +100,22 @@ class Dataset:
     def get_num_labels(self):
         return self.num_labels
 
+    def apply_limit(self):
+        if self.config.dataset.limit:
+            value = self.config.dataset.limit
 
-    def apply_limit(self, config):
-        if config.option("data_limit"):
-            value = config.option("data_limit")
+            self.name = self.base_name + "_limited_" + str(value)
+            self.set_paths(self.name)
+
+            # if data has been loaded, limit the instances
             if self.train:
                 self.train = self.train[:value]
                 self.test = self.test[:value]
                 self.train_target = self.train_target[:value]
                 self.test_target = self.test_target[:value]
-                info("Limiting {} to {} items.".format(self.name, value))
-            self.limited_name = self.name + "_limited_" + str(value)
-            self.set_paths(self.limited_name)
+                info("Limited {} to {} items.".format(self.base_name, value))
+                # serialize the limited version
+                write_pickled(self.serialization_path, self.get_all_raw())
 
     # preprocess raw texts into word list
     def preprocess(self):
@@ -112,10 +146,14 @@ class Dataset:
         self.undefined_word_index = len(self.vocabulary)
         toc("Preprocessing")
         # serialize
-        with open(self.serialization_path_preprocessed, "wb") as f:
-            pickle.dump([self.train, self.train_target, self.train_label_names,
-                         self.test, self.test_target, self.test_label_names,
-                         self.vocabulary, self.vocabulary_index, self.undefined_word_index], f)
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+
+    def get_all_raw(self):
+        return [self.train, self.train_target, self.train_label_names,
+                         self.test, self.test_target, self.test_label_names ]
+
+    def get_all_preprocessed(self):
+        return self.get_all_raw() + [self.vocabulary, self.vocabulary_index, self.undefined_word_index]
 
 
     def get_name(self):
@@ -126,44 +164,18 @@ class TwentyNewsGroups(Dataset):
     name = "20newsgroups"
     language = "english"
 
-    def __init__(self):
-        Dataset.__init__(self, TwentyNewsGroups.name)
-
-    # load dataset previously downloaded and serialized
-    def load_serialized_dataset(self):
-        info("Loading raw {} from serialization path {}".format(self.name, self.serialization_path))
-        with open(self.serialization_path, "rb") as f:
-            deser = pickle.load(f)
-            train, test = deser[0], deser[1]
-        return train, test
-
-    # download and serialize dataset
-    def download_raw_dataset(self):
+    def fetch_raw(self):
         info("Downloading {} via sklearn".format(self.name))
-        seed = Config().get_seed()
+        seed = self.config.get_seed()
         train = fetch_20newsgroups(subset='train', shuffle=True, random_state=seed)
-        test = fetch_20newsgroups(subset='train', shuffle=True, random_state=seed)
-        # write
-        self.serialize_raw_dataset([train, test])
-        return train, test
+        test = fetch_20newsgroups(subset='test', shuffle=True, random_state=seed)
+        return [train, test]
 
-    # prepare dataset
-    def make(self, config):
-        # enforce possible data num restrictions
-        self.apply_limit(config)
-        # if preprocessed data already exists, load them
-        if self.load_preprocessed():
-            return
-        # enforce possible data num restrictions
-        self.suspend_limit()
+    def handle_raw(self, raw_data):
+        self.handle_raw_serialized(raw_data)
 
-        # else, check if the downloaded & serialized raw data exists
-        if os.path.exists(self.serialization_path) and os.path.isfile(self.serialization_path):
-            train, test = self.load_serialized_dataset()
-            pass
-        else:
-            # else, fetch from scikit-learn
-            train, test = self.download_raw_dataset()
+    def handle_raw_serialized(self, deserialized_data):
+        train, test = deserialized_data
 
         # results are sklearn bunches
         info("Got {} and {} train / test samples".format(len(train.data), len(test.data)))
@@ -174,8 +186,18 @@ class TwentyNewsGroups(Dataset):
         self.test_label_names = test.target_names
         self.num_labels = len(self.train_label_names)
 
-        self.apply_limit(config)
-        Dataset.make(self, config)
+
+    def __init__(self, config):
+        self.config = config
+        self.base_name = self.name
+        Dataset.__init__(self, TwentyNewsGroups.name)
+
+    # raw path setter
+    def set_raw_path(self):
+        # dataset is downloadable
+        pass
+
+
 
 class Brown:
     pass
@@ -184,22 +206,22 @@ class Reuters(Dataset):
     name = "reuters"
     language = "english"
 
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
+        self.base_name = self.name
         Dataset.__init__(self, Reuters.name)
 
-    def load_serialized_dataset(self):
-        info("Loading raw {} from serialization path {}".format(self.name, self.serialization_path))
-        with open(self.serialization_path, "rb") as f:
-            deser = pickle.load(f)
-            self.train, self.train_target, self.test, self.test_target, self.num_labels, self.train_label_names, self.test_label_names = deser
-
-    def download_raw_dataset(self):
+    def fetch_raw(self):
+        # only applicable for raw dataset
+        if self.name != self.base_name:
+            return None
         info("Downloading raw {} dataset".format(self.name))
         # get ids
         documents = reuters.fileids()
-        train_ids = list(filter(lambda doc: doc.startswith("train"), documents))
-        test_ids = list(filter(lambda doc: doc.startswith("test"), documents))
         categories = reuters.categories()
+
+        #train_ids = list(filter(lambda doc: doc.startswith("train"), documents))
+        #test_ids = list(filter(lambda doc: doc.startswith("test"), documents))
         self.num_labels = len(categories)
         self.train_label_names, self.test_label_names = set(), set()
 
@@ -224,28 +246,20 @@ class Reuters(Dataset):
         self.test_label_names = list(self.test_label_names)
         self.train_target = np.asarray(self.train_target, np.int32)
         self.test_target = np.asarray(self.train_target, np.int32)
-        # serialize
-        self.serialize_raw_dataset([self.train, self.train_target, self.test, self.test_target, self.num_labels, self.train_label_names, self.test_label_names])
 
+        return [self.train, self.train_target, self.test, self.test_target,
+                self.num_labels, self.train_label_names, self.test_label_names]
 
-    def make(self, config):
+    def handle_raw(self, raw_data):
+        # already processed
+        pass
 
-        # enforce possible data num restrictions
-        self.apply_limit(config)
-        # if preprocessed data already exists, load them
-        if self.load_preprocessed():
-            return
-        # enforce possible data num restrictions
-        self.suspend_limit()
+    def handle_raw_serialized(self, raw_serialized):
+        self.train, self.train_target, self.test, self.test_target, \
+        self.num_labels, self.train_label_names, self.test_label_names = raw_serialized
+        pass
 
-        # else, check if the downloaded & serialized raw data exists
-        if os.path.exists(self.serialization_path) and os.path.isfile(self.serialization_path):
-            self.load_serialized_dataset()
-        else:
-            # else, fetch from nltk
-            self.download_raw_dataset()
-
-
-        self.apply_limit(config)
-        Dataset.make(self, config)
-    pass
+    # raw path setter
+    def set_raw_path(self):
+        # dataset is downloadable
+        pass

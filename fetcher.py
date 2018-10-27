@@ -31,25 +31,4 @@ class Fetcher:
         else:
             error("Undefined semantic resource: {}".format(name))
 
-    # embedding name resolver
-    def fetch_embedding(self, name):
-        name, params = self.get_params(name)
-        if name == Glove.name:
-            return Glove(params)
-        if name == Word2vec.name:
-            return Word2vec(params)
-        if name == Train.name:
-            return Train(params)
-        else:
-            error("Undefined embedding: {}".format(name))
 
-
-    # embedding name resolver
-    def fetch_learner(self, name):
-        name, params = self.get_params(name)
-        if name == LSTM.name:
-            return LSTM(params)
-        elif name == MLP.name:
-            return MLP(params)
-        else:
-            error("Undefined learner: {}".format(name))

@@ -2,53 +2,64 @@ run_id: "run_name"
 # dataset
 # dataset name, param1, param2
 # dataset: 20newsgroups
-dataset: reuters
+dataset:
+  name: reuters
+  limit: 100
 
 # embeddings
-#embedding: glove,50
-embedding: train,50,10
-# embedding aggregation method to document-level representations
-# - avg: average word embeddings to a single doc vector
-# - pad,NUM,filter: force NUM words / embeddings per document, padding / pruning where necessary 
-# NUM words are selected by filter:
-# first: just get the first NUM words
-# freq: get the NUM words that are most frequent in the dataset
-aggregation: pad,10,first
+embedding:
+  name: glove
+  dimension: 50
+  # embedding aggregation method to document-level representations
+  # - avg: average word embeddings to a single doc vector
+  # - pad,NUM,filter: force NUM words / embeddings per document, padding / pruning where necessary
+  # embedding: train,50,10
+  # NUM words are selected by filter:
+  # first: just get the first NUM words
+  # freq: get the NUM words that are most frequent in the dataset
+  aggregation: [pad, 10, first]
+
 # aggregation: pad,10,first
 
 # semantic resource settings
 # resource,population_strategy,weighting_strategy,pruning_strategy
 
-semantic_resource: wordnet
+semantic:
+  name: wordnet
+  # what is considered as a semantic information
+  unit: synset
+  # the form of semantic information to use
+  # frequencies or tfidf
+  # semantic_weights: embeddings
+  weights: tfidf
+  frequency_threshold: 10
+  # drop synsets with dataset-wise freq less than this threshold
+  #semantic_freq_threshold: 15
+  # how the semantic information is combined with the textual one
+  # enrichment: concat
+  disambiguation: first
 
-# what is considered as a semantic information
-semantic_unit: synset
+  # pos: get the first that matches the POS tag assigned
+  # embedding-centroid, num-threshold: select synset by min proximity to precomputed semantic embeddings
+  # params:
+  # num-threshold: min. number of context words for a synset
 
-# the form of semantic information to use
-# frequencies or tfidf
-# semantic_weights: embeddings
-semantic_weights: tfidf
-# drop synsets with dataset-wise freq less than this threshold
-#semantic_freq_threshold: 15
-# how the semantic information is combined with the textual one
-# enrichment: concat
-
-# pos: get the first that matches the POS tag assigned
-# embedding-centroid, num-threshold: select synset by min proximity to precomputed semantic embeddings
-# params:
-# num-threshold: min. number of context words for a synset 
-semantic_disambiguation: first
-#semantic_disambiguation: context-embedding,25
-semantic_embedding_aggregation: avg
-semantic_word_context_file: wordnet_synset_examples_definitions.pickle
+  #semantic_disambiguation: context-embedding,25
+  context_aggregation: avg
+  context_file: wordnet_synset_examples_definitions.pickle
+  context_freq_threshold: 25
 
 # learning model
 # dnn,hiddensize,numlayers
 # lstm,hiddensize,numlayers
 # embedding,hiddensize,numlayers
 # dnn or lstm
-learner: lstm,128,4,10
-# learner: mlp,128,2
+learner:
+  name: lstm
+  hidden_dim:  128
+  layers: 4
+  sequence_length: 10
+
 
 train:
   epochs: 1
@@ -58,13 +69,10 @@ train:
   batch_size: 20
 
 log_level: debug
-# log_level: info
 
-#parallelization: 10
-#parallelization: 4
-
-options:
-  data_limit: 100
-
-results_folder: "results"
-serialization_dir: "serialization"
+folders:
+  log: "logs"
+  results: "results"
+  serialization: "serialization"
+  embeddings: "embeddings"
+  semantic: "semantic"
