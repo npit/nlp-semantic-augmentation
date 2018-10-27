@@ -41,17 +41,15 @@ class Embedding(Serializable):
             self.dataset_name += "_limit{}".format(self.config.dataset.limit)
         self.name = "{}_{}_dim{}".format(self.base_name, self.dataset_name, self.embedding_dim)
 
-        #self.serialization_path = join(self.serialization_dir,"{}.pickle".format(self.name))
-        #self.serialization_path_preprocessed = join(self.serialization_dir,"mapped_{}.pickle".format(self.name))
-
-
     def set_raw_data_path(self):
         pass
     def __init__(self):
         self.set_params()
-        Serializable.__init__(self, join(self.config.folders.serialization, self.serialization_subdir))
+        self.serialization_dir = join(self.config.folders.serialization, self.serialization_subdir)
+        Serializable.__init__(self, self.serialization_dir)
         # check for serialized mapped data
-        self.acquire()
+        self.set_serialization_params()
+        self.acquire2()
 
     def get_zero_pad_element(self):
         return np.ndarray((1, self.embedding_dim), np.float32)
@@ -156,6 +154,9 @@ class Glove(Embedding):
     name = "glove"
     dataset_name = ""
 
+    def get_raw_path(self):
+        return None
+
     def handle_raw_serialized(self, raw_serialized):
         self.words_to_numeric_idx = {}
         self.embeddings = raw_serialized
@@ -172,7 +173,7 @@ class Glove(Embedding):
         self.handle_raw_serialized(raw_data)
         pass
 
-    def fetch_raw(self):
+    def fetch_raw(self, dummy_input):
         raw_data_path = os.path.join("{}/glove.6B.{}d.txt".format(join(self.config.folders.embeddings), self.embedding_dim))
 
         if os.path.exists(raw_data_path):
@@ -239,7 +240,7 @@ class Glove(Embedding):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
         # log missing words
         for d in range(len(self.missing)):
-            l = ['train', 'text']
+            l = ['train', 'test']
             missing_filename = os.path.join(self.serialization_dir, "missing_words_{}_{}_{}.txt".format(self.name, dset.name, l[d]))
             info("Writing missing words to {}".format(missing_filename))
             with open(missing_filename, "w") as f:

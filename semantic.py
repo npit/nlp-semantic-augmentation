@@ -2,6 +2,7 @@
 from os.path import join, exists
 from os import makedirs
 import pickle
+from utils import read_pickled, write_pickled
 from utils import tic, toc, error, info, debug, warning, write_pickled
 import numpy as np
 from serializable import Serializable
@@ -90,18 +91,22 @@ class Wordnet(SemanticResource):
             self.sem_embeddings_path = join(self.serialization_dir, "semantic_embeddings_{}_{}{}{}".format(self.name, self.embedding.name, self.semantic_embedding_dim, thr))
             self.semantic_embedding_aggr = config.semantic.context_aggregation
 
+        # setup serialization paramas
+        self.set_serialization_params()
+
         # load if existing
-        self.acquire(fatal_error=False)
+        self.acquire2(fatal_error=False)
 
 
 
-    def fetch_raw(self):
+    def fetch_raw(self, dummy_input):
         # set name and paths to load sem. emb.
         # or set a sem. emb. serializable class
         if self.disambiguation == "context-embedding":
             self.compute_semantic_embeddings()
 
     def handle_preprocessed(self, preprocessed):
+        self.loaded_preprocessed = True
         self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets = preprocessed
 
     def handle_raw_serialized(self, raw_serialized):
@@ -270,12 +275,14 @@ class Wordnet(SemanticResource):
     # function to map words to wordnet concepts
     def map_text(self, embedding):
         self.embedding = embedding
+        if self.loaded_preprocessed:
+            return
+
         # process semantic embeddings, if applicable
         if self.disambiguation == "context-embedding":
             self.compute_semantic_embeddings()
 
-        if self.loaded_preprocessed:
-            return
+
         # process the data
         datasets_words = embedding.get_words()
         self.synset_freqs = []
@@ -297,6 +304,8 @@ class Wordnet(SemanticResource):
     def get_all_preprocessed(self):
         return [self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets]
 
+    def get_raw_path(self):
+        return None
 
     # function to get a synset from a word, using the wordnet api
     # and a local word cache. Updates synset frequencies as well.

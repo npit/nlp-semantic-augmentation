@@ -35,18 +35,27 @@ class Dataset(Serializable):
             error("Undefined dataset: {}".format(name))
 
 
+
     # dataset creation
-    def __init__(self, name = None):
+    def __init__(self):
         self.serialization_dir = join(self.config.folders.serialization, self.serialization_subdir)
         Serializable.__init__(self, self.serialization_dir)
-        # if a limit is defined, check for such a serialized dataset
-        if self.config.dataset.limit:
-            self.apply_limit()
-            res = self.acquire(fatal_error = False)
-            if res:
-                return
-        self.suspend_limit()
-        self.acquire(do_preprocess=False)
+
+        self.set_serialization_params()
+
+        # check for limited dataset
+        self.apply_limit()
+        res = self.acquire2(fatal_error=False)
+        if any(self.load_flags):
+            # downloaded successfully
+            self.loaded_index = self.load_flags.index(True)
+        else:
+            # check for raw dataset
+            self.suspend_limit()
+            # setup paths
+            self.set_serialization_params()
+            res = self.acquire2()
+            self.loaded_index = self.load_flags.index(True)
         # limit, if applicable
         self.apply_limit()
         self.preprocess()
@@ -66,26 +75,14 @@ class Dataset(Serializable):
     def suspend_limit(self):
         self.name = self.base_name
 
-    # set paths according to current dataset name
-    def set_paths(self, name):
-        if not os.path.exists(self.serialization_dir):
-            os.makedirs(self.serialization_dir, exist_ok=True)
-        # raw dataset 
-        self.serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
-        # preprocessed dataset
-        self.serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
-
-    def set_raw_path(self):
-        error("Need to override raw path dataset setter for {}".format(self.name))
+    def get_raw_path(self):
+        error("Need to override raw path datasea getter for {}".format(self.name))
 
     def fetch_raw(self):
         error("Need to override raw data fetcher for {}".format(self.name))
 
     def handle_raw(self, raw_data):
         error("Need to override raw data handler for {}".format(self.name))
-
-    def load_serialized(self):
-        error("Need to override serialized data loader for {}".format(self.name))
 
     def handle_raw_serialized(self, raw_serialized):
         error("Need to override raw serialized data handler for {}".format(self.name))
@@ -105,7 +102,7 @@ class Dataset(Serializable):
             value = self.config.dataset.limit
 
             self.name = self.base_name + "_limited_" + str(value)
-            self.set_paths(self.name)
+            self.set_paths_by_name(self.name)
 
             # if data has been loaded, limit the instances
             if self.train:
@@ -121,7 +118,7 @@ class Dataset(Serializable):
     def preprocess(self):
         stopw = set(stopwords.words(self.language))
         if self.preprocessed:
-            info("Skipping preprocessing, loading existing data from {}.".format(self.serialization_path_preprocessed))
+            info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
             return
         tic()
         filter = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
@@ -164,7 +161,7 @@ class TwentyNewsGroups(Dataset):
     name = "20newsgroups"
     language = "english"
 
-    def fetch_raw(self):
+    def fetch_raw(self, dummy_input):
         # only applicable for raw dataset
         if self.name != self.base_name:
             return None
@@ -193,10 +190,10 @@ class TwentyNewsGroups(Dataset):
     def __init__(self, config):
         self.config = config
         self.base_name = self.name
-        Dataset.__init__(self, TwentyNewsGroups.name)
+        Dataset.__init__(self)
 
     # raw path setter
-    def set_raw_path(self):
+    def get_raw_path(self):
         # dataset is downloadable
         pass
 
@@ -212,9 +209,9 @@ class Reuters(Dataset):
     def __init__(self, config):
         self.config = config
         self.base_name = self.name
-        Dataset.__init__(self, Reuters.name)
+        Dataset.__init__(self)
 
-    def fetch_raw(self):
+    def fetch_raw(self, dummy_input):
         # only applicable for raw dataset
         if self.name != self.base_name:
             return None
@@ -250,11 +247,11 @@ class Reuters(Dataset):
         self.train_target = np.asarray(self.train_target, np.int32)
         self.test_target = np.asarray(self.train_target, np.int32)
 
-        return [self.train, self.train_target, self.test, self.test_target,
-                self.num_labels, self.train_label_names, self.test_label_names]
+        return self.get_all_preprocessed()
 
     def handle_raw(self, raw_data):
-        # already processed
+        # serialize
+        write_pickled(self.serialization_path, raw_data)
         pass
 
     def handle_raw_serialized(self, raw_serialized):
@@ -263,6 +260,6 @@ class Reuters(Dataset):
         pass
 
     # raw path setter
-    def set_raw_path(self):
+    def get_raw_path(self):
         # dataset is downloadable
         pass
