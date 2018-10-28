@@ -165,8 +165,8 @@ class Config:
         training_opts = self.conf["train"]
         self.train.epochs = training_opts["epochs"]
         self.train.folds = training_opts["folds"]
-        self.train.validation_portion = training_opts["validation_portion"]
-        self.train.early_stopping_patience = training_opts["early_stopping_patience"]
+        self.train.validation_portion = self.get_value("validation_portion", default = 0.1, base=training_opts)
+        self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=-1, base=training_opts)
         self.train.batch_size = training_opts["batch_size"]
 
         if self.has_value("folders"):
