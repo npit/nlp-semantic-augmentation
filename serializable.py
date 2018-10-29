@@ -5,6 +5,7 @@ from os import makedirs
 
 class Serializable:
     name = None
+    base_name = None
     serialization_dir = None
     loaded_raw = False
     loaded_raw_preprocessed = False
@@ -72,7 +73,7 @@ class Serializable:
         error("Need to override raw path getter for {}".format(self.name))
 
     def handle_preprocessed(self, preprocessed):
-        error("Need to override preprocesseraw path dataset setter for {}".format(self.name))
+        error("Need to override preprocessed handling for {}".format(self.name))
 
     def set_raw_path(self):
         error("Need to override raw path dataset setter for {}".format(self.name))

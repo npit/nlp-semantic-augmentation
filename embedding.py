@@ -17,7 +17,6 @@ class Embedding(Serializable):
     embeddings = None
     words_to_numeric_idx = None
     missing = []
-    loaded_mapped_embeddings = False
     embedding_dim = None
     sequence_length = None
 
@@ -43,13 +42,13 @@ class Embedding(Serializable):
 
     def set_raw_data_path(self):
         pass
-    def __init__(self):
+    def __init__(self, can_fail_loading=False):
         self.set_params()
         self.serialization_dir = join(self.config.folders.serialization, self.serialization_subdir)
         Serializable.__init__(self, self.serialization_dir)
         # check for serialized mapped data
         self.set_serialization_params()
-        self.acquire2()
+        self.acquire2(fatal_error=not can_fail_loading)
 
     def get_zero_pad_element(self):
         return np.ndarray((1, self.embedding_dim), np.float32)
@@ -106,9 +105,9 @@ class Embedding(Serializable):
     def finalize(self, semantic_data):
 
         if self.config.semantic.enrichment is not None:
-            if self.name == "train":
+            if self.config.embedding.name == "train":
                 error("Semantic enrichment undefined for embedding training, for now.")
-            info("Enriching embeddings with semantic information.")
+            info("Enriching {} embeddings with semantic information.".format(self.config.embedding.name))
             if self.config.semantic.enrichment == "concat":
                 composite_dim = self.embedding_dim + len(semantic_data[0][0])
                 self.final_dim = composite_dim
@@ -130,10 +129,10 @@ class Embedding(Serializable):
                 error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
         else:
             info("Finalizing embeddings with no semantic information.")
-            self.final_dim = self.embedding_dim
+            dim = self.embedding_dim if not self.config.embedding.name == "train" else 1
+            self.final_dim = dim
             # concatenating embeddings for each dataset portion into a single dataframe
             for dset_idx in range(len(self.dataset_embeddings)):
-                dim = self.embedding_dim if not self.name == "train" else 1
                 new_dset_embeddings = np.ndarray((0, dim), np.float32)
                 for doc_idx in range(len(self.dataset_embeddings[dset_idx])):
                     embeddings = self.dataset_embeddings[dset_idx][doc_idx]
@@ -166,7 +165,7 @@ class Glove(Embedding):
 
     def handle_preprocessed(self, preprocessed):
         self.dataset_embeddings, self.words_per_document, _ = preprocessed
-        self.loaded_mapped_embeddings = True
+        self.loaded_preprocessed = True
         pass
 
     def handle_raw(self, raw_data):
@@ -191,7 +190,7 @@ class Glove(Embedding):
     # transform input texts to embeddings
     def map_text(self, dset):
 
-        if self.loaded_mapped_embeddings:
+        if self.loaded_preprocessed:
             return
         info("Mapping {} to {} embeddings.".format(dset.name, self.name))
         text_bundles = dset.train, dset.test
@@ -248,6 +247,7 @@ class Glove(Embedding):
 
     def __init__(self, config):
         self.config = config
+        self.base_name = self.name
         Embedding.__init__(self)
 
     def get_all_preprocessed(self):
@@ -257,18 +257,17 @@ class Glove(Embedding):
 class Train(Embedding):
     name = "train"
 
-    def __init__(self, params):
-        Embedding.__init__(self, params)
-        self.sequence_length = int(params[1])
+    def __init__(self, config):
+        self.config = config
+        self.sequence_length = config.embedding.sequence_length
+        Embedding.__init__(self, can_fail_loading=True)
 
 
     # transform input texts to embeddings
     def map_text(self, dset):
-
         # assign all embeddings
         self.embeddings = pd.DataFrame(dset.vocabulary_index, dset.vocabulary)
-
-        if self.loaded_mapped_embeddings:
+        if self.loaded_preprocessed:
             return
         info("Mapping {} to {} embeddings.".format(dset.name, self.name))
         text_bundles = dset.train, dset.test
@@ -283,7 +282,6 @@ class Train(Embedding):
             for j in range(len(text_bundles[i])):
                 word_list = text_bundles[i][j]
                 index_list = [ [dset.word_to_index[w]] if w in dset.vocabulary else [dset.undefined_word_index] for w in word_list]
-                print(index_list)
                 embedding = pd.DataFrame(index_list, index = word_list)
                 debug("Text {}/{}".format(j+1, len(text_bundles[i])))
                 self.dataset_embeddings[-1].append(embedding)
@@ -297,15 +295,23 @@ class Train(Embedding):
 
             toc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles)))
         self.words = [dset.vocabulary, non_train_words]
-
         # write mapped data
-        info("Writing embedding mapping to {}".format(self.mapped_data_serialization_path))
-        
-        self.write_pickled(self.mapped_data_serialization_path, [self.dataset_embeddings, self.words, None, self.undefined_word_index])
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+
+    def get_all_preprocessed(self):
+        return [self.dataset_embeddings, self.words, None, self.undefined_word_index]
 
     def get_zero_pad_element(self):
         return self.undefined_word_index
 
+    def get_raw_path(self):
+        return None
+
+    def fetch_raw(self, dummy_input):
+        return dummy_input
+    def handle_preprocessed(self, preprocessed):
+        self.loaded_preprocessed = True
+        self.dataset_embeddings, self.words, self.missing, self.undefined_word_index = preprocessed
 
 
 
@@ -319,7 +325,7 @@ class ELMo:
 class Word2vec(Embedding):
     name = "word2vec"
     def __init__(self, params):
-        Embedding.__init__(self, params)
+        Embedding.__init__(self)
 
 class FastText:
     # https://fasttext.cc/docs/en/english-vectors.html

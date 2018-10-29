@@ -140,6 +140,7 @@ class Config:
         self.embedding.name = embedding_opts["name"]
         self.embedding.aggregation = embedding_opts["aggregation"] if type(embedding_opts["aggregation"]) == list else [embedding_opts["aggregation"]]
         self.embedding.dimension = embedding_opts["dimension"]
+        self.embedding.sequence_length = embedding_opts["sequence_length"]
 
         if self.has_value("semantic"):
             semantic_opts = self.conf["semantic"]
@@ -159,14 +160,14 @@ class Config:
         self.learner.name = learner_opts["name"]
         self.learner.hidden_dim = learner_opts["hidden_dim"]
         self.learner.num_layers = learner_opts["layers"]
-        self.learner.sequence_length = self.get_value("sequence_length", default=None)
+        self.learner.sequence_length = self.get_value("sequence_length", default=None, base = learner_opts)
 
         need(self.has_value("train"), "Need training information")
         training_opts = self.conf["train"]
         self.train.epochs = training_opts["epochs"]
         self.train.folds = training_opts["folds"]
         self.train.validation_portion = self.get_value("validation_portion", default = 0.1, base=training_opts)
-        self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=-1, base=training_opts)
+        self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=training_opts)
         self.train.batch_size = training_opts["batch_size"]
 
         if self.has_value("folders"):

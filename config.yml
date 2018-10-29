@@ -9,8 +9,9 @@ dataset:
 
 # embeddings
 embedding:
-  name: glove
+  name: train
   dimension: 50
+  sequence_length: 10
   # embedding aggregation method to document-level representations
   # - avg: average word embeddings to a single doc vector
   # - pad,NUM,filter: force NUM words / embeddings per document, padding / pruning where necessary
@@ -25,20 +26,20 @@ embedding:
 # semantic resource settings
 # resource,population_strategy,weighting_strategy,pruning_strategy
 
-semantic:
-  name: wordnet
-  # what is considered as a semantic information
-  unit: synset
-  # the form of semantic information to use
-  # frequencies or tfidf
-  # semantic_weights: embeddings
-  weights: tfidf
-  frequency_threshold: 15
-  # drop synsets with dataset-wise freq less than this threshold
-  #semantic_freq_threshold: 15
-  # how the semantic information is combined with the textual one
-  enrichment: concat
-  disambiguation: first
+# semantic:
+#   name: wordnet
+#   # what is considered as a semantic information
+#   unit: synset
+#   # the form of semantic information to use
+#   # frequencies or tfidf
+#   # semantic_weights: embeddings
+#   weights: tfidf
+#   frequency_threshold: 15
+#   # drop synsets with dataset-wise freq less than this threshold
+#   #semantic_freq_threshold: 15
+#   # how the semantic information is combined with the textual one
+#   enrichment: concat
+#   disambiguation: first
 
   # pos: get the first that matches the POS tag assigned
   # embedding-centroid, num-threshold: select synset by min proximity to precomputed semantic embeddings

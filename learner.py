@@ -125,9 +125,8 @@ class DNN:
         return self.callbacks
 
     def make(self, embedding, targets, num_labels):
-        if embedding.name == "train":
+        if embedding.base_name == "train":
             info("Will train embeddings.")
-            self.do_train_embeddings = True
             self.do_train_embeddings = True
             self.embedding_dim = embedding.get_dim()
             self.final_dim = embedding.get_final_dim()
@@ -160,6 +159,7 @@ class DNN:
 
     def train_model(self):
         tic()
+        info("Training {} with input data: {} with a {} validation portion.".format(self.name, len(self.train), self.validation_portion))
         model = self.get_model()
         print("Inputs:", model.inputs)
         model.summary()
@@ -178,7 +178,7 @@ class DNN:
         if self.early_stopping:
             info("Stopped on epoch {}".format(self.early_stopping.stopped_epoch))
         self.do_test(model)
-        toc("Total training")
+        toc("Training")
         return model
 
     def do_traintest(self):
@@ -194,6 +194,7 @@ class DNN:
 
         fold_data = self.get_fold_indexes()
         for fold_index, (train_d_idx, train_l_idx, val_d_idx, val_l_idx) in enumerate(fold_data):
+            tic()
             train_x, train_y = self.get_fold_data(self.train, self.train_labels, train_d_idx, train_l_idx)
             val_x, val_y = self.get_fold_data(self.train, self.train_labels, val_d_idx, val_l_idx)
             # convert labels to one-hot
@@ -218,7 +219,8 @@ class DNN:
             if self.early_stopping:
                 info("Stopped on epoch {}".format(self.early_stopping.stopped_epoch))
             self.do_test(model)
-        toc("Total training")
+            toc("Fold #{}/{} training/testing".format(fold_index + 1, self.folds))
+        toc("Total training/testing")
         # report results across folds
         self.report()
 
@@ -421,7 +423,7 @@ class LSTM(DNN):
         self.layers = self.config.learner.num_layers
         self.sequence_length = self.config.learner.sequence_length
         if self.sequence_length is None:
-            error("Undefined sequence length.")
+            error("Undefined learner sequence length, but required for {}.".format(self.name))
         DNN.__init__(self)
 
     # make network
