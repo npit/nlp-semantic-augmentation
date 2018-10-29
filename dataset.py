@@ -103,7 +103,8 @@ class Dataset(Serializable):
             value = self.config.dataset.limit
 
             self.name = self.base_name + "_limited_" + str(value)
-            self.set_paths_by_name(self.name)
+            self.serialization_path_preprocessed, self.serialization_path = \
+                self.set_paths_by_name(self.name)
 
             # if data has been loaded, limit the instances
             if self.train:
