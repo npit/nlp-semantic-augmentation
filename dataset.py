@@ -9,6 +9,7 @@ from utils import error, tic, toc, info, warning, read_pickled, write_pickled
 from sklearn.datasets import fetch_20newsgroups
 from keras.preprocessing.text import text_to_word_sequence
 from nltk.corpus import stopwords, reuters
+import nltk
 
 from serializable import Serializable
 
@@ -116,7 +117,12 @@ class Dataset(Serializable):
 
     # preprocess raw texts into word list
     def preprocess(self):
-        stopw = set(stopwords.words(self.language))
+        try:
+            stopw = set(stopwords.words(self.language))
+        except LookupError:
+            nltk.download("stopwords")
+            stopw = set(stopwords.words(self.language))
+
         if self.preprocessed:
             info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
             return
@@ -172,6 +178,7 @@ class TwentyNewsGroups(Dataset):
         return [train, test]
 
     def handle_raw(self, raw_data):
+        write_pickled(self.serialization_path, raw_data)
         self.handle_raw_serialized(raw_data)
 
     def handle_raw_serialized(self, deserialized_data):
@@ -247,7 +254,7 @@ class Reuters(Dataset):
         self.train_target = np.asarray(self.train_target, np.int32)
         self.test_target = np.asarray(self.train_target, np.int32)
 
-        return self.get_all_preprocessed()
+        return self.get_all_raw()
 
     def handle_raw(self, raw_data):
         # serialize
