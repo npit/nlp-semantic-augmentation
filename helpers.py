@@ -159,7 +159,7 @@ class Config:
         self.learner.name = learner_opts["name"]
         self.learner.hidden_dim = learner_opts["hidden_dim"]
         self.learner.num_layers = learner_opts["layers"]
-        self.learner.sequence_length = learner_opts["sequence_length"]
+        self.learner.sequence_length = self.get_value("sequence_length", default=None)
 
         need(self.has_value("train"), "Need training information")
         training_opts = self.conf["train"]

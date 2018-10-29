@@ -16,6 +16,7 @@ from keras.layers import Activation, Dense, Dropout, Embedding, Reshape
 from keras.layers import LSTM as keras_lstm
 from keras.utils import to_categorical
 from keras import callbacks
+import gc
 
 from utils import info, debug, tic, toc, error
 
@@ -160,6 +161,10 @@ class DNN:
     def train_model(self):
         tic()
         model = self.get_model()
+        print("Inputs:", model.inputs)
+        model.summary()
+        print("Outputs:", model.outputs)
+
         train_y_onehot = to_categorical(self.train_labels, num_classes = self.num_labels)
 
         # shape accordingly
@@ -196,7 +201,11 @@ class DNN:
             val_y_onehot = to_categorical(val_y, num_classes = self.num_labels)
 
             # train
+            gc.collect()
             model = self.get_model()
+            print("Inputs:", model.inputs)
+            model.summary()
+            print("Outputs:", model.outputs)
             #print(val_x, val_y)
             info("Trainig fold {}/{}".format(fold_index + 1, self.folds))
             history = model.fit(train_x, train_y_onehot,
@@ -385,6 +394,7 @@ class MLP(DNN):
 
     # build MLP model
     def get_model(self):
+        model = None
         model = Sequential()
         model = self.check_embedding_training(model)
         for i in range(self.layers):
@@ -398,9 +408,6 @@ class MLP(DNN):
                 model.add(Dropout(0.3))
 
         model = DNN.add_softmax(self, model)
-        print("Inputs:", model.inputs)
-        model.summary()
-        print("Outputs:", model.outputs)
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         return model
 
@@ -413,6 +420,8 @@ class LSTM(DNN):
         self.hidden = self.config.learner.hidden_dim
         self.layers = self.config.learner.num_layers
         self.sequence_length = self.config.learner.sequence_length
+        if self.sequence_length is None:
+            error("Undefined sequence length.")
         DNN.__init__(self)
 
     # make network
@@ -444,8 +453,6 @@ class LSTM(DNN):
             # y = np.stack([y for _ in range(self.sequence_length)])
             # y = np.reshape(np.transpose(y), (-1,1))
             pass
-
-
         return x, y
 
     # preprocess input
