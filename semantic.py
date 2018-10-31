@@ -24,8 +24,8 @@ class SemanticResource(Serializable):
     pass
 
 
-class Wordnet(SemanticResource):
     name = "wordnet"
+class Wordnet(SemanticResource):
     serialization_dir = "serializations/semantic_data"
     word_synset_lookup_cache = {}
     word_synset_embedding_cache = {}
@@ -52,6 +52,7 @@ class Wordnet(SemanticResource):
         self.semantic_weights = config.semantic.weights
         self.semantic_unit = config.semantic.unit
         self.disambiguation = config.semantic.disambiguation
+        self.spreading_activation = config.semantic.spreading_activation
 
         self.dataset_name = config.dataset.name
         if config.dataset.limit:
@@ -107,7 +108,7 @@ class Wordnet(SemanticResource):
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets = preprocessed
+        self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets, self.present_word_indexes = preprocessed
 
     def handle_raw_serialized(self, raw_serialized):
         pass
@@ -181,7 +182,7 @@ class Wordnet(SemanticResource):
         toc("tf-idf computation")
 
     # map a single dataset portion
-    def map_dset(self, dset, store_reference_synsets = False, force_reference_synsets = False):
+    def map_dset(self, dset_words_pos, store_reference_synsets = False, force_reference_synsets = False):
         if force_reference_synsets:
             # restrict discoverable synsets to a predefined selection
             # used for the test set where not encountered synsets are unusable
@@ -189,15 +190,15 @@ class Wordnet(SemanticResource):
 
         current_synset_freqs = []
         tic()
-        for wl, word_list in enumerate(dset):
-            debug("Semantic processing for document {}/{}".format(wl+1, len(dset)))
+        for wl, word_info_list in enumerate(dset_words_pos):
+            debug("Semantic processing for document {}/{}".format(wl+1, len(dset_words_pos)))
             doc_freqs = {}
-            for w, word in enumerate(word_list):
-                synset, doc_freqs = self.get_synset(word, doc_freqs, force_reference_synsets)
+            for w, word_info in enumerate(word_info_list):
+                synset, doc_freqs = self.get_synset(word_info, doc_freqs, force_reference_synsets)
                 if not synset: continue
                 self.process_synset(synset)
             if not doc_freqs:
-                warning("No synset information extracted for document {}/{}".format(wl+1, len(dset)))
+                warning("No synset information extracted for document {}/{}".format(wl+1, len(dset_words_pos)))
             current_synset_freqs.append(doc_freqs)
         toc("Document-level mapping and frequency computation")
         # merge to dataset-wise synset frequencies
@@ -215,26 +216,23 @@ class Wordnet(SemanticResource):
             self.compute_tfidf_weights(current_synset_freqs, dataset_freqs, force_reference=force_reference_synsets)
 
 
-    # choose a synset from a candidate list
-    def disambiguate_synsets(self, synsets):
+    # apply disambiguation to choose a single semantic unit from a collection of such
+    def disambiguate(self, synsets, word_information):
         if self.disambiguation == "first":
-            return synsets[0]._name
-
-    # TODO
-    def disambiguate(self, config):
-        disam = config.get_disambiguation()
-        if disam == 'POS':
+            res =  synsets[0]._name
+        elif self.disambiguation == 'POS':
             # part-of-speech filtering
+            word, word_pos = word_information
             pass
-        elif disam == 'embedding-centroid':
+        elif self.disambiguation == 'embedding-centroid':
             # generate closest synset embeddings
             # assign to closest embedding
             pass
-        elif disam == "prior":
+        elif self.disambiguation == "prior":
             # select the synset with the highest prior prob
             pass
         else:
-            error("Undefined disambiguation method: " + disam)
+            error("Undefined disambiguation method: " + self.disambiguation)
 
 
     def get_synset_from_context_embeddings(self, word):
@@ -249,7 +247,6 @@ class Wordnet(SemanticResource):
                 self.synset_embeddings, self.reference_synsets = pickle.load(f)
                 return
 
-        #import pdb; pdb.set_trace()
         info("Computing semantic embeddings, using {} embeddings of dim {}.".format(self.embedding.name, self.semantic_embedding_dim))
         self.synset_embeddings = np.ndarray((0, self.embedding.embedding_dim), np.float32)
         for s, synset in enumerate(self.reference_synsets):
@@ -273,7 +270,7 @@ class Wordnet(SemanticResource):
 
 
     # function to map words to wordnet concepts
-    def map_text(self, embedding):
+    def map_text(self, embedding, dataset):
         self.embedding = embedding
         if self.loaded_preprocessed:
             return
@@ -284,10 +281,10 @@ class Wordnet(SemanticResource):
 
 
         # process the data
-        datasets_words = embedding.get_words()
+        dataset_pos = dataset.get_pos(embedding.get_present_word_indexes())
         self.synset_freqs = []
-        for d, dset in enumerate(datasets_words):
-            info("Extracting {} semantic information from dataset {}/{}".format(self.name, d+1, len(datasets_words)))
+        for d, dset in enumerate(dataset_pos):
+            info("Extracting {} semantic information from dataset {}/{}".format(self.name, d+1, len(dataset_pos)))
             # process data within a dataset portion
             # should store reference synsets in the train portion (d==0), but only if a reference has not
             # been already defined, e.g. via semantic embedding precomputations
@@ -302,14 +299,15 @@ class Wordnet(SemanticResource):
         info("Semantic mapping completed.")
 
     def get_all_preprocessed(self):
-        return [self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets]
+        return [self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets, self.present_word_indexes]
 
     def get_raw_path(self):
         return None
 
     # function to get a synset from a word, using the wordnet api
     # and a local word cache. Updates synset frequencies as well.
-    def get_synset(self, word, freqs, force_reference_synsets = False):
+    def get_synset(self, word_information, freqs, force_reference_synsets = False):
+        word, _ = word_information
         if word in self.word_synset_lookup_cache:
             synset = self.word_synset_lookup_cache[word]
 
@@ -327,7 +325,7 @@ class Wordnet(SemanticResource):
                 synset = self.get_synset_from_context_embeddings(word)
             else:
                 # look in wordnet 
-                synset = self.lookup_wordnet(word)
+                synset = self.lookup_wordnet(word_information)
             if not synset:
                 return None, freqs
 
@@ -343,10 +341,11 @@ class Wordnet(SemanticResource):
         return synset, freqs
 
 
-    def lookup_wordnet(self, word):
+    def lookup_wordnet(self, word_information):
+        word, _  = word_information
         synsets = wn.synsets(word)
         if synsets:
-            return self.disambiguate_synsets(synsets)
+            return self.disambiguate(synsets, word_information)
         return None
 
     # function that applies the required processing

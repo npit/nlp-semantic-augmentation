@@ -26,6 +26,8 @@ class Dataset(Serializable):
     preprocessed = False
     train, test = None, None
 
+    pos_tags = []
+
     def create(config):
         name = config.dataset.name
         if name == TwentyNewsGroups.name:
@@ -66,7 +68,8 @@ class Dataset(Serializable):
         info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
         self.train, self.train_target, self.train_label_names, \
         self.test, self.test_target, self.test_label_names, \
-        self.vocabulary, self.vocabulary_index, self.undefined_word_index = preprocessed
+        self.vocabulary, self.vocabulary_index, self.undefined_word_index, self.pos_tags = preprocessed
+
         self.num_labels = len(self.train_label_names)
         self.preprocessed = True
         for index, word in enumerate(self.vocabulary):
@@ -103,8 +106,7 @@ class Dataset(Serializable):
             value = self.config.dataset.limit
 
             self.name = self.base_name + "_limited_" + str(value)
-            self.serialization_path_preprocessed, self.serialization_path = \
-                self.set_paths_by_name(self.name)
+            self.set_paths_by_name(self.name)
 
             # if data has been loaded, limit the instances
             if self.train:
@@ -116,31 +118,64 @@ class Dataset(Serializable):
                 # serialize the limited version
                 write_pickled(self.serialization_path, self.get_all_raw())
 
-    # preprocess raw texts into word list
-    def preprocess(self):
+    def setup_nltk_resources(self):
         try:
-            stopw = set(stopwords.words(self.language))
+            stopwords.words(self.language)
         except LookupError:
             nltk.download("stopwords")
-            stopw = set(stopwords.words(self.language))
+        try:
+            nltk.pos_tag("Text")
+        except LookupError:
+            nltk.download('averaged_perceptron_tagger')
 
+    # map text string into list of stopword-filtered words and POS tags
+    def process_single_text(self, text, filt, stopwords):
+        words = text_to_word_sequence(text, filters=filt, lower=True, split=' ')
+        pos_tags = nltk.pos_tag(words)
+        # remove stopwords
+        idx = [p for p in range(len(words)) if words[p] not in stopwords]
+        words = [words[p] for p in idx]
+        pos_tags = [pos_tags[p] for p in idx]
+        return words, pos_tags
+
+    # return POS information from the non-missing word indexes, per dataset and document
+    def get_pos(self, present_word_idx):
+        out_pos = []
+        for dset in range(len(self.pos_tags)):
+            out_pos.append([])
+            for doc in range(len(self.pos_tags[dset])):
+                pos = [self.pos_tags[dset][doc][i] for i in present_word_idx[dset][doc]]
+                out_pos[-1].append(pos)
+        return out_pos
+
+
+    # preprocess raw texts into word list
+    def preprocess(self):
         if self.preprocessed:
             info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
             return
+        self.setup_nltk_resources()
+
+        stopw = set(stopwords.words(self.language))
+
         tic()
-        filter = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
+        filt = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
         info("Preprocessing {}".format(self.name))
-        info("Mapping training set to word sequence.")
+        info("Mapping training set to word sequences.")
+        train_pos, test_pos = [],[]
         for i in range(len(self.train)):
-            processed = text_to_word_sequence(self.train[i], filters=filter, lower=True, split=' ')
-            processed = [p for p in processed if p not in stopw]
-            self.train[i] = processed
-            self.vocabulary.update(processed)
-        info("Mapping test set to word sequence.")
+            self.process_single_text(self.train[i], filt, stopw)
+            words, pos_tags = self.process_single_text(self.train[i], filt=filt, stopwords=stopw)
+            self.train[i] = words
+            train_pos.append(pos_tags)
+            self.vocabulary.update(words)
+        info("Mapping test set to word sequences.")
         for i in range(len(self.test)):
-            processed = text_to_word_sequence(self.test[i], filters=filter, lower=True, split=' ')
-            processed = [p for p in processed if p not in stopw]
-            self.test[i] = processed
+            words, pos_tags = self.process_single_text(self.test[i], filt=filt, stopwords=stopw)
+            self.test[i] = words
+            test_pos.append(pos_tags)
+        # set pos
+        self.pos_tags = [train_pos, test_pos]
         # fix word order and get word indexes
         self.vocabulary = list(self.vocabulary)
         for index, word in enumerate(self.vocabulary):
@@ -157,7 +192,7 @@ class Dataset(Serializable):
                          self.test, self.test_target, self.test_label_names ]
 
     def get_all_preprocessed(self):
-        return self.get_all_raw() + [self.vocabulary, self.vocabulary_index, self.undefined_word_index]
+        return self.get_all_raw() + [self.vocabulary, self.vocabulary_index, self.undefined_word_index, self.pos_tags]
 
 
     def get_name(self):

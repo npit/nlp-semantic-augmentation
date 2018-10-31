@@ -46,7 +46,7 @@ def main(config_file):
     if config.has_enrichment():
         info("===== SEMANTIC =====")
         semantic = SemanticResource.create(config)
-        semantic.map_text(embedding)
+        semantic.map_text(embedding, dataset)
         semantic_data = semantic.get_data(config)
     embedding.finalize(semantic_data)
 

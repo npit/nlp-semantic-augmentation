@@ -24,23 +24,24 @@ class Serializable:
 
     def set_serialization_params(self):
         # setup paths
-        self.data_paths = self.set_paths_by_name(self.name) + [self.get_raw_path()]
+        self.set_paths_by_name(self.name, raw_path = self.get_raw_path())
         # alias some paths
         self.serialization_path_preprocessed, self.serialization_path = self.data_paths[:2]
         self.read_functions = [read_pickled, read_pickled, self.fetch_raw]
         self.handler_functions = [self.handle_preprocessed, self.handle_raw_serialized, self.handle_raw]
 
     # set paths according to serializable name
-    def set_paths_by_name(self, name = None):
+    def set_paths_by_name(self, name = None, raw_path = None):
         if name is None:
             name = self.name
         if not exists(self.serialization_dir):
             makedirs(self.serialization_dir, exist_ok=True)
         # raw
-        serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
+        self.serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
         # preprocessed
-        serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
-        return [serialization_path_preprocessed, serialization_path]
+        self.serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
+        debug("Path setter returning paths wrt name: {}".format(name))
+        self.data_paths = [self.serialization_path_preprocessed, self.serialization_path, raw_path]
 
     def attempt_load(self, index):
         if self.data_paths[index] is None or (exists(self.data_paths[index]) and isfile(self.data_paths[index])):

@@ -149,11 +149,12 @@ class Config:
             self.semantic.enrichment = semantic_opts["enrichment"]
             self.semantic.disambiguation = semantic_opts["disambiguation"]
             self.semantic.weights = semantic_opts["weights"]
-            self.semantic.frequency_threshold = semantic_opts["frequency_threshold"]
+            self.semantic.frequency_threshold = self.get_value("frequency_threshold", base=semantic_opts)
             # context file only relevant on semantic embedding disamgibuation
-            self.semantic.context_file = self.get_value(semantic_opts["context_file"])
-            self.semantic.context_aggregation = self.get_value(semantic_opts["context_aggregation"])
-            self.semantic.context_threshold = self.get_value(semantic_opts["context_freq_threshold"])
+            self.semantic.context_file = self.get_value("context_file", base = semantic_opts)
+            self.semantic.context_aggregation = self.get_value("context_aggregation", base=semantic_opts)
+            self.semantic.context_threshold = self.get_value("context_freq_threshold", base=semantic_opts)
+            self.semantic.spreading_activation = self.get_value("spreading_activation", base=semantic_opts)
 
         need(self.has_value("learner"), "Need learner information")
         learner_opts = self.conf["learner"]

@@ -1,54 +1,59 @@
+# run identifier
 run_id: "run_name"
-# dataset
-# dataset name, param1, param2
-# dataset: 20newsgroups
+
 dataset:
+  # which dataset
   name: 20newsgroups
-  #name: reuters
-  limit: 200
+  # limit the dataset to a number of documents for train / test: <int>
+  limit: 50
 
 # embeddings
 embedding:
-  name: train
+  # Which embedding will be used: glove / train
+  name: glove
+  # Embedding dimension: <int>
   dimension: 50
+  # Sequence length, for embedding training: <int>
   sequence_length: 10
-  # embedding aggregation method to document-level representations
+  # aggregation method:
   # - avg: average word embeddings to a single doc vector
-  # - pad,NUM,filter: force NUM words / embeddings per document, padding / pruning where necessary
-  # embedding: train,50,10
-  # NUM words are selected by filter:
-  # first: just get the first NUM words
-  # freq: get the NUM words that are most frequent in the dataset
+  # - [pad,NUM,filter]: e.g. [pad, 10, first]
+  # -- pad / num: Pad (or prune) to NUM items: pad, <int>
+  # -- filter: how to select these NUM items:
+  # --- first: just get the first NUM words
+  # --- freq: get the first NUM words that are most frequent in the dataset
   aggregation: [pad, 10, first]
-  #aggregation: avg
 
 
-# semantic resource settings
-# resource,population_strategy,weighting_strategy,pruning_strategy
+# semantic
+semantic:
+  # which semantic resource will be used. Values: wordnet
+  name: wordnet
+  # what is considered as a semantic information. Values: synset
+  unit: synset
+  # the form of semantic information to use. Values: frequencies / tfidf
+  weights: tfidf
+  # optional threshold, if weights are frequencies. units with less frequencies are discarded. Values: <int>
+  unit_threshold: 15
+  # how the semantic information is combined with the textual one. Values: concat
+  enrichment: concat
 
-# semantic:
-#   name: wordnet
-#   # what is considered as a semantic information
-#   unit: synset
-#   # the form of semantic information to use
-#   # frequencies or tfidf
-#   # semantic_weights: embeddings
-#   weights: tfidf
-#   frequency_threshold: 15
-#   # drop synsets with dataset-wise freq less than this threshold
-#   #semantic_freq_threshold: 15
-#   # how the semantic information is combined with the textual one
-#   enrichment: concat
-#   disambiguation: first
+  # how candidate semantic information units are selected, given a word. Values: first, pos, context_embedding
+  # first: get first retrieved unit
+  # pos: get first that matches the POS tag assigned
+  # context_embedding: select unit by min proximity to precomputed semantic embeddings
+  disambiguation: first
+  # spread semantic unit activation: <maxsteps>, <decay>
+  # maxsteps: number of allowed jumps in the semantic graph. Jump direction is handled within each semantic resource: <int>
+  # decay: decay factor of the weight assigned to each successive step: <float>
+  spreading_activation: [2, 0.8]
 
-  # pos: get the first that matches the POS tag assigned
-  # embedding-centroid, num-threshold: select synset by min proximity to precomputed semantic embeddings
-  # params:
-  # num-threshold: min. number of context words for a synset
-
-  #semantic_disambiguation: context-embedding,25
+  # parameters for context_embeddings disambiguation
+  # how embeddings are combined. Values: avg
   context_aggregation: avg
+  # path to pre-computed context of each semantic unit
   context_file: wordnet_synset_examples_definitions.pickle
+  # context word-wise frequency threshold. semantic units with less context than this are dropped
   context_freq_threshold: 25
 
 # learning model
@@ -57,7 +62,9 @@ embedding:
 # embedding,hiddensize,numlayers
 # dnn or lstm
 learner:
+  # Values: mlp / lstm
   name: lstm
+  # Learner parameters.
   hidden_dim:  25
   layers: 4
   sequence_length: 10

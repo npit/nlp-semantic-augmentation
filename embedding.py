@@ -164,7 +164,7 @@ class Glove(Embedding):
         pass
 
     def handle_preprocessed(self, preprocessed):
-        self.dataset_embeddings, self.words_per_document, _ = preprocessed
+        self.dataset_embeddings, self.words_per_document, self.missing, self.undefined_word_index, self.present_word_indexes = preprocessed
         self.loaded_preprocessed = True
         pass
 
@@ -196,11 +196,13 @@ class Glove(Embedding):
         text_bundles = dset.train, dset.test
         self.dataset_embeddings = []
         self.words_per_document = []
+        self.present_word_indexes = []
         self.vocabulary = dset.vocabulary
         # loop over input text bundles (e.g. train & test)
         for i in range(len(text_bundles)):
             self.dataset_embeddings.append([])
             self.words_per_document.append([])
+            self.present_word_indexes.append([])
             tic()
             info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
             hist = {w: 0 for w in self.words_to_numeric_idx}
@@ -223,6 +225,8 @@ class Glove(Embedding):
 
                 self.words_per_document[-1].append(present_words)
                 self.dataset_embeddings[-1].append(text_embeddings)
+                present_words_doc_idx = [i for i in range(len(word_list)) if word_list[i] in present_words]
+                self.present_word_indexes[-1].append(present_words_doc_idx)
 
             toc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles)))
 
@@ -251,7 +255,10 @@ class Glove(Embedding):
         Embedding.__init__(self)
 
     def get_all_preprocessed(self):
-        return [self.dataset_embeddings, self.words_per_document, self.missing]
+        return [self.dataset_embeddings, self.words_per_document, self.missing, None, self.present_word_indexes]
+
+    def get_present_word_indexes(self):
+        return self.present_word_indexes
 
 
 class Train(Embedding):
@@ -311,7 +318,7 @@ class Train(Embedding):
         return dummy_input
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.dataset_embeddings, self.words, self.missing, self.undefined_word_index = preprocessed
+        self.dataset_embeddings, self.words, self.missing, self.undefined_word_index, _ = preprocessed
 
 
 
