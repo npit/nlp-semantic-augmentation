@@ -5,14 +5,13 @@ dataset:
   # which dataset
   name: 20newsgroups
   # limit the dataset to a number of documents for train / test: <int>
-  limit: 50
 
 # embeddings
 embedding:
   # Which embedding will be used: glove / train
   name: glove
   # Embedding dimension: <int>
-  dimension: 50
+  dimension: 100
   # Sequence length, for embedding training: <int>
   sequence_length: 10
   # aggregation method:
@@ -22,7 +21,8 @@ embedding:
   # -- filter: how to select these NUM items:
   # --- first: just get the first NUM words
   # --- freq: get the first NUM words that are most frequent in the dataset
-  aggregation: [pad, 10, first]
+  #aggregation: [pad, 10, first]
+  aggregation: avg
 
 
 # semantic
@@ -63,19 +63,20 @@ embedding:
 # dnn or lstm
 learner:
   # Values: mlp / lstm
-  name: lstm
+  # name: lstm
+  name: mpl
   # Learner parameters.
-  hidden_dim:  25
-  layers: 4
+  hidden_dim:  1024
+  layers: 2
   sequence_length: 10
 
 
 
 train:
-  epochs: 1
-  folds: 2
+  epochs: 40
+  folds: 5
   validation_portion: 0.1
-  early_stopping_patience: 10
+  early_stopping_patience: 20
   batch_size: 20
 
 log_level: debug
@@ -94,7 +95,7 @@ run_types: [run]
 
 folders:
   # run folder
-  run: run_folder
+  run: glove100_mlp
   # folder to store serialization results
   serialization: "serialization"
   # folder to supply raw data, where applicable

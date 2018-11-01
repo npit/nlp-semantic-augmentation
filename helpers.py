@@ -1,5 +1,5 @@
 import os
-from os.path import join
+from os.path import join, exists
 import logging
 import random
 import yaml
@@ -58,7 +58,11 @@ class Config:
 
     def initialize(self, config_file):
         self.read_config(config_file)
-        os.makedirs(self.run_folder, exist_ok=True)
+        # copy configuration to run folder
+        if not exists(self.run_folder):
+            os.makedirs(self.run_folder, exist_ok=True)
+        shutil.copy(config_file, join(self.run_folder, os.path.basename(config_file)))
+
         self.setup_logging()
         self.setup_seed()
 
@@ -190,8 +194,6 @@ class Config:
             # self.folders.raw_semantics = join(self.folders.raw_data, SemanticResource.dir_name)
 
         self.log_level = self.get_value("log_level", default="info")
-        # copy to run folder
-        shutil.copy(yaml_file, self.run_folder)
         print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
 
 
