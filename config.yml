@@ -1,4 +1,4 @@
-# run identifier
+# run identifier - if not specified will be autogen'd wrt to current datetime
 run_id: "run_name"
 
 dataset:
@@ -26,35 +26,35 @@ embedding:
 
 
 # semantic
-semantic:
-  # which semantic resource will be used. Values: wordnet
-  name: wordnet
-  # what is considered as a semantic information. Values: synset
-  unit: synset
-  # the form of semantic information to use. Values: frequencies / tfidf
-  weights: tfidf
-  # optional threshold, if weights are frequencies. units with less frequencies are discarded. Values: <int>
-  unit_threshold: 15
-  # how the semantic information is combined with the textual one. Values: concat
-  enrichment: concat
-
-  # how candidate semantic information units are selected, given a word. Values: first, pos, context_embedding
-  # first: get first retrieved unit
-  # pos: get first that matches the POS tag assigned
-  # context_embedding: select unit by min proximity to precomputed semantic embeddings
-  disambiguation: first
-  # spread semantic unit activation: <maxsteps>, <decay>
-  # maxsteps: number of allowed jumps in the semantic graph. Jump direction is handled within each semantic resource: <int>
-  # decay: decay factor of the weight assigned to each successive step: <float>
-  spreading_activation: [2, 0.8]
-
-  # parameters for context_embeddings disambiguation
-  # how embeddings are combined. Values: avg
-  context_aggregation: avg
-  # path to pre-computed context of each semantic unit
-  context_file: wordnet_synset_examples_definitions.pickle
-  # context word-wise frequency threshold. semantic units with less context than this are dropped
-  context_freq_threshold: 25
+#  semantic:
+#    # which semantic resource will be used. Values: wordnet
+#    name: wordnet
+#    # what is considered as a semantic information. Values: synset
+#    unit: synset
+#    # the form of semantic information to use. Values: frequencies / tfidf
+#    weights: tfidf
+#    # optional threshold, if weights are frequencies. units with less frequencies are discarded. Values: <int>
+#    unit_threshold: 15
+#    # how the semantic information is combined with the textual one. Values: concat
+#    enrichment: concat
+#  
+#    # how candidate semantic information units are selected, given a word. Values: first, pos, context_embedding
+#    # first: get first retrieved unit
+#    # pos: get first that matches the POS tag assigned
+#    # context_embedding: select unit by min proximity to precomputed semantic embeddings
+#    disambiguation: first
+#    # spread semantic unit activation: <maxsteps>, <decay>
+#    # maxsteps: number of allowed jumps in the semantic graph. Jump direction is handled within each semantic resource: <int>
+#    # decay: decay factor of the weight assigned to each successive step: <float>
+#    spreading_activation: [2, 0.8]
+#  
+#    # parameters for context_embeddings disambiguation
+#    # how embeddings are combined. Values: avg
+#    context_aggregation: avg
+#    # path to pre-computed context of each semantic unit
+#    context_file: wordnet_synset_examples_definitions.pickle
+#    # context word-wise frequency threshold. semantic units with less context than this are dropped
+#    context_freq_threshold: 25
 
 # learning model
 # dnn,hiddensize,numlayers
@@ -70,18 +70,32 @@ learner:
   sequence_length: 10
 
 
+
 train:
   epochs: 1
-  folds: 1
+  folds: 2
   validation_portion: 0.1
-  early_stopping_patience: -1
+  early_stopping_patience: 10
   batch_size: 20
 
 log_level: debug
 
+# evaluation metrics: f1, accuracy, precision, recall
+metrics: ["f1"]
+
+# evaluation metric aggregations: macro, micro, weighted
+metric_aggregations: ["macro", "micro"]
+
+# which run type is of interest
+# run: the actual run you are evaluating
+# majority: a majority classifier baseline
+# random: a random classifier baseline
+run_types: [run]
+
 folders:
-  log: "logs"
-  results: "results"
+  # run folder
+  run: run_folder
+  # folder to store serialization results
   serialization: "serialization"
-  embeddings: "embeddings"
-  semantic: "semantic"
+  # folder to supply raw data, where applicable
+  raw_data: raw_data

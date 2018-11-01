@@ -1,9 +1,14 @@
 import os
+from os.path import join
 import logging
 import random
 import yaml
 import utils
 from utils import need
+
+# from embeddings import Embedding
+# from datasets import Dataset
+# from semantic import SemanticResource
 
 
 class Config:
@@ -32,6 +37,8 @@ class Config:
         hidden_dim = None
         num_layers = None
         sequence_length = None
+        def to_str():
+            return "{} {} {} {}".format(Config.learner.name, Config.learner.hidden_dim, Config.learner.num_layers, Config.learner.sequence_length)
 
     class folders:
         results = None
@@ -49,10 +56,8 @@ class Config:
         return self.run_id
 
     def initialize(self, config_file):
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
-
         self.read_config(config_file)
+        os.makedirs(self.run_folder, exist_ok=True)
         self.setup_logging()
         self.setup_seed()
 
@@ -80,7 +85,7 @@ class Config:
         logger.addHandler(handler)
 
         # file handler
-        logfile = os.path.join(self.log_dir, "log_{}.txt".format(self.run_id))
+        logfile = os.path.join(self.run_folder, "log_{}.log".format(self.run_id))
         fhandler = logging.FileHandler(logfile)
         fhandler.setLevel(lvl)
         fhandler.setFormatter(formatter)
@@ -167,21 +172,25 @@ class Config:
         training_opts = self.conf["train"]
         self.train.epochs = training_opts["epochs"]
         self.train.folds = training_opts["folds"]
-        self.train.validation_portion = self.get_value("validation_portion", default = 0.1, base=training_opts)
+        self.train.validation_portion = self.get_value("validation_portion", default=0.1, base=training_opts)
         self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=training_opts)
         self.train.batch_size = training_opts["batch_size"]
 
         if self.has_value("folders"):
             folder_opts = self.conf["folders"]
-            self.folders.logs = self.get_value("logs", base=folder_opts, default="logs")
-            self.folders.results = self.get_value("results", base=folder_opts, default="results")
+            self.run_folder = folder_opts["run"]
+            self.folders.results = join(self.run_folder, "results")
             self.folders.serialization = self.get_value("serialization", base=folder_opts, default="serialization")
-            self.folders.embeddings = self.get_value("embeddings", base=folder_opts, default="embeddings")
-            self.folders.semantic = self.get_value("semantic", base=folder_opts, default="semantic")
+            self.folders.raw_data = self.get_value("raw_data", base=folder_opts, default="raw_data")
+
+            # # raw data subfolders
+            # self.folders.raw_datasets = join(self.folders.raw_data, Dataset.dir_name)
+            # self.folders.raw_embeddings = join(self.folders.raw_data, Embedding.dir_name)
+            # self.folders.raw_semantics = join(self.folders.raw_data, SemanticResource.dir_name)
 
         self.log_level = self.get_value("log_level", default="info")
-
         print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
+
 
     # configuration entry getters
     def get_serialization_dir(self):

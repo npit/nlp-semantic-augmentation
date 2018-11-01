@@ -10,10 +10,10 @@ from nltk.corpus import wordnet as wn
 
 
 class SemanticResource(Serializable):
-    serialization_subdir = "semantic"
+    dir_name = "semantic"
 
     def __init__(self, config):
-        Serializable.__init__(self, join(config.folders.serialization, self.serialization_subdir))
+        Serializable.__init__(self, self.dir_name)
 
     def create(config):
         name = config.semantic.name
@@ -24,9 +24,8 @@ class SemanticResource(Serializable):
     pass
 
 
-    name = "wordnet"
 class Wordnet(SemanticResource):
-    serialization_dir = "serializations/semantic_data"
+
     word_synset_lookup_cache = {}
     word_synset_embedding_cache = {}
 
@@ -36,24 +35,20 @@ class Wordnet(SemanticResource):
     dataset_minmax_freqs = []
     assignments = {}
     synset_context_word_threshold = None
+    name = "wordnet"
 
     reference_synsets = None
 
     def __init__(self, config):
-        SemanticResource.__init__(self, config)
         self.config = config
-
         self.base_name = self.name
+        SemanticResource.__init__(self, config)
 
-        self.serialization_dir = join(config.folders.serialization, "semantic_data")
-        if not exists(self.serialization_dir):
-            makedirs(self.serialization_dir, exist_ok=True)
         self.semantic_freq_threshold = config.semantic.frequency_threshold
         self.semantic_weights = config.semantic.weights
         self.semantic_unit = config.semantic.unit
         self.disambiguation = config.semantic.disambiguation
         self.spreading_activation = config.semantic.spreading_activation
-
         self.dataset_name = config.dataset.name
         if config.dataset.limit:
             self.dataset_name += "_{}".format(config.dataset.limit)
@@ -97,7 +92,6 @@ class Wordnet(SemanticResource):
 
         # load if existing
         self.acquire2(fatal_error=False)
-
 
 
     def fetch_raw(self, dummy_input):

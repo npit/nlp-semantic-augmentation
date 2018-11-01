@@ -21,7 +21,7 @@ class Dataset(Serializable):
     vocabulary_index = []
     word_to_index = {}
     limited_name = ""
-    serialization_subdir = "datasets"
+    dir_name = "datasets"
     undefined_word_index = None
     preprocessed = False
     train, test = None, None
@@ -41,9 +41,7 @@ class Dataset(Serializable):
 
     # dataset creation
     def __init__(self):
-        self.serialization_dir = join(self.config.folders.serialization, self.serialization_subdir)
-        Serializable.__init__(self, self.serialization_dir)
-
+        Serializable.__init__(self, self.dir_name)
         self.set_serialization_params()
 
         # check for limited dataset

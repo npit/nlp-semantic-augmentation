@@ -1,5 +1,5 @@
 from utils import error, read_pickled, write_pickled, info, debug
-from os.path import exists, isfile
+from os.path import exists, isfile, join
 from os import makedirs
 
 
@@ -19,8 +19,9 @@ class Serializable:
     # load flags
     load_flags = []
 
-    def __init__(self, serialization_dir):
-        self.serialization_dir = serialization_dir
+    def __init__(self, dir_name):
+        self.serialization_dir = join(self.config.folders.serialization, dir_name)
+        self.raw_data_dir = join(self.config.folders.raw_data, dir_name)
 
     def set_serialization_params(self):
         # setup paths

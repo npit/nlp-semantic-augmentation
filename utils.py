@@ -61,7 +61,6 @@ def write_pickled(path, data):
     with open(path, "wb") as f:
         pickle.dump(data, f)
 
-
 # object to store times for tic-tocs
 class Timer:
     times = []

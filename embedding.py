@@ -11,7 +11,7 @@ from serializable import Serializable
 
 class Embedding(Serializable):
     name = ""
-    serialization_subdir = "embeddings"
+    dir_name = "embeddings"
     words = []
     dataset_embeddings = None
     embeddings = None
@@ -44,8 +44,7 @@ class Embedding(Serializable):
         pass
     def __init__(self, can_fail_loading=False):
         self.set_params()
-        self.serialization_dir = join(self.config.folders.serialization, self.serialization_subdir)
-        Serializable.__init__(self, self.serialization_dir)
+        Serializable.__init__(self, self.dir_name)
         # check for serialized mapped data
         self.set_serialization_params()
         self.acquire2(fatal_error=not can_fail_loading)
@@ -173,7 +172,7 @@ class Glove(Embedding):
         pass
 
     def fetch_raw(self, dummy_input):
-        raw_data_path = os.path.join("{}/glove.6B.{}d.txt".format(join(self.config.folders.embeddings), self.embedding_dim))
+        raw_data_path = os.path.join("{}/glove.6B.{}d.txt".format(join(self.raw_data_dir), self.embedding_dim))
 
         if os.path.exists(raw_data_path):
             info("Reading raw embedding data from {}".format(raw_data_path))
