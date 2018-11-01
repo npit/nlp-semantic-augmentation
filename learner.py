@@ -119,9 +119,9 @@ class DNN:
 
     def make(self, embedding, targets, num_labels):
         if embedding.base_name == "train":
-            info("Will train embeddings.")
             self.do_train_embeddings = True
             self.embedding_dim = embedding.get_dim()
+            info("Will train {}-dimensional embeddings.".format(self.embedding_dim))
             self.final_dim = embedding.get_final_dim()
             self.vocabulary_size = embedding.get_vocabulary_size()
             emb_seqlen = embedding.sequence_length

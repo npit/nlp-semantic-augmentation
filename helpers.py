@@ -5,6 +5,7 @@ import random
 import yaml
 import utils
 from utils import need
+import shutil
 
 # from embeddings import Embedding
 # from datasets import Dataset
@@ -189,6 +190,8 @@ class Config:
             # self.folders.raw_semantics = join(self.folders.raw_data, SemanticResource.dir_name)
 
         self.log_level = self.get_value("log_level", default="info")
+        # copy to run folder
+        shutil.copy(yaml_file, self.run_folder)
         print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
 
 

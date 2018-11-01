@@ -38,6 +38,9 @@ class Embedding(Serializable):
         self.base_name = self.name
         if self.config.dataset.limit:
             self.dataset_name += "_limit{}".format(self.config.dataset.limit)
+        self.set_name()
+
+    def set_name(self):
         self.name = "{}_{}_dim{}".format(self.base_name, self.dataset_name, self.embedding_dim)
 
     def set_raw_data_path(self):
@@ -268,6 +271,11 @@ class Train(Embedding):
         self.sequence_length = config.embedding.sequence_length
         Embedding.__init__(self, can_fail_loading=True)
 
+    
+    # embedding training data (e.g. word indexes) does not depend on embedding dimension
+    # so naming is overriden to omit embedding dimension
+    def set_name(self):
+        self.name = "{}_{}".format(self.base_name, self.dataset_name)
 
     # transform input texts to embeddings
     def map_text(self, dset):
