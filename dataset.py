@@ -38,7 +38,6 @@ class Dataset(Serializable):
             error("Undefined dataset: {}".format(name))
 
 
-
     # dataset creation
     def __init__(self):
         Serializable.__init__(self, self.dir_name)
@@ -58,8 +57,9 @@ class Dataset(Serializable):
             res = self.acquire2()
             self.loaded_index = self.load_flags.index(True)
         # limit, if applicable
-        self.apply_limit()
-        self.preprocess()
+        if not self.loaded_preprocessed:
+            self.apply_limit()
+            self.preprocess()
 
 
     def handle_preprocessed(self, preprocessed):
@@ -69,10 +69,10 @@ class Dataset(Serializable):
         self.vocabulary, self.vocabulary_index, self.undefined_word_index, self.pos_tags = preprocessed
 
         self.num_labels = len(self.train_label_names)
-        self.preprocessed = True
         for index, word in enumerate(self.vocabulary):
             self.word_to_index[word] = index
-        info("Loaded {} train and {} test data, with {} labels".format(len(self.train), len(self.test), self.num_labels))
+        info("Loaded preprocessed data: {} train, {} test, with {} labels".format(len(self.train), len(self.test), self.num_labels))
+        self.loaded_preprocessed = True
 
     def suspend_limit(self):
         self.name = self.base_name
@@ -126,6 +126,7 @@ class Dataset(Serializable):
         except LookupError:
             nltk.download('averaged_perceptron_tagger')
 
+
     # map text string into list of stopword-filtered words and POS tags
     def process_single_text(self, text, filt, stopwords):
         words = text_to_word_sequence(text, filters=filt, lower=True, split=' ')
@@ -149,7 +150,7 @@ class Dataset(Serializable):
 
     # preprocess raw texts into word list
     def preprocess(self):
-        if self.preprocessed:
+        if self.loaded_preprocessed:
             info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
             return
         self.setup_nltk_resources()
@@ -212,20 +213,25 @@ class TwentyNewsGroups(Dataset):
         return [train, test]
 
     def handle_raw(self, raw_data):
-        write_pickled(self.serialization_path, raw_data)
-        self.handle_raw_serialized(raw_data)
-
-    def handle_raw_serialized(self, deserialized_data):
-        train, test = deserialized_data
 
         # results are sklearn bunches
-        info("Got {} and {} train / test samples".format(len(train.data), len(test.data)))
         # map to train/test/categories
+        train, test = raw_data
+        info("Got {} and {} train / test samples".format(len(train.data), len(test.data)))
         self.train, self.test = train.data, test.data
         self.train_target, self.test_target = train.target, test.target
         self.train_label_names = train.target_names
         self.test_label_names = test.target_names
         self.num_labels = len(self.train_label_names)
+        # write serialized data
+        write_pickled(self.serialization_path, self.get_all_raw())
+        self.loaded_raw = True
+
+    def handle_raw_serialized(self, deserialized_data):
+        self.train, self.train_target, self.train_label_names, \
+            self.test, self.test_target, self.test_label_names  = deserialized_data
+        self.loaded_raw_serialized = True
+
 
 
     def __init__(self, config):
@@ -237,7 +243,6 @@ class TwentyNewsGroups(Dataset):
     def get_raw_path(self):
         # dataset is downloadable
         pass
-
 
 
 class Brown:
@@ -287,18 +292,18 @@ class Reuters(Dataset):
         self.test_label_names = list(self.test_label_names)
         self.train_target = np.asarray(self.train_target, np.int32)
         self.test_target = np.asarray(self.train_target, np.int32)
-
         return self.get_all_raw()
 
     def handle_raw(self, raw_data):
         # serialize
         write_pickled(self.serialization_path, raw_data)
+        self.loaded_raw = True
         pass
 
     def handle_raw_serialized(self, raw_serialized):
         self.train, self.train_target, self.test, self.test_target, \
         self.num_labels, self.train_label_names, self.test_label_names = raw_serialized
-        pass
+        self.loaded_raw_serialized = True
 
     # raw path setter
     def get_raw_path(self):

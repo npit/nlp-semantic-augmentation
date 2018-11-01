@@ -168,11 +168,9 @@ class Glove(Embedding):
     def handle_preprocessed(self, preprocessed):
         self.dataset_embeddings, self.words_per_document, self.missing, self.undefined_word_index, self.present_word_indexes = preprocessed
         self.loaded_preprocessed = True
-        pass
 
     def handle_raw(self, raw_data):
         self.handle_raw_serialized(raw_data)
-        pass
 
     def fetch_raw(self, dummy_input):
         raw_data_path = os.path.join("{}/glove.6B.{}d.txt".format(join(self.raw_data_dir), self.embedding_dim))

@@ -39,15 +39,22 @@ class Wordnet(SemanticResource):
 
     reference_synsets = None
 
+    pos_tag_mapping = {}
+
     def __init__(self, config):
         self.config = config
         self.base_name = self.name
         SemanticResource.__init__(self, config)
 
+        # map nltk pos maps into meaningful wordnet ones
+        self.pos_tag_mapping = {"VB": wn.VERB, "NN": wn.NOUN, "JJ": wn.ADJ, "RB": wn.ADV}
+        # ignore these
+        for p in ["IN"]: self.pos_tag_mapping[p] = "ingore"
+
         self.semantic_freq_threshold = config.semantic.frequency_threshold
         self.semantic_weights = config.semantic.weights
         self.semantic_unit = config.semantic.unit
-        self.disambiguation = config.semantic.disambiguation
+        self.disambiguation = config.semantic.disambiguation.lower()
         self.spreading_activation = config.semantic.spreading_activation
         self.dataset_name = config.dataset.name
         if config.dataset.limit:
@@ -102,7 +109,7 @@ class Wordnet(SemanticResource):
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets, self.present_word_indexes = preprocessed
+        self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets = preprocessed
 
     def handle_raw_serialized(self, raw_serialized):
         pass
@@ -211,18 +218,31 @@ class Wordnet(SemanticResource):
 
 
     # apply disambiguation to choose a single semantic unit from a collection of such
-    def disambiguate(self, synsets, word_information):
-        if self.disambiguation == "first":
-            res =  synsets[0]._name
-        elif self.disambiguation == 'POS':
-            # part-of-speech filtering
+    def disambiguate(self, synsets, word_information, override=None):
+        disam = self.disambiguation if not override else override
+        if disam == "first":
+            return synsets[0]._name
+        elif disam == 'pos':
+            # take part-of-speech tags into account
             word, word_pos = word_information
-            pass
-        elif self.disambiguation == 'embedding-centroid':
+            word_pos = word_pos[:2]
+            # if not exist, revert to first
+            if word_pos is None:
+                return self.disambiguate(synsets, word_information, override="first")
+            if word_pos not in self.pos_tag_mapping:
+                warning("{} pos unhandled.".format(word_information))
+                return self.disambiguate(synsets, word_information, override="first")
+            # if encountered matching pos, get it.
+            for synset in synsets:
+                if synset._pos == self.pos_tag_mapping[word_pos]:
+                    return synset._name
+            # no pos match, revert to first
+            return self.disambiguate(synsets, word_information, override="first")
+        elif disam == 'embedding-centroid':
             # generate closest synset embeddings
             # assign to closest embedding
             pass
-        elif self.disambiguation == "prior":
+        elif disam == "prior":
             # select the synset with the highest prior prob
             pass
         else:
@@ -230,8 +250,8 @@ class Wordnet(SemanticResource):
 
 
     def get_synset_from_context_embeddings(self, word):
-        word_embedding = self.embbedings.get_embeddings(word)
-        self.embeddings.get_nearest_embedding(word_embedding)
+        word_embedding = self.embbeding.get_embeddings(word)
+        self.embedding.get_nearest_embedding(word_embedding)
 
     # generate semantic embeddings from words associated with an synset
     def compute_semantic_embeddings(self):
@@ -293,7 +313,7 @@ class Wordnet(SemanticResource):
         info("Semantic mapping completed.")
 
     def get_all_preprocessed(self):
-        return [self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets, self.present_word_indexes]
+        return [self.assignments, self.synset_freqs, self.dataset_freqs, self.synset_tfidf_freqs, self.reference_synsets]
 
     def get_raw_path(self):
         return None

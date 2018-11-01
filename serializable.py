@@ -8,7 +8,7 @@ class Serializable:
     base_name = None
     serialization_dir = None
     loaded_raw = False
-    loaded_raw_preprocessed = False
+    loaded_raw_serialized = False
     loaded_preprocessed = False
     # paths from where to load data, in priority order
     data_paths = []
