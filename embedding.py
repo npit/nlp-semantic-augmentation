@@ -110,12 +110,13 @@ class Embedding(Serializable):
             if self.config.embedding.name == "train":
                 error("Semantic enrichment undefined for embedding training, for now.")
             info("Enriching {} embeddings with semantic information.".format(self.config.embedding.name))
+
             if self.config.semantic.enrichment == "concat":
                 composite_dim = self.embedding_dim + len(semantic_data[0][0])
                 self.final_dim = composite_dim
                 for dset_idx in range(len(semantic_data)):
-                    info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx+1, len(semantic_data), composite_dim))
-                    new_dset_embeddings = np.ndarray((0, composite_dim), np.float32)
+                    info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx+1, len(semantic_data), self.final_dim))
+                    new_dset_embeddings = np.ndarray((0, self.final_dim), np.float32)
                     for doc_idx in range(len(semantic_data[dset_idx])):
                         debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
                         embeddings = self.dataset_embeddings[dset_idx][doc_idx]
@@ -127,6 +128,24 @@ class Embedding(Serializable):
                         else:
                             new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors])])
                     self.dataset_embeddings[dset_idx] = new_dset_embeddings
+
+            elif self.config.semantic.enrichment == "replace":
+                self.final_dim = len(semantic_data[0][0])
+                for dset_idx in range(len(semantic_data)):
+                    info("Replacing dataset part {}/{} with semantic info of dimension: {}".format(dset_idx+1, len(semantic_data), self.final_dim))
+                    new_dset_embeddings = np.ndarray((0, self.final_dim), np.float32)
+                    for doc_idx in range(len(semantic_data[dset_idx])):
+                        debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
+                        embeddings = self.dataset_embeddings[dset_idx][doc_idx]
+                        sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
+                        if embeddings.ndim > 1:
+                            # tile sem. vectors
+                            sem_vectors = np.tile(sem_vectors, (len(embeddings), 1))
+                            new_dset_embeddings = np.vstack([new_dset_embeddings, sem_vectors])
+                        else:
+                            new_dset_embeddings = np.vstack([new_dset_embeddings, sem_vectors])
+                    self.dataset_embeddings[dset_idx] = new_dset_embeddings
+
             else:
                 error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
         else:

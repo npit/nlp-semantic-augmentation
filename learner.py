@@ -371,9 +371,6 @@ class MLP(DNN):
     name = "mlp"
     def __init__(self, config):
         self.config = config
-        DNN.__init__(self)
-
-        self.config = config
         self.hidden = self.config.learner.hidden_dim
         self.layers = self.config.learner.num_layers
         self.sequence_length = self.config.learner.sequence_length

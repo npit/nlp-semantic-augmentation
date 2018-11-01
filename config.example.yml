@@ -34,8 +34,8 @@ semantic:
   weights: tfidf
   # optional threshold, if weights are frequencies. units with less frequencies are discarded. Values: <int>
   unit_threshold: 15
-  # how the semantic information is combined with the textual one. Values: concat
-  enrichment: concat
+  # how the semantic information is combined with the textual one. Values: concat, replace
+  enrichment: replace
 
   # how candidate semantic information units are selected, given a word. Values: first, pos, context_embedding
   # first: get first retrieved unit
