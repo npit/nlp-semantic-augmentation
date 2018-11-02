@@ -29,6 +29,7 @@ class DNN:
     run_types = ['random', 'majority', 'run']
     measures = ["precision", "recall", "f1-score", "accuracy"]
     classwise_aggregations = ["macro", "micro", "classwise", "weighted"]
+    stats = ["mean", "var", "std", "folds"]
     sequence_length = None
 
 
@@ -51,12 +52,18 @@ class DNN:
                 self.performance[run_type][measure] = {}
                 for aggr in self.classwise_aggregations:
                     self.performance[run_type][measure][aggr] = {}
-                    for stat in ["mean", "var", "stdev"]:
+                    for stat in self.stats:
                         self.performance[run_type][measure][aggr][stat] = None
                     self.performance[run_type][measure][aggr]["folds"] = []
             # remove undefined combos
             for aggr in [x for x in self.classwise_aggregations if x not in ["macro", "classwise"]]:
                 del self.performance[run_type]["accuracy"][aggr]
+
+        # pritn only these, from config
+        self.preferred_types = self.config.print.run_types if self.config.print.run_types else self.run_types
+        self.preferred_measures = self.config.print.measures if self.config.print.measures else self.measures
+        self.preferred_aggregations = self.config.print.aggregations if self.config.print.aggregations else self.classwise_aggregations
+        self.preferred_stats = self.stats
 
 
     # aggregated evaluation measure function shortcuts
@@ -228,16 +235,15 @@ class DNN:
             toc("Fold #{}/{} training/testing".format(fold_index+1, self.folds))
         toc("Total training/testing")
         # report results across folds
-        self.report()
+        self.report_across_folds()
 
     # print performance across folds
-    def report(self):
+    def report_across_folds(self):
         info("==============================")
         info("Mean / var / std performance across all {} folds:".format(self.folds))
-        res = {}
-        for type in self.run_types:
-            for measure in self.measures:
-                for aggr in self.classwise_aggregations:
+        for type in self.preferred_types:
+            for measure in self.preferred_measures:
+                for aggr in self.preferred_aggregations:
                     if aggr not in self.performance[type][measure] or aggr == "classwise":
                         continue
                     container = self.performance[type][measure][aggr]
@@ -363,10 +369,10 @@ class DNN:
     # print performance of the latest run
     def print_performance(self, fold_index=0):
         info("---------------")
-        for type in self.run_types:
+        for type in self.preferred_types:
             info("{} performance:".format(type))
-            for measure in self.measures:
-                for aggr in self.classwise_aggregations:
+            for measure in self.preferred_measures:
+                for aggr in self.preferred_aggregations:
                     # don't print classwise results or unedfined aggregations
                     if aggr not in self.performance[type][measure] or aggr == "classwise":
                         continue

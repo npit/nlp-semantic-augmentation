@@ -25,6 +25,8 @@ class Config:
         name = None
         limit = None
 
+    class print:
+        pass
     class embedding:
         dimension = None
 
@@ -194,6 +196,11 @@ class Config:
             # self.folders.raw_datasets = join(self.folders.raw_data, Dataset.dir_name)
             # self.folders.raw_embeddings = join(self.folders.raw_data, Embedding.dir_name)
             # self.folders.raw_semantics = join(self.folders.raw_data, SemanticResource.dir_name)
+        if self.has_value("print"):
+            print_opts = self.conf['print']
+            self.print.run_types = self.get_value("run_types", base=print_opts)
+            self.print.measures = self.get_value("measures", base=print_opts)
+            self.print.aggregations = self.get_value("aggregations", base=print_opts)
 
         self.log_level = self.get_value("log_level", default="info")
         print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
