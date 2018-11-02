@@ -230,6 +230,7 @@ class TwentyNewsGroups(Dataset):
     def handle_raw_serialized(self, deserialized_data):
         self.train, self.train_target, self.train_label_names, \
             self.test, self.test_target, self.test_label_names  = deserialized_data
+        self.num_labels = len(set(self.train_label_names))
         self.loaded_raw_serialized = True
 
 

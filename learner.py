@@ -20,7 +20,6 @@ import gc
 
 from utils import info, debug, tic, toc, error, write_pickled
 
-
 class DNN:
     save_dir = "models"
     folds = None
@@ -174,9 +173,10 @@ class DNN:
         tic()
         info("Training {} with input data: {} with a {} validation portion.".format(self.name, len(self.train), self.validation_portion))
         model = self.get_model()
-        print("Inputs:", model.inputs)
-        model.summary()
-        print("Outputs:", model.outputs)
+        if self.config.is_debug():
+            print("Inputs:", model.inputs)
+            model.summary()
+            print("Outputs:", model.outputs)
 
         train_y_onehot = to_categorical(self.train_labels, num_classes = self.num_labels)
 
@@ -218,9 +218,10 @@ class DNN:
             # train
             gc.collect()
             model = self.get_model()
-            print("Inputs:", model.inputs)
-            model.summary()
-            print("Outputs:", model.outputs)
+            if self.config.is_debug():
+                print("Inputs:", model.inputs)
+                model.summary()
+                print("Outputs:", model.outputs)
             #print(val_x, val_y)
             info("Trainig fold {}/{}".format(fold_index + 1, self.folds))
             history = model.fit(train_x, train_y_onehot,
@@ -231,7 +232,7 @@ class DNN:
                                 callbacks = self.get_callbacks(fold_index))
 
             self.report_early_stopping()
-            self.do_test(model, print_results=self.config.is_debug(), fold_index=fold_index)
+            self.do_test(model, print_results=self.config.print.folds, fold_index=fold_index)
             toc("Fold #{}/{} training/testing".format(fold_index+1, self.folds))
         toc("Total training/testing")
         # report results across folds
@@ -241,18 +242,21 @@ class DNN:
     def report_across_folds(self):
         info("==============================")
         info("Mean / var / std performance across all {} folds:".format(self.folds))
-        for type in self.preferred_types:
-            for measure in self.preferred_measures:
-                for aggr in self.preferred_aggregations:
+        for type in self.run_types:
+            for measure in self.measures:
+                for aggr in self.classwise_aggregations:
                     if aggr not in self.performance[type][measure] or aggr == "classwise":
                         continue
                     container = self.performance[type][measure][aggr]
                     if not container:
                         continue
+                    #print(type, measure, aggr, container)
                     mean_perf = np.mean(container["folds"])
                     var_perf = np.var(container["folds"])
                     std_perf = np.std(container["folds"])
-                    info("{:10} {:10} {:10} : {:.3f} {:.3f} {:.3f}".format(type, aggr, measure, mean_perf, var_perf, std_perf))
+                    # print, if it's prefered
+                    if all([ type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
+                        info("{:10} {:10} {:10} : {:.3f} {:.3f} {:.3f}".format(type, aggr, measure, mean_perf, var_perf, std_perf))
                     # add fold-aggregating performance information
                     self.performance[type][measure][aggr]["mean"] = mean_perf
                     self.performance[type][measure][aggr]["var"] = var_perf
@@ -301,6 +305,7 @@ class DNN:
     # fold generator function
     def get_fold_indexes(self):
         if len(self.train) != len(self.train_labels):
+            # multi-vector samples
             return self.get_fold_indexes_sequence()
         else:
             skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)

@@ -201,6 +201,7 @@ class Config:
             self.print.run_types = self.get_value("run_types", base=print_opts)
             self.print.measures = self.get_value("measures", base=print_opts)
             self.print.aggregations = self.get_value("aggregations", base=print_opts)
+            self.print.folds = self.get_value("folds", base=print_opts, default=False)
 
         self.log_level = self.get_value("log_level", default="info")
         print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
