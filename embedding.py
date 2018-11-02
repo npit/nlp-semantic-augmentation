@@ -36,6 +36,7 @@ class Embedding(Serializable):
         self.dataset_name = self.config.dataset.name
         self.aggregation = self.config.embedding.aggregation
         self.base_name = self.name
+        self.sequence_length = self.config.embedding.sequence_length
         if self.config.dataset.limit:
             self.dataset_name += "_limit{}".format(self.config.dataset.limit)
         self.set_name()
@@ -86,7 +87,8 @@ class Embedding(Serializable):
                 self.dataset_embeddings[dset_idx] = np.concatenate(aggregated_doc_vectors).reshape(
                     len(aggregated_doc_vectors), self.embedding_dim)
         elif self.aggregation[0] == "pad":
-            num, filter = self.aggregation[1:]
+            num = self.sequence_length
+            filter = self.aggregation[1]
             info("Aggregation with pad params: {} {}".format(num, filter))
             self.vectors_per_document = num
             zero_pad = self.get_zero_pad_element()
@@ -285,7 +287,6 @@ class Train(Embedding):
 
     def __init__(self, config):
         self.config = config
-        self.sequence_length = config.embedding.sequence_length
         Embedding.__init__(self, can_fail_loading=True)
 
     

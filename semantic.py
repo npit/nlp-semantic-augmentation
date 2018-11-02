@@ -221,7 +221,7 @@ class Wordnet(SemanticResource):
     def disambiguate(self, synsets, word_information, override=None):
         disam = self.disambiguation if not override else override
         if disam == "first":
-            return synsets[0]._name
+            return synsets[0]
         elif disam == 'pos':
             # take part-of-speech tags into account
             word, word_pos = word_information
@@ -235,7 +235,7 @@ class Wordnet(SemanticResource):
             # if encountered matching pos, get it.
             for synset in synsets:
                 if synset._pos == self.pos_tag_mapping[word_pos]:
-                    return synset._name
+                    return synset
             # no pos match, revert to first
             return self.disambiguate(synsets, word_information, override="first")
         elif disam == 'embedding-centroid':

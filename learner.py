@@ -91,9 +91,10 @@ class DNN:
         logs_folder = self.results_folder
         [os.makedirs(x, exist_ok=True) for x in  [self.results_folder, models_folder, logs_folder]]
 
-        # model saving with early stopping
-        model_path = os.path.join(models_folder,"{}_fold_{}".format(self.name, fold_index))
-        self.model_saver =callbacks.ModelCheckpoint(model_path, monitor='val_loss', verbose=0,
+        # model saving with early stoppingtch_si
+        self.model_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, fold_index))
+        weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
+        self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
                                                    save_best_only=True, save_weights_only=False,
                                                    mode='auto', period=1)
         self.callbacks.append(self.model_saver)
@@ -111,7 +112,7 @@ class DNN:
                                                           min_delta=0.0001, cooldown=0, min_lr=0)
         self.callbacks.append(self.lr_reducer)
         # logging
-        log_file = os.path.join(logs_folder,"{}_fold_{}.log".format(self.name, fold_index))
+        log_file = os.path.join(logs_folder,"{}_fold_{}.csv".format(self.name, fold_index))
         self.csv_logger = callbacks.CSVLogger(log_file, separator=',', append=False)
         self.callbacks.append(self.csv_logger)
 
@@ -152,7 +153,7 @@ class DNN:
     def report_early_stopping(self):
         if self.early_stopping_patience:
             info("Stopped on epoch {}/{}".format(self.early_stopping.stopped_epoch+1, self.epochs))
-            write_pickled(self.model_saver.filepath + ".early_stopping", self.early_stopping.stopped_epoch)
+            write_pickled(self.model_path + ".early_stopping", self.early_stopping.stopped_epoch)
 
     # train without cross-validation
     def train_model(self):
@@ -176,8 +177,6 @@ class DNN:
 
         self.report_early_stopping()
         self.do_test(model, print_results=True)
-        history_path = self.model_saver.filepath + ".history"
-        write_pickled(history_path, history)
         toc("Training")
         return model
 
@@ -218,8 +217,6 @@ class DNN:
                                 callbacks = self.get_callbacks(fold_index))
 
             self.report_early_stopping()
-            history_path = self.model_saver.filepath + ".history"
-            write_pickled(history_path, history)
             self.do_test(model, print_results=self.config.is_debug())
             toc("Fold #{}/{} training/testing".format(fold_index + 1, self.folds))
         toc("Total training/testing")
