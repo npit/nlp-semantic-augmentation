@@ -28,7 +28,7 @@ class DNN:
     cw_performance = {}
     run_types = ['random', 'majority', 'run']
     measures = ["precision", "recall", "f1-score", "accuracy"]
-    measure_aggregations = ["macro", "micro", "classwise", "weighted"]
+    classwise_aggregations = ["macro", "micro", "classwise", "weighted"]
     sequence_length = None
 
 
@@ -45,12 +45,19 @@ class DNN:
 
     def __init__(self):
         info("Creating learner: {}".format(self.config.learner.to_str()))
-        for x in self.run_types:
-            self.performance[x] = {}
+        for run_type in self.run_types:
+            self.performance[run_type] = {}
             for measure in self.measures:
-                self.performance[x][measure] = {}
-                for aggr in self.measure_aggregations:
-                    self.performance[x][measure][aggr] = []
+                self.performance[run_type][measure] = {}
+                for aggr in self.classwise_aggregations:
+                    self.performance[run_type][measure][aggr] = {}
+                    for stat in ["mean", "var", "stdev"]:
+                        self.performance[run_type][measure][aggr][stat] = None
+                    self.performance[run_type][measure][aggr]["folds"] = []
+            # remove undefined combos
+            for aggr in [x for x in self.classwise_aggregations if x not in ["macro", "classwise"]]:
+                del self.performance[run_type]["accuracy"][aggr]
+
 
     # aggregated evaluation measure function shortcuts
     def get_pre_rec_f1(self, preds, metric, gt=None):
@@ -217,8 +224,8 @@ class DNN:
                                 callbacks = self.get_callbacks(fold_index))
 
             self.report_early_stopping()
-            self.do_test(model, print_results=self.config.is_debug())
-            toc("Fold #{}/{} training/testing".format(fold_index + 1, self.folds))
+            self.do_test(model, print_results=self.config.is_debug(), fold_index=fold_index)
+            toc("Fold #{}/{} training/testing".format(fold_index+1, self.folds))
         toc("Total training/testing")
         # report results across folds
         self.report()
@@ -230,17 +237,20 @@ class DNN:
         res = {}
         for type in self.run_types:
             for measure in self.measures:
-                for aggr in self.measure_aggregations:
+                for aggr in self.classwise_aggregations:
                     if aggr not in self.performance[type][measure] or aggr == "classwise":
                         continue
                     container = self.performance[type][measure][aggr]
                     if not container:
                         continue
-                    mean_perf = np.mean(container)
-                    var_perf = np.var(container)
-                    std_perf = np.std(container)
+                    mean_perf = np.mean(container["folds"])
+                    var_perf = np.var(container["folds"])
+                    std_perf = np.std(container["folds"])
                     info("{:10} {:10} {:10} : {:.3f} {:.3f} {:.3f}".format(type, aggr, measure, mean_perf, var_perf, std_perf))
-                    self.performance[type][measure][aggr].append([mean_perf, var_perf, std_perf])
+                    # add fold-aggregating performance information
+                    self.performance[type][measure][aggr]["mean"] = mean_perf
+                    self.performance[type][measure][aggr]["var"] = var_perf
+                    self.performance[type][measure][aggr]["std"] = std_perf
         # write the results in csv in the results directory
         # entries in a run_type - measure configuration list are the foldwise scores, followed by the mean
         df = pd.DataFrame.from_dict(self.performance)
@@ -249,7 +259,7 @@ class DNN:
             pickle.dump(df, f)
 
 
-    def do_test(self, model, print_results=False):
+    def do_test(self, model, print_results=False, fold_index=0):
         if self.folds > 1:
             test_data, _ = self.get_fold_data(self.test)
         else:
@@ -260,7 +270,7 @@ class DNN:
         self.compute_performance(predictions_amax)
         if print_results:
             info("Test results:")
-            self.print_performance()
+            self.print_performance(fold_index)
 
     # get fold data
     def get_fold_indexes_sequence(self):
@@ -336,33 +346,34 @@ class DNN:
     def add_performance(self, type, preds):
         # get accuracies
         acc, cw_acc = self.acc(preds), self.cw_acc(preds)
-        self.performance[type]["accuracy"]["classwise"].append(cw_acc)
-        self.performance[type]["accuracy"]["macro"].append(acc)
+        self.performance[type]["accuracy"]["classwise"]["folds"].append(cw_acc)
+        self.performance[type]["accuracy"]["macro"]["folds"].append(acc)
         # self.performance[type]["accuracy"]["micro"].append(np.nan)
         # self.performance[type]["accuracy"]["weighted"].append(np.nan)
 
         # get everything else
         for measure in [x for x in self.measures if x !="accuracy"]:
             cw, ma, mi, ws = self.get_pre_rec_f1(preds, measure)
-            self.performance[type][measure]["classwise"].append(cw)
-            self.performance[type][measure]["macro"].append(ma)
-            self.performance[type][measure]["micro"].append(mi)
-            self.performance[type][measure]["weighted"].append(ws)
+            self.performance[type][measure]["classwise"]["folds"].append(cw)
+            self.performance[type][measure]["macro"]["folds"].append(ma)
+            self.performance[type][measure]["micro"]["folds"].append(mi)
+            self.performance[type][measure]["weighted"]["folds"].append(ws)
 
 
-    # print aggregate performance of the latest run
-    def print_performance(self):
+    # print performance of the latest run
+    def print_performance(self, fold_index=0):
         info("---------------")
         for type in self.run_types:
             info("{} performance:".format(type))
             for measure in self.measures:
-                for aggr in self.measure_aggregations:
+                for aggr in self.classwise_aggregations:
+                    # don't print classwise results or unedfined aggregations
                     if aggr not in self.performance[type][measure] or aggr == "classwise":
                         continue
                     container = self.performance[type][measure][aggr]
                     if not container:
                         continue
-                    info('{:10} {:10}: {:.3f}'.format(aggr, measure, self.performance[type][measure][aggr][-1]))
+                    info('{} {}: {:.3f}'.format(aggr, measure, self.performance[type][measure][aggr]["folds"][fold_index]))
 
 class MLP(DNN):
     name = "mlp"

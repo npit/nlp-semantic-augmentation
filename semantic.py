@@ -11,6 +11,7 @@ from nltk.corpus import wordnet as wn
 
 class SemanticResource(Serializable):
     dir_name = "semantic"
+    do_spread_activation = False
 
     def __init__(self, config):
         Serializable.__init__(self, self.dir_name)
@@ -51,11 +52,14 @@ class Wordnet(SemanticResource):
         # ignore these
         for p in ["IN"]: self.pos_tag_mapping[p] = "ingore"
 
-        self.semantic_freq_threshold = config.semantic.frequency_threshold
+        self.semantic_freq_threshold = config.semantic.threshold
         self.semantic_weights = config.semantic.weights
         self.semantic_unit = config.semantic.unit
         self.disambiguation = config.semantic.disambiguation.lower()
-        self.spreading_activation = config.semantic.spreading_activation
+        if config.semantic.spreading_activation:
+            self.do_spread_activation = True
+            self.spread_steps, self.spread_decay = config.semantic.spreading_activation[0], \
+                                                   config.semantic.spreading_activation[1]
         self.dataset_name = config.dataset.name
         if config.dataset.limit:
             self.dataset_name += "_{}".format(config.dataset.limit)
@@ -64,6 +68,8 @@ class Wordnet(SemanticResource):
         sem_weights = "w{}".format(self.semantic_weights)
         disambig = "disam{}".format(self.disambiguation)
         self.name = "{}_{}_{}_{}_{}".format(self.dataset_name, self.name, sem_weights, freq_filtering, disambig)
+        if self.do_spread_activation:
+            self.name += "spread{}dec{}".format(self.spread_steps, self.spread_decay)
 
         if self.disambiguation == "context-embedding":
             self.semantic_embedding_dim = self.config.embedding.dimension
@@ -195,9 +201,8 @@ class Wordnet(SemanticResource):
             debug("Semantic processing for document {}/{}".format(wl+1, len(dset_words_pos)))
             doc_freqs = {}
             for w, word_info in enumerate(word_info_list):
-                synset, doc_freqs = self.get_synset(word_info, doc_freqs, force_reference_synsets)
-                if not synset: continue
-                self.process_synset(synset)
+                synset_activations, doc_freqs = self.get_synset(word_info, doc_freqs, force_reference_synsets)
+                if not synset_activations: continue
             if not doc_freqs:
                 warning("No synset information extracted for document {}/{}".format(wl+1, len(dset_words_pos)))
             current_synset_freqs.append(doc_freqs)
@@ -238,10 +243,6 @@ class Wordnet(SemanticResource):
                     return synset
             # no pos match, revert to first
             return self.disambiguate(synsets, word_information, override="first")
-        elif disam == 'embedding-centroid':
-            # generate closest synset embeddings
-            # assign to closest embedding
-            pass
         elif disam == "prior":
             # select the synset with the highest prior prob
             pass
@@ -318,61 +319,76 @@ class Wordnet(SemanticResource):
     def get_raw_path(self):
         return None
 
+    def restrict_to_reference(self, do_force, activations):
+        if do_force:
+            activations = {s: activations[s] for s in activations \
+                                  if s in self.reference_synsets}
+        return activations
+    def update_frequencies(self, activations, frequencies):
+        for s, act in activations.items():
+            if s not in frequencies:
+                frequencies[s] = 0
+            frequencies[s] += act
+        return frequencies
+
     # function to get a synset from a word, using the wordnet api
     # and a local word cache. Updates synset frequencies as well.
     def get_synset(self, word_information, freqs, force_reference_synsets = False):
         word, _ = word_information
         if word in self.word_synset_lookup_cache:
-            synset = self.word_synset_lookup_cache[word]
-
-            if force_reference_synsets:
-                if synset not in self.reference_synsets:
-                    return None, freqs
-
-            if synset not in freqs:
-                freqs[synset] = 0
+            synset_activations = self.word_synset_lookup_cache[word]
+            synset_activations = self.restrict_to_reference(force_reference_synsets, synset_activations)
+            freqs = self.update_frequencies(synset_activations, freqs)
         else:
             # not in cache, extract
-
             if self.disambiguation == "embedding-context":
                 # discover synset from its generated embedding and the word embedding
                 synset = self.get_synset_from_context_embeddings(word)
             else:
                 # look in wordnet 
-                synset = self.lookup_wordnet(word_information)
-            if not synset:
+                synset_activations = self.lookup_wordnet(word_information)
+
+            synset_activations = self.restrict_to_reference(force_reference_synsets, synset_activations)
+
+            if not synset_activations:
                 return None, freqs
+            freqs = self.update_frequencies(synset_activations, freqs)
+            # populate cache
+            self.word_synset_lookup_cache[word] = synset_activations
 
-            if force_reference_synsets:
-                if synset not in self.reference_synsets:
-                    return None, freqs
-            freqs[synset] = 0
-            self.word_synset_lookup_cache[word] = synset
-
-        freqs[synset] += 1
         if word not in self.assignments:
-            self.assignments[word] = synset
-        return synset, freqs
+            self.assignments[word] = synset_activations
+        return synset_activations, freqs
 
 
     def lookup_wordnet(self, word_information):
         word, _  = word_information
         synsets = wn.synsets(word)
-        if synsets:
-            return self.disambiguate(synsets, word_information)
-        return None
+        if not synsets:
+            return {}
+        synset = self.disambiguate(synsets, word_information)
+        activations = {synset._name: 1}
+        if self.do_spread_activation:
+            # climb the hypernym ladder
+            hyper_activations = self.spread_activation(synset, self.spread_steps, self.spread_decay)
+        debug("Semantic activations (standard/spreaded): {} / {}".format(activations, hyper_activations))
+        activations = {**activations, **hyper_activations}
+        return activations
 
-    # function that applies the required processing
-    # once a synset has been found in the input text
-    def process_synset(self, synset):
-        # spreading activation
-        pass
+    def spread_activation(self, synset, steps_to_go, current_decay):
+        if steps_to_go == 0:
+            return
+        activations = {}
+        # current weight value
+        new_decay = current_decay * self.spread_decay
+        # get hypernyms of synset
+        for hyper in synset.hypernyms():
+            activations[hyper._name] = current_decay
+            hypers = self.spread_activation(hyper, steps_to_go-1, new_decay)
+            if hypers:
+                activations = {**activations, **hypers}
+        return activations
 
-    # function that applies post-processing for a collected synset graph
-    def postprocess_synset(self, synset):
-        # frequency / tf-idf filtering - do that with synset freqs
-        # ingoing / outgoing graph ratio
-        pass
 
     # get semantic vector information, wrt to the configuration
     def get_data(self, config):

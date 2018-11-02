@@ -61,7 +61,9 @@ class Config:
         # copy configuration to run folder
         if not exists(self.run_folder):
             os.makedirs(self.run_folder, exist_ok=True)
-        shutil.copy(config_file, join(self.run_folder, os.path.basename(config_file)))
+        config_copy = join(self.run_folder, os.path.basename(config_file))
+        if not exists(config_copy):
+            shutil.copy(config_file, config_copy)
 
         self.setup_logging()
         self.setup_seed()
@@ -150,7 +152,7 @@ class Config:
         self.embedding.name = embedding_opts["name"]
         self.embedding.aggregation = embedding_opts["aggregation"] if type(embedding_opts["aggregation"]) == list else [embedding_opts["aggregation"]]
         self.embedding.dimension = embedding_opts["dimension"]
-        self.embedding.sequence_length = embedding_opts["sequence_length"]
+        self.embedding.sequence_length = self.get_value("sequence_length", default=None, base=embedding_opts)
 
         if self.has_value("semantic"):
             semantic_opts = self.conf["semantic"]
@@ -159,7 +161,7 @@ class Config:
             self.semantic.enrichment = semantic_opts["enrichment"]
             self.semantic.disambiguation = semantic_opts["disambiguation"]
             self.semantic.weights = semantic_opts["weights"]
-            self.semantic.frequency_threshold = self.get_value("frequency_threshold", base=semantic_opts)
+            self.semantic.threshold = self.get_value("threshold", base=semantic_opts)
             # context file only relevant on semantic embedding disamgibuation
             self.semantic.context_file = self.get_value("context_file", base = semantic_opts)
             self.semantic.context_aggregation = self.get_value("context_aggregation", base=semantic_opts)
