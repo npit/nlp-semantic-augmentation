@@ -81,17 +81,20 @@ train:
 
 log_level: debug
 
-# evaluation metrics: f1, accuracy, precision, recall
-metrics: ["f1"]
 
-# evaluation metric aggregations: macro, micro, weighted
-metric_aggregations: ["macro", "micro"]
 
-# which run type is of interest
-# run: the actual run you are evaluating
-# majority: a majority classifier baseline
-# random: a random classifier baseline
-run_types: [run]
+print:
+  # evaluation metrics: f1, accuracy, precision, recall
+  measures: ["f1-score"]
+  # evaluation metric aggregations: macro, micro, weighted
+  aggregations: ["macro", "micro"]
+  # which run type is of interest
+  # run: the actual run you are evaluating
+  # majority: a majority classifier baseline
+  # random: a random classifier baseline
+  run_types: [run]
+  # stats aggregating fold values
+  stats: ["mean", "var"]
 
 folders:
   # run folder
