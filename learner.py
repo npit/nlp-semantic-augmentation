@@ -281,7 +281,7 @@ class DNN:
 
     # produce training / validation splits, with respect to sample indexes
     def get_trainval_indexes(self):
-        if self.folds > 1:
+        if self.do_folds:
             info("Training {} with input data: {} on {} stratified folds".format(self.name, len(self.train), self.folds))
             splitter = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
         else:

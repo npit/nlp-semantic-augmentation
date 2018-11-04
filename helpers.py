@@ -26,6 +26,10 @@ class Config:
         limit = None
 
     class print:
+        run_types = None
+        stats = None
+        aggregations = None
+        folds = None
         pass
     class embedding:
         dimension = None

@@ -45,20 +45,26 @@ class Dataset(Serializable):
 
         # check for limited dataset
         self.apply_limit()
-        res = self.acquire2(fatal_error=False)
+        self.acquire2(fatal_error=False)
         if any(self.load_flags):
             # downloaded successfully
             self.loaded_index = self.load_flags.index(True)
         else:
-            # check for raw dataset
+            # check for raw dataset. Suspend limit and setup paths
             self.suspend_limit()
-            # setup paths
             self.set_serialization_params()
-            res = self.acquire2()
+            # exclude loading of pre-processed data
+            self.data_paths = self.data_paths[1:]
+            self.read_functions = self.read_functions[1:]
+            self.handler_functions = self.handler_functions[1:]
+            # get the data but do not preprocess
+            res = self.acquire2(do_preprocess=False)
             self.loaded_index = self.load_flags.index(True)
-        # limit, if applicable
-        if not self.loaded_preprocessed:
+            # reapply the limit
             self.apply_limit()
+
+        # if no preprocessed data was loaded, apply it now
+        if not self.loaded_preprocessed:
             self.preprocess()
 
 
@@ -112,7 +118,7 @@ class Dataset(Serializable):
                 self.test = self.test[:value]
                 self.train_target = self.train_target[:value]
                 self.test_target = self.test_target[:value]
-                info("Limited {} to {} items.".format(self.base_name, value))
+                info("Limited {} loaded data to {} items per train/test portion.".format(self.base_name, value))
                 # serialize the limited version
                 write_pickled(self.serialization_path, self.get_all_raw())
 
