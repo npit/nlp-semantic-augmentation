@@ -1,4 +1,4 @@
-import logging
+import random
 import numpy as np
 import pickle
 import os
@@ -105,22 +105,59 @@ class Dataset(Serializable):
     def get_num_labels(self):
         return self.num_labels
 
-    def apply_limit(self):
-        if self.config.dataset.limit:
-            value = self.config.dataset.limit
+    # static method for external name computation
+    def get_limited_name(config):
+        name = config.dataset.name
+        if config.dataset.class_limit is not None:
+            name += "_clim_{}".format(config.dataset.class_limit)
+        if config.dataset.data_limit is not None:
+            name += "_dlim_{}".format(config.dataset.data_limit)
+        return name
 
-            self.name = self.base_name + "_limited_" + str(value)
-            self.set_paths_by_name(self.name)
+    def apply_data_limit(self, name):
+        d_lim = self.config.dataset.data_limit
+        if d_lim is not None:
+            name += "_dlim_{}".format(d_lim)
+        if self.train:
+            self.train = self.train[:d_lim]
+            self.test = self.test[:d_lim]
+            self.train_target = self.train_target[:d_lim]
+            self.test_target = self.test_target[:d_lim]
+            info("Limited {} loaded data to {} items per train/test portion.".format(self.base_name, d_lim))
+        return name
 
-            # if data has been loaded, limit the instances
+    def apply_class_limit(self, name):
+        c_lim = self.config.dataset.class_limit
+        if c_lim is not None:
+            name += "_clim_{}".format(c_lim)
             if self.train:
-                self.train = self.train[:value]
-                self.test = self.test[:value]
-                self.train_target = self.train_target[:value]
-                self.test_target = self.test_target[:value]
-                info("Limited {} loaded data to {} items per train/test portion.".format(self.base_name, value))
-                # serialize the limited version
-                write_pickled(self.serialization_path, self.get_all_raw())
+                retained_classes = random.sample(list(range(self.num_labels)), c_lim)
+                info("Limiting to classes: {}".format(retained_classes))
+                data = [(x,y) for (x,y) in zip(self.train, self.train_target) if y in retained_classes]
+                self.train, self.train_target = [list(x) for x in zip(*data)]
+                data = [(x,y) for (x,y) in zip(self.test, self.test_target) if y in retained_classes]
+                self.test, self.test_target = [list(x) for x in zip(*data)]
+                self.num_labels = len(retained_classes)
+                # remap retained classes to indexes starting from 0
+                self.train_target = [retained_classes.index(rc) for rc in self.train_target]
+                self.test_target = [retained_classes.index(rc) for rc in self.test_target]
+                # fix the label names
+                self.train_label_names = [self.train_label_names[rc] for rc in retained_classes]
+                self.test_label_names = [self.test_label_names[rc] for rc in retained_classes]
+                info("Limited {} dataset to {} classes: {} - i.e. {} - resulting in {} train and {} test data."\
+                     .format(self.base_name, self.num_labels, retained_classes,
+                             self.train_label_names, len(self.train), len(self.test)))
+        return name
+
+    def apply_limit(self):
+        if self.config.is_limited():
+            self.base_name = self.name
+            name = self.apply_class_limit(self.base_name)
+            self.name = self.apply_data_limit(name)
+            self.set_paths_by_name(self.name)
+        if self.train:
+            # serialize the limited version
+            write_pickled(self.serialization_path, self.get_all_raw())
 
     def setup_nltk_resources(self):
         try:
@@ -154,31 +191,34 @@ class Dataset(Serializable):
         return out_pos
 
 
+    def preprocess_single_chunk(self, document_list, track_vocabulary=False):
+        self.setup_nltk_resources()
+        filt = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
+        stopw = set(stopwords.words(self.language))
+        ret_words, ret_pos, ret_voc = [], [], set()
+        num_words =[]
+        for i in range(len(document_list)):
+            words, pos_tags = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
+            ret_words.append(words)
+            ret_pos.append(pos_tags)
+            if track_vocabulary:
+                ret_voc.update(words)
+            num_words.append(len(words))
+        stats = [x(num_words) for x in [np.mean, np.var, np.std]]
+        info("Words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
+        return ret_words, ret_pos, ret_voc
+
+
     # preprocess raw texts into word list
     def preprocess(self):
         if self.loaded_preprocessed:
             info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
             return
-        self.setup_nltk_resources()
-
-        stopw = set(stopwords.words(self.language))
-
-        with tictoc("Preprocessing"):
-            filt = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
-            info("Preprocessing {}".format(self.name))
-            info("Mapping training set to word sequences.")
-            train_pos, test_pos = [],[]
-            for i in range(len(self.train)):
-                self.process_single_text(self.train[i], filt, stopw)
-                words, pos_tags = self.process_single_text(self.train[i], filt=filt, stopwords=stopw)
-                self.train[i] = words
-                train_pos.append(pos_tags)
-                self.vocabulary.update(words)
-            info("Mapping test set to word sequences.")
-            for i in range(len(self.test)):
-                words, pos_tags = self.process_single_text(self.test[i], filt=filt, stopwords=stopw)
-                self.test[i] = words
-                test_pos.append(pos_tags)
+        with tictoc("Preprocessing {}".format(self.name)):
+            info("Mapping training set.")
+            self.train, train_pos, self.vocabulary = self.preprocess_single_chunk(self.train, track_vocabulary=True)
+            info("Mapping test set.")
+            self.test, test_pos, _ = self.preprocess_single_chunk(self.test)
             # set pos
             self.pos_tags = [train_pos, test_pos]
             # fix word order and get word indexes
@@ -186,7 +226,7 @@ class Dataset(Serializable):
             for index, word in enumerate(self.vocabulary):
                 self.word_to_index[word] = index
                 self.vocabulary_index.append(index)
-            # add another for the missing
+            # add another for the missing word
             self.undefined_word_index = len(self.vocabulary)
 
         # serialize

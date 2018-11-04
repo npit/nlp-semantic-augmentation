@@ -1,9 +1,8 @@
 from os.path import join
 import os
-import logging
 import pandas as pd
 import csv
-import pickle
+from dataset import Dataset
 from utils import error, tictoc, info, debug, read_pickled, write_pickled
 import numpy as np
 from serializable import Serializable
@@ -37,8 +36,7 @@ class Embedding(Serializable):
         self.aggregation = self.config.embedding.aggregation
         self.base_name = self.name
         self.sequence_length = self.config.embedding.sequence_length
-        if self.config.dataset.limit:
-            self.dataset_name += "_limit{}".format(self.config.dataset.limit)
+        self.dataset_name = Dataset.get_limited_name(self.config)
         self.set_name()
 
     def set_name(self):
@@ -93,18 +91,23 @@ class Embedding(Serializable):
             zero_pad = self.get_zero_pad_element()
 
             for dset_idx in range(len(self.dataset_embeddings)):
+                num_truncated, num_padded = 0, 0
                 for doc_idx in range(len(self.dataset_embeddings[dset_idx])):
                     df_words = self.dataset_embeddings[dset_idx][doc_idx]
                     num_words = len(df_words)
                     if num_words > num:
-                        # prune
+                        # truncate
                         self.dataset_embeddings[dset_idx][doc_idx] = df_words[:num]
+                        num_truncated +=1
                     elif num_words < num:
-                        # makepad
+                        # make pad and stack vertically
                         num_to_pad = num - num_words
                         pad = pd.DataFrame(np.tile(zero_pad, (num_to_pad, 1)), index=['N' for _ in range(num_to_pad)],
                                            columns=df_words.columns)
+                        num_padded +=1
                         self.dataset_embeddings[dset_idx][doc_idx] = pd.concat([df_words, pad])
+                info("Truncated {:3f}% and padded {:3f} % items.".format(
+                    *[x / len(self.dataset_embeddings[dset_idx]) * 100 for x in [num_truncated, num_padded]]))
 
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion

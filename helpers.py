@@ -23,7 +23,8 @@ class Config:
 
     class dataset:
         name = None
-        limit = None
+        data_limit = None
+        class_limit = None
 
     class print:
         run_types = None
@@ -59,6 +60,9 @@ class Config:
         early_stopping_patience = None
         validation_portion = None
         batch_size = None
+
+    def is_limited(self):
+        return any([x is not None for x in [self.dataset.data_limit or self.dataset.class_limit]])
 
     def get_run_id(self):
         return self.run_id
@@ -152,7 +156,8 @@ class Config:
         need(self.has_value("dataset"), "Need dataset information")
         dataset_opts = self.conf["dataset"]
         self.dataset.name = dataset_opts["name"]
-        self.dataset.limit = self.get_value("limit", base = dataset_opts)
+        self.dataset.data_limit = self.get_value("data_limit", base = dataset_opts, default=None)
+        self.dataset.class_limit = self.get_value("class_limit", base = dataset_opts, default=None)
         # read embedding options
         need(self.has_value("embedding"), "Need embedding information")
         embedding_opts = self.conf["embedding"]

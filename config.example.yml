@@ -4,6 +4,7 @@ dataset:
   name: 20newsgroups
   # limit the dataset to a number of documents for train / test: <int>
   limit: 50
+  # class_limit: 2
 
 # embeddings
 embedding:

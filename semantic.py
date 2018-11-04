@@ -1,8 +1,7 @@
 # import gensim
 from os.path import join, exists
-from os import makedirs
+from dataset import Dataset
 import pickle
-from utils import read_pickled, write_pickled
 from utils import tictoc, error, info, debug, warning, write_pickled
 import numpy as np
 from serializable import Serializable
@@ -60,9 +59,8 @@ class Wordnet(SemanticResource):
             self.do_spread_activation = True
             self.spread_steps, self.spread_decay = config.semantic.spreading_activation[0], \
                                                    config.semantic.spreading_activation[1]
-        self.dataset_name = config.dataset.name
-        if config.dataset.limit:
-            self.dataset_name += "_{}".format(config.dataset.limit)
+
+        self.dataset_name = Dataset.get_limited_name(self.config)
 
         freq_filtering = "ALL" if not self.semantic_freq_threshold else "fthres{}".format(self.semantic_freq_threshold)
         sem_weights = "w{}".format(self.semantic_weights)
