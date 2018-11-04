@@ -44,6 +44,7 @@ class Config:
             return "{} {} {} {}".format(Config.learner.name, Config.learner.hidden_dim, Config.learner.num_layers, Config.learner.sequence_length)
 
     class folders:
+        run = None
         results = None
         serialization = None
         logs = None
@@ -61,9 +62,9 @@ class Config:
     def initialize(self, config_file):
         self.read_config(config_file)
         # copy configuration to run folder
-        if not exists(self.run_folder):
-            os.makedirs(self.run_folder, exist_ok=True)
-        config_copy = join(self.run_folder, os.path.basename(config_file))
+        if not exists(self.folders.run):
+            os.makedirs(self.folders.run, exist_ok=True)
+        config_copy = join(self.folders.run, os.path.basename(config_file))
         if not exists(config_copy):
             shutil.copy(config_file, config_copy)
 
@@ -94,7 +95,7 @@ class Config:
         logger.addHandler(handler)
 
         # file handler
-        logfile = os.path.join(self.run_folder, "log_{}.log".format(self.run_id))
+        logfile = os.path.join(self.folders.run, "log_{}.log".format(self.run_id))
         fhandler = logging.FileHandler(logfile)
         fhandler.setLevel(lvl)
         fhandler.setFormatter(formatter)
@@ -180,22 +181,18 @@ class Config:
         need(self.has_value("train"), "Need training information")
         training_opts = self.conf["train"]
         self.train.epochs = training_opts["epochs"]
-        self.train.folds = training_opts["folds"]
+        self.train.folds = self.get_value("folds", default=None, base=training_opts)
         self.train.validation_portion = self.get_value("validation_portion", default=None, base=training_opts)
         self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=training_opts)
         self.train.batch_size = training_opts["batch_size"]
 
         if self.has_value("folders"):
             folder_opts = self.conf["folders"]
-            self.run_folder = folder_opts["run"]
-            self.folders.results = join(self.run_folder, "results")
+            self.folders.run = folder_opts["run"]
+            self.folders.results = join(self.folders.run, "results")
             self.folders.serialization = self.get_value("serialization", base=folder_opts, default="serialization")
             self.folders.raw_data = self.get_value("raw_data", base=folder_opts, default="raw_data")
 
-            # # raw data subfolders
-            # self.folders.raw_datasets = join(self.folders.raw_data, Dataset.dir_name)
-            # self.folders.raw_embeddings = join(self.folders.raw_data, Embedding.dir_name)
-            # self.folders.raw_semantics = join(self.folders.raw_data, SemanticResource.dir_name)
         if self.has_value("print"):
             print_opts = self.conf['print']
             self.print.run_types = self.get_value("run_types", base=print_opts)

@@ -10,7 +10,6 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from fetcher import Fetcher
 from dataset import Dataset
-from dataset import Dataset
 from embedding import Embedding
 from semantic import SemanticResource
 from learner import DNN
@@ -29,7 +28,6 @@ def main(config_file):
     # initialize configuration
     config = Config()
     config.initialize(config_file)
-    fetcher = Fetcher()
 
     # datasets loading & preprocessing
     info("===== DATASET =====")

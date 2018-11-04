@@ -54,7 +54,7 @@ class Embedding(Serializable):
         self.acquire2(fatal_error=not can_fail_loading)
 
     def get_zero_pad_element(self):
-        return np.ndarray((1, self.embedding_dim), np.float32)
+        return np.zeros((1, self.embedding_dim), np.float32)
 
     def get_vocabulary_size(self):
         return len(self.words[0])
@@ -94,14 +94,17 @@ class Embedding(Serializable):
 
             for dset_idx in range(len(self.dataset_embeddings)):
                 for doc_idx in range(len(self.dataset_embeddings[dset_idx])):
-                    if len(self.dataset_embeddings[dset_idx][doc_idx]) > num:
+                    df_words = self.dataset_embeddings[dset_idx][doc_idx]
+                    num_words = len(df_words)
+                    if num_words > num:
                         # prune
-                        self.dataset_embeddings[dset_idx][doc_idx] = self.dataset_embeddings[dset_idx][doc_idx][:num]
-                    elif len(self.dataset_embeddings[dset_idx][doc_idx]) < num:
-                        # pad
-                        num_to_pad = num - len(self.dataset_embeddings[dset_idx][doc_idx])
-                        pad = pd.DataFrame(np.tile(zero_pad, (num_to_pad, 1)), index= ['N' for _ in range(num_to_pad)])
-                        self.dataset_embeddings[dset_idx][doc_idx] = pd.concat([self.dataset_embeddings[dset_idx][doc_idx], pad])
+                        self.dataset_embeddings[dset_idx][doc_idx] = df_words[:num]
+                    elif num_words < num:
+                        # makepad
+                        num_to_pad = num - num_words
+                        pad = pd.DataFrame(np.tile(zero_pad, (num_to_pad, 1)), index=['N' for _ in range(num_to_pad)],
+                                           columns=df_words.columns)
+                        self.dataset_embeddings[dset_idx][doc_idx] = pd.concat([df_words, pad])
 
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion
@@ -328,7 +331,7 @@ class Train(Embedding):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_preprocessed(self):
-        return [self.dataset_embeddings, self.words, None, self.undefined_word_index]
+        return [self.dataset_embeddings, self.words, None, self.undefined_word_index, None]
 
     def get_zero_pad_element(self):
         return self.undefined_word_index

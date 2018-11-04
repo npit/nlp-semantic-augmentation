@@ -161,7 +161,7 @@ class DNN:
 
         self.epochs = self.config.train.epochs
         self.folds = self.config.train.folds
-        self.do_folds = self.folds > 1
+        self.do_folds = self.folds and self.folds > 1
         self.validation_portion = self.config.train.validation_portion
         self.early_stopping_patience = self.config.train.early_stopping_patience
         self.seed = self.config.get_seed()
