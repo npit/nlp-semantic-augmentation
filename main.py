@@ -56,7 +56,6 @@ def main(config_file):
     learner = DNN.create(config)
     learner.make(embedding, dataset.get_targets(), dataset.get_num_labels())
     learner.do_traintest()
-    info("Done.")
 
 
 if __name__ == "__main__":

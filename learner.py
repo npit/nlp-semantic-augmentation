@@ -4,7 +4,7 @@ import random
 
 from sklearn import metrics
 from sklearn.exceptions import UndefinedMetricWarning
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
 import warnings
 warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
 
@@ -31,9 +31,10 @@ class DNN:
     stats = ["mean", "var", "std", "folds"]
     sequence_length = None
 
-
     do_train_embeddings = False
     train_embeddings_params = []
+    do_folds = False
+
     def create(config):
         name = config.learner.name
         if name == LSTM.name:
@@ -44,6 +45,11 @@ class DNN:
             error("Undefined learner: {}".format(name))
 
     def __init__(self):
+        self.configure_evaluation_measures()
+        pass
+
+    # initialize evaluation containers and preferred evaluation printage
+    def configure_evaluation_measures(self):
         info("Creating learner: {}".format(self.config.learner.to_str()))
         for run_type in self.run_types:
             self.performance[run_type] = {}
@@ -77,13 +83,15 @@ class DNN:
         we = cr.loc[metric].iloc[-1]
         return cw, mi, ma, we
 
-    def acc(self, preds, gt=None):
+    # get average accuracy
+    def compute_accuracy(self, preds, gt=None):
         if gt is None:
             gt = self.test_labels
         return metrics.accuracy_score(gt, preds)
 
 
-    def cw_acc(self, preds, gt=None):
+    # get class-wise accuracies
+    def compute_classwise_accuracy(self, preds, gt=None):
         if gt is None:
             gt = self.test_labels
         cm = metrics.confusion_matrix(gt, preds)
@@ -91,13 +99,14 @@ class DNN:
         return cm.diagonal()
 
 
-    def check_embedding_training(self, model):
+    # add an embedding layer, if necessary
+    def check_add_embedding_layer(self, model):
         if self.do_train_embeddings:
             model.add(Embedding(self.vocabulary_size + 1, self.embedding_dim, input_length = self.sequence_length))
         return model
 
     # define useful keras callbacks for the training process
-    def get_callbacks(self, fold_index="x"):
+    def get_callbacks(self):
         self.callbacks = []
         self.results_folder = self.config.folders.results
         models_folder = os.path.join(self.results_folder, "models")
@@ -105,8 +114,8 @@ class DNN:
         [os.makedirs(x, exist_ok=True) for x in  [self.results_folder, models_folder, logs_folder]]
 
         # model saving with early stoppingtch_si
-        self.model_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, fold_index))
-        weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
+        self.model_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index))
+        weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
         self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
                                                    save_best_only=True, save_weights_only=False,
                                                    mode='auto', period=1)
@@ -125,12 +134,12 @@ class DNN:
                                                           min_delta=0.0001, cooldown=0, min_lr=0)
         self.callbacks.append(self.lr_reducer)
         # logging
-        log_file = os.path.join(logs_folder,"{}_fold_{}.csv".format(self.name, fold_index))
+        log_file = os.path.join(logs_folder,"{}_fold_{}.csv".format(self.name, self.fold_index))
         self.csv_logger = callbacks.CSVLogger(log_file, separator=',', append=False)
         self.callbacks.append(self.csv_logger)
-
         return self.callbacks
 
+    # to preliminary work
     def make(self, embedding, targets, num_labels):
         if embedding.base_name == "train":
             self.do_train_embeddings = True
@@ -152,93 +161,84 @@ class DNN:
 
         self.epochs = self.config.train.epochs
         self.folds = self.config.train.folds
+        self.do_folds = self.folds > 1
+        self.validation_portion = self.config.train.validation_portion
         self.early_stopping_patience = self.config.train.early_stopping_patience
         self.seed = self.config.get_seed()
         self.batch_size = self.config.train.batch_size
-        self.validation_portion = self.config.train.validation_portion
 
+        if self.do_folds and self.validation_portion:
+            error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
+
+    # potentially apply DNN input data tranformations
     def process_input(self, data):
         if self.do_train_embeddings:
             # reshape as per the sequence
             return np.reshape(data, (-1, self.sequence_length))
         return data
 
+    # print information pertaining to early stopping
     def report_early_stopping(self):
         if self.early_stopping_patience:
             info("Stopped on epoch {}/{}".format(self.early_stopping.stopped_epoch+1, self.epochs))
             write_pickled(self.model_path + ".early_stopping", self.early_stopping.stopped_epoch)
 
-    # train without cross-validation
-    def train_model(self):
+
+    # perfrom a train-test loop
+    def do_traintest(self):
+        train_val_idxs = self.get_trainval_indexes()
         tic()
-        info("Training {} with input data: {} with a {} validation portion.".format(self.name, len(self.train), self.validation_portion))
+        for fold_index, trainval_idx in enumerate(train_val_idxs):
+            self.fold_index = fold_index
+            self.current_run_descr = "fold {}/{}".format(fold_index + 1, self.folds) if self.do_folds else \
+                "{}-val split".format(self.validation_portion)
+            # train
+            info("Training run: {}".format(self.current_run_descr))
+            tic()
+            model = self.train_model2(trainval_idx)
+            toc("Training {}".format(self.current_run_descr))
+            # test
+            tic()
+            self.do_test(model)
+            toc("Testing {}".format(self.current_run_descr))
+        if self.do_folds:
+            toc("Total training")
+            self.report_across_folds()
+
+
+    # handle multi-vector items, expanding indexes to the specified sequence length
+    def expand_index_to_sequence(self, fold_data):
+        # map to indexes in the full-sequence data (e.g. times sequence_length)
+        fold_data = list(map( lambda x: x * self.sequence_length, fold_data))
+        for i in range(len(fold_data)):
+            # expand with respective sequence members (add an increment, vstack)
+            fold_data[i] = np.vstack([fold_data[i]+incr for incr in range(self.sequence_length)])
+        return fold_data
+
+    # train a model on training & validation data portions
+    def train_model2(self, trainval_idx):
+        # labels
+        train_labels, val_labels = [to_categorical(data, num_classes=self.num_labels) for data in \
+                                    [self.train_labels[idx] for idx in trainval_idx]]
+        # data
+        if len(self.train) != len(self.train_labels):
+            trainval_idx = self.expand_index_to_sequence(trainval_idx)
+        train_data, val_data = [self.process_input(data) for data in \
+                                [self.train[idx] for idx in trainval_idx]]
+        # build model
         model = self.get_model()
-        if self.config.is_debug():
-            print("Inputs:", model.inputs)
-            model.summary()
-            print("Outputs:", model.outputs)
-
-        train_y_onehot = to_categorical(self.train_labels, num_classes = self.num_labels)
-
-        # shape accordingly
-        self.train = self.process_input(self.train)
-        history = model.fit(self.train, train_y_onehot,
-                            batch_size=self.batch_size,
-                            epochs=self.epochs,
-                            verbose = self.verbosity,
-                            validation_split= self.validation_portion,
-                            callbacks = self.get_callbacks())
-
+        # train the damn thing!
+        model.fit(train_data, train_labels,
+                    batch_size=self.batch_size,
+                    epochs=self.epochs,
+                    validation_data = (val_data, val_labels),
+                    verbose = self.verbosity,
+                    callbacks = self.get_callbacks())
         self.report_early_stopping()
-        self.do_test(model, print_results=True)
-        toc("Training")
         return model
 
-    def do_traintest(self):
-        if self.folds > 1:
-            self.train_model_crossval()
-        else:
-            self.train_model()
 
-
-    # train with cross-validation folds
-    def train_model_crossval(self):
-        tic()
-        info("Training {} with input data: {} on {} stratified folds".format(self.name, len(self.train), self.folds))
-
-        fold_data = self.get_fold_indexes()
-        for fold_index, (train_d_idx, train_l_idx, val_d_idx, val_l_idx) in enumerate(fold_data):
-            tic()
-            train_x, train_y = self.get_fold_data(self.train, self.train_labels, train_d_idx, train_l_idx)
-            val_x, val_y = self.get_fold_data(self.train, self.train_labels, val_d_idx, val_l_idx)
-            # convert labels to one-hot
-            train_y_onehot = to_categorical(train_y, num_classes = self.num_labels)
-            val_y_onehot = to_categorical(val_y, num_classes = self.num_labels)
-
-            # train
-            gc.collect()
-            model = self.get_model()
-            if self.config.is_debug():
-                print("Inputs:", model.inputs)
-                model.summary()
-                print("Outputs:", model.outputs)
-            #print(val_x, val_y)
-            info("Trainig fold {}/{}".format(fold_index + 1, self.folds))
-            history = model.fit(train_x, train_y_onehot,
-                                batch_size=self.batch_size,
-                                epochs=self.epochs,
-                                validation_data = (val_x, val_y_onehot),
-                                verbose = self.verbosity,
-                                callbacks = self.get_callbacks(fold_index))
-
-            self.report_early_stopping()
-            self.do_test(model, print_results=self.config.print.folds, fold_index=fold_index)
-            toc("Fold #{}/{} training/testing".format(fold_index+1, self.folds))
-        toc("Total training/testing")
-        # report results across folds
-        self.report_across_folds()
-
-    # print performance across folds
+    # print performance across folds and compute foldwise aggregations
     def report_across_folds(self):
         info("==============================")
         info("Mean / var / std performance across all {} folds:".format(self.folds))
@@ -269,63 +269,26 @@ class DNN:
             pickle.dump(df, f)
 
 
-    def do_test(self, model, print_results=False, fold_index=0):
-        if self.folds > 1:
-            test_data, _ = self.get_fold_data(self.test)
-        else:
-            test_data = self.process_input(self.test)
+    # evaluate a model on the test set
+    def do_test(self, model):
+        print_results = self.do_folds and self.config.print.folds or not self.folds
+        test_data = self.process_input(self.test)
         predictions = model.predict(test_data, batch_size=self.batch_size, verbose=self.verbosity)
         predictions_amax = np.argmax(predictions, axis=1)
         # get baseline performances
         self.compute_performance(predictions_amax)
         if print_results:
-            info("Test results:")
-            self.print_performance(fold_index)
+            self.print_performance()
 
-    # get fold data
-    def get_fold_indexes_sequence(self):
-        idxs = []
-        skf = StratifiedKFold(self.folds, shuffle=False, random_state=self.seed)
-        # get first-vector positions
-        data_full_index = np.asarray((range(len(self.train))))
-        single_vector_data = list(range(0, len(self.train), self.sequence_length))
-        fold_data = list(skf.split(single_vector_data, self.train_labels))
-        for train_test in fold_data:
-            # get train indexes
-            train_fold_singlevec_index, test_fold_singlevec_index = train_test
-            # transform to full-sequence indexes
-            train_fold_index = data_full_index[train_fold_singlevec_index]
-            test_fold_index = data_full_index[test_fold_singlevec_index]
-            # expand to the rest of the sequence members
-            train_fold_index = [j for i in train_fold_index for j in list(range(i, i + self.sequence_length))]
-            test_fold_index = [j for i in test_fold_index for j in list(range(i, i + self.sequence_length))]
-            idxs.append((train_fold_index, train_fold_singlevec_index, test_fold_index, test_fold_singlevec_index))
-        return idxs
+    # produce training / validation splits, with respect to sample indexes
+    def get_trainval_indexes(self):
+        if self.folds > 1:
+            info("Training {} with input data: {} on {} stratified folds".format(self.name, len(self.train), self.folds))
+            splitter = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
+        else:
+            splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion)
+        return list(splitter.split(np.zeros(len(self.train_labels)), self.train_labels))
 
-    # fold generator function
-    def get_fold_indexes(self):
-        if len(self.train) != len(self.train_labels):
-            # multi-vector samples
-            return self.get_fold_indexes_sequence()
-        else:
-            skf = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
-            return [(train, train, val, val) for (train, val) in skf.split(self.train, self.train_labels)]
-
-    # data preprocessing function
-    def get_fold_data(self, data, labels=None, data_idx=None, label_idx=None):
-        # if indexes provided, take only these parts
-        if data_idx is not None:
-            x = data[data_idx]
-        else:
-            x = data
-        if labels is not None:
-            if label_idx is not None:
-                y = labels[label_idx]
-            else:
-                y = labels
-        else:
-            y = None
-        return x, y
 
     # add softmax classification layer
     def add_softmax(self, model, is_first=False):
@@ -356,7 +319,7 @@ class DNN:
     # compute scores and append to per-fold lists
     def add_performance(self, type, preds):
         # get accuracies
-        acc, cw_acc = self.acc(preds), self.cw_acc(preds)
+        acc, cw_acc = self.compute_accuracy(preds), self.compute_classwise_accuracy(preds)
         self.performance[type]["accuracy"]["classwise"]["folds"].append(cw_acc)
         self.performance[type]["accuracy"]["macro"]["folds"].append(acc)
         # self.performance[type]["accuracy"]["micro"].append(np.nan)
@@ -372,8 +335,9 @@ class DNN:
 
 
     # print performance of the latest run
-    def print_performance(self, fold_index=0):
+    def print_performance(self):
         info("---------------")
+        info("Test results for {}:".format(self.current_run_descr))
         for type in self.preferred_types:
             info("{} performance:".format(type))
             for measure in self.preferred_measures:
@@ -384,7 +348,8 @@ class DNN:
                     container = self.performance[type][measure][aggr]
                     if not container:
                         continue
-                    info('{} {}: {:.3f}'.format(aggr, measure, self.performance[type][measure][aggr]["folds"][fold_index]))
+                    info('{} {}: {:.3f}'.format(aggr, measure, self.performance[type][measure][aggr]["folds"][self.fold_index]))
+        info("---------------")
 
 class MLP(DNN):
     name = "mlp"
@@ -396,10 +361,10 @@ class MLP(DNN):
         DNN.__init__(self)
 
 
-    def check_embedding_training(self, model):
+    def check_add_embedding_layer(self, model):
         if self.do_train_embeddings:
             error("Embedding training unsupported for {}".format(self.name))
-            model = DNN.check_embedding_training(self, model)
+            model = DNN.check_add_embedding_layer(self, model)
             # vectorize
             model.add(Reshape(target_shape=(-1, self.embedding_dim)))
         return model
@@ -419,7 +384,7 @@ class MLP(DNN):
     def get_model(self):
         model = None
         model = Sequential()
-        model = self.check_embedding_training(model)
+        model = self.check_add_embedding_layer(model)
         for i in range(self.layers):
             if i == 0 and not self.do_train_embeddings:
                 model.add(Dense(self.hidden, input_shape=self.input_shape))
@@ -487,7 +452,7 @@ class LSTM(DNN):
     # build the lstm model
     def get_model(self):
         model = Sequential()
-        model = self.check_embedding_training(model)
+        model = self.check_add_embedding_layer(model)
         for i in range(self.layers):
             if self.layers == 1:
                 # one and only layer
@@ -508,5 +473,10 @@ class LSTM(DNN):
         model.compile(loss='categorical_crossentropy',
                       optimizer='adam',
                       metrics=['accuracy'])
+
+        if self.config.is_debug():
+            debug("Inputs: {}".format(model.inputs))
+            model.summary()
+            debug("Outputs: {}".format(model.outputs))
         return model
 

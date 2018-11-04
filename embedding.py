@@ -75,7 +75,6 @@ class Embedding(Serializable):
 
     # prepare embedding data to be ready for classification
     def prepare(self):
-        info("Preparing embeddings.")
         info("Aggregating embeddings via the {} method.".format(self.aggregation))
         if self.aggregation[0] == "avg":
             self.vectors_per_document = 1
@@ -151,7 +150,7 @@ class Embedding(Serializable):
             else:
                 error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
         else:
-            info("Finalizing embeddings with no semantic information.")
+            info("Finalizing embeddings without semantic information.")
             dim = self.embedding_dim if not self.config.embedding.name == "train" else 1
             self.final_dim = dim
             # concatenating embeddings for each dataset portion into a single dataframe
