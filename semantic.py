@@ -3,7 +3,7 @@ from os.path import join, exists
 from os import makedirs
 import pickle
 from utils import read_pickled, write_pickled
-from utils import tic, toc, error, info, debug, warning, write_pickled
+from utils import tictoc, error, info, debug, warning, write_pickled
 import numpy as np
 from serializable import Serializable
 from nltk.corpus import wordnet as wn
@@ -125,13 +125,12 @@ class Wordnet(SemanticResource):
     # prune semantic information units wrt a frequency threshold
     def apply_freq_filtering(self, freq_dict_list, dataset_freqs, force_reference=False):
         info("Applying synset frequency filtering with a threshold of {}".format(self.semantic_freq_threshold))
-        tic()
-        # delete from dataset-level dicts
-        synsets_to_delete = set()
-        for synset in dataset_freqs:
-            if dataset_freqs[synset] < self.semantic_freq_threshold:
-                synsets_to_delete.add(synset)
-        toc("Dataset-level frequency filtering")
+        with tictoc("Dataset-level frequency filtering"):
+            # delete from dataset-level dicts
+            synsets_to_delete = set()
+            for synset in dataset_freqs:
+                if dataset_freqs[synset] < self.semantic_freq_threshold:
+                    synsets_to_delete.add(synset)
         # if forcing reference, we can override the freq threshold for these synsets
         if force_reference:
             orig_num = len(synsets_to_delete)
@@ -140,14 +139,13 @@ class Wordnet(SemanticResource):
         if not synsets_to_delete:
             return  freq_dict_list, dataset_freqs
         info("Will remove {}/{} synsets due to a freq threshold of {}".format(len(synsets_to_delete), len(dataset_freqs), self.semantic_freq_threshold))
-        tic()
-        # delete
-        for synset in synsets_to_delete:
-            del dataset_freqs[synset]
-            for doc_dict in freq_dict_list:
-                if synset in doc_dict:
-                    del doc_dict[synset]
-        toc("Document-level frequency filtering")
+        with tictoc("Document-level frequency filtering"):
+            # delete
+            for synset in synsets_to_delete:
+                del dataset_freqs[synset]
+                for doc_dict in freq_dict_list:
+                    if synset in doc_dict:
+                        del doc_dict[synset]
         info("Synset frequency filtering resulted in {} synsets.".format(len(dataset_freqs)))
         return  freq_dict_list, dataset_freqs
 
@@ -174,19 +172,18 @@ class Wordnet(SemanticResource):
     # tf-idf computation
     def compute_tfidf_weights(self, current_synset_freqs, dataset_freqs, force_reference=False):
         # compute tf-idf
-        tic()
-        tfidf_freqs = []
-        for doc_dict in range(len(current_synset_freqs)):
-            ddict = {}
-            for synset in current_synset_freqs[doc_dict]:
-                if dataset_freqs[synset] > 0:
-                    ddict[synset] = current_synset_freqs[doc_dict][synset] / dataset_freqs[synset]
-                else:
-                    ddict[synset] = 0
+        with tictoc("tf-idf computation"):
+            tfidf_freqs = []
+            for doc_dict in range(len(current_synset_freqs)):
+                ddict = {}
+                for synset in current_synset_freqs[doc_dict]:
+                    if dataset_freqs[synset] > 0:
+                        ddict[synset] = current_synset_freqs[doc_dict][synset] / dataset_freqs[synset]
+                    else:
+                        ddict[synset] = 0
 
-            tfidf_freqs.append(ddict)
-        self.synset_tfidf_freqs.append(tfidf_freqs)
-        toc("tf-idf computation")
+                tfidf_freqs.append(ddict)
+            self.synset_tfidf_freqs.append(tfidf_freqs)
 
     # map a single dataset portion
     def map_dset(self, dset_words_pos, store_reference_synsets = False, force_reference_synsets = False):
@@ -196,23 +193,23 @@ class Wordnet(SemanticResource):
             info("Restricting synsets to the reference synset set of {} entries.".format(len(self.reference_synsets)))
 
         current_synset_freqs = []
-        tic()
-        for wl, word_info_list in enumerate(dset_words_pos):
-            debug("Semantic processing for document {}/{}".format(wl+1, len(dset_words_pos)))
-            doc_freqs = {}
-            for w, word_info in enumerate(word_info_list):
-                synset_activations, doc_freqs = self.get_synset(word_info, doc_freqs, force_reference_synsets)
-                if not synset_activations: continue
-            if not doc_freqs:
-                warning("No synset information extracted for document {}/{}".format(wl+1, len(dset_words_pos)))
-            current_synset_freqs.append(doc_freqs)
-        toc("Document-level mapping and frequency computation")
+        with tictoc("Document-level mapping and frequency computation"):
+            for wl, word_info_list in enumerate(dset_words_pos):
+                debug("Semantic processing for document {}/{}".format(wl+1, len(dset_words_pos)))
+                doc_freqs = {}
+                for w, word_info in enumerate(word_info_list):
+                    synset_activations, doc_freqs = self.get_synset(word_info, doc_freqs, force_reference_synsets)
+                    if not synset_activations: continue
+                if not doc_freqs:
+                    warning("No synset information extracted for document {}/{}".format(wl+1, len(dset_words_pos)))
+                current_synset_freqs.append(doc_freqs)
+
         # merge to dataset-wise synset frequencies
-        tic()
-        dataset_freqs, current_synset_freqs = self.doc_to_dset_freqs(current_synset_freqs, force_reference = force_reference_synsets)
-        self.dataset_freqs.append(dataset_freqs)
-        self.synset_freqs.append(current_synset_freqs)
-        toc("Dataset-level frequency computation")
+        with tictoc("Dataset-level frequency computation"):
+            dataset_freqs, current_synset_freqs = self.doc_to_dset_freqs(current_synset_freqs, force_reference = force_reference_synsets)
+            self.dataset_freqs.append(dataset_freqs)
+            self.synset_freqs.append(current_synset_freqs)
+
 
         if store_reference_synsets:
             self.reference_synsets = set((dataset_freqs.keys()))

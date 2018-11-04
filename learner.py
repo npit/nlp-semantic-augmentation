@@ -18,7 +18,7 @@ from keras.utils import to_categorical
 from keras import callbacks
 import gc
 
-from utils import info, debug, tic, toc, error, write_pickled
+from utils import info, debug, tictoc, error, write_pickled
 
 class DNN:
     save_dir = "models"
@@ -186,24 +186,23 @@ class DNN:
 
     # perfrom a train-test loop
     def do_traintest(self):
+        # get trainval data
         train_val_idxs = self.get_trainval_indexes()
-        tic()
-        for fold_index, trainval_idx in enumerate(train_val_idxs):
-            self.fold_index = fold_index
-            self.current_run_descr = "fold {}/{}".format(fold_index + 1, self.folds) if self.do_folds else \
-                "{}-val split".format(self.validation_portion)
-            # train
-            info("Training run: {}".format(self.current_run_descr))
-            tic()
-            model = self.train_model2(trainval_idx)
-            toc("Training {}".format(self.current_run_descr))
-            # test
-            tic()
-            self.do_test(model)
-            toc("Testing {}".format(self.current_run_descr))
-        if self.do_folds:
-            toc("Total training")
-            self.report_across_folds()
+
+        with tictoc("Total training", do_print=self.do_folds, announce=False):
+            # loop on folds, or do a single loop on the train-val portion split
+            for fold_index, trainval_idx in enumerate(train_val_idxs):
+                self.fold_index = fold_index
+                self.current_run_descr = "fold {}/{}".format(fold_index + 1, self.folds) if self.do_folds else \
+                    "{}-val split".format(self.validation_portion)
+                # train the model
+                with tictoc("Training run {}".format(self.current_run_descr)):
+                    model = self.train_model2(trainval_idx)
+                # test the model
+                with tictoc("Testing {}".format(self.current_run_descr)):
+                    self.do_test(model)
+            if self.do_folds:
+                self.report_across_folds()
 
 
     # handle multi-vector items, expanding indexes to the specified sequence length

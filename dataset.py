@@ -5,7 +5,7 @@ import os
 from os.path import exists, isfile, join
 from os import makedirs
 from helpers import Config
-from utils import error, tic, toc, info, warning, read_pickled, write_pickled
+from utils import error, tictoc, info, warning, read_pickled, write_pickled
 from sklearn.datasets import fetch_20newsgroups
 from keras.preprocessing.text import text_to_word_sequence
 from nltk.corpus import stopwords, reuters
@@ -157,32 +157,32 @@ class Dataset(Serializable):
 
         stopw = set(stopwords.words(self.language))
 
-        tic()
-        filt = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
-        info("Preprocessing {}".format(self.name))
-        info("Mapping training set to word sequences.")
-        train_pos, test_pos = [],[]
-        for i in range(len(self.train)):
-            self.process_single_text(self.train[i], filt, stopw)
-            words, pos_tags = self.process_single_text(self.train[i], filt=filt, stopwords=stopw)
-            self.train[i] = words
-            train_pos.append(pos_tags)
-            self.vocabulary.update(words)
-        info("Mapping test set to word sequences.")
-        for i in range(len(self.test)):
-            words, pos_tags = self.process_single_text(self.test[i], filt=filt, stopwords=stopw)
-            self.test[i] = words
-            test_pos.append(pos_tags)
-        # set pos
-        self.pos_tags = [train_pos, test_pos]
-        # fix word order and get word indexes
-        self.vocabulary = list(self.vocabulary)
-        for index, word in enumerate(self.vocabulary):
-            self.word_to_index[word] = index
-            self.vocabulary_index.append(index)
-        # add another for the missing
-        self.undefined_word_index = len(self.vocabulary)
-        toc("Preprocessing")
+        with tictoc("Preprocessing"):
+            filt = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
+            info("Preprocessing {}".format(self.name))
+            info("Mapping training set to word sequences.")
+            train_pos, test_pos = [],[]
+            for i in range(len(self.train)):
+                self.process_single_text(self.train[i], filt, stopw)
+                words, pos_tags = self.process_single_text(self.train[i], filt=filt, stopwords=stopw)
+                self.train[i] = words
+                train_pos.append(pos_tags)
+                self.vocabulary.update(words)
+            info("Mapping test set to word sequences.")
+            for i in range(len(self.test)):
+                words, pos_tags = self.process_single_text(self.test[i], filt=filt, stopwords=stopw)
+                self.test[i] = words
+                test_pos.append(pos_tags)
+            # set pos
+            self.pos_tags = [train_pos, test_pos]
+            # fix word order and get word indexes
+            self.vocabulary = list(self.vocabulary)
+            for index, word in enumerate(self.vocabulary):
+                self.word_to_index[word] = index
+                self.vocabulary_index.append(index)
+            # add another for the missing
+            self.undefined_word_index = len(self.vocabulary)
+
         # serialize
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 

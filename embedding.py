@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 import csv
 import pickle
-from utils import error, tic, toc, info, debug, read_pickled, write_pickled
+from utils import error, tictoc, info, debug, read_pickled, write_pickled
 import numpy as np
 from serializable import Serializable
 
@@ -197,9 +197,9 @@ class Glove(Embedding):
 
         if os.path.exists(raw_data_path):
             info("Reading raw embedding data from {}".format(raw_data_path))
-            tic()
-            self.embeddings = pd.read_csv(raw_data_path, index_col = 0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
-            toc("Reading raw data")
+            with tictoc("Reading raw {} data.".format(self.name)):
+                self.embeddings = pd.read_csv(raw_data_path, index_col = 0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
+
             return self.embeddings
         # else, gotta download the raw data
         error("Downloaded glove embeddings missing from {}. Get them from https://nlp.stanford.edu/projects/glove/".format(raw_data_path))
@@ -223,32 +223,32 @@ class Glove(Embedding):
             self.dataset_embeddings.append([])
             self.words_per_document.append([])
             self.present_word_indexes.append([])
-            tic()
-            info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
-            hist = {w: 0 for w in self.words_to_numeric_idx}
-            hist_missing = {}
-            for j in range(len(text_bundles[i])):
-                word_list = text_bundles[i][j]
-                debug("Text {}/{}".format(j+1, len(text_bundles[i])))
-                text_embeddings = self.embeddings.loc[word_list]
+            with tictoc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles))):
+                info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
+                hist = {w: 0 for w in self.words_to_numeric_idx}
+                hist_missing = {}
+                for j in range(len(text_bundles[i])):
+                    word_list = text_bundles[i][j]
+                    debug("Text {}/{}".format(j+1, len(text_bundles[i])))
+                    text_embeddings = self.embeddings.loc[word_list]
 
-                # stats
-                missing_words = text_embeddings[text_embeddings.isnull().any(axis=1)].index.tolist()
-                text_embeddings = self.embeddings.loc[word_list].dropna()
-                present_words = text_embeddings.index.tolist()
-                for w in present_words:
-                    hist[w] += 1
-                for m in missing_words:
-                    if m not in hist_missing:
-                        hist_missing[m] = 0
-                    hist_missing[m] += 1
+                    # stats
+                    missing_words = text_embeddings[text_embeddings.isnull().any(axis=1)].index.tolist()
+                    text_embeddings = self.embeddings.loc[word_list].dropna()
+                    present_words = text_embeddings.index.tolist()
+                    for w in present_words:
+                        hist[w] += 1
+                    for m in missing_words:
+                        if m not in hist_missing:
+                            hist_missing[m] = 0
+                        hist_missing[m] += 1
 
-                self.words_per_document[-1].append(present_words)
-                self.dataset_embeddings[-1].append(text_embeddings)
-                present_words_doc_idx = [i for i in range(len(word_list)) if word_list[i] in present_words]
-                self.present_word_indexes[-1].append(present_words_doc_idx)
+                    self.words_per_document[-1].append(present_words)
+                    self.dataset_embeddings[-1].append(text_embeddings)
+                    present_words_doc_idx = [i for i in range(len(word_list)) if word_list[i] in present_words]
+                    self.present_word_indexes[-1].append(present_words_doc_idx)
 
-            toc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles)))
+
 
             num_words_hit, num_hit = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
             num_words_miss, num_miss = len(hist_missing.keys()), sum(hist_missing.values())
@@ -308,23 +308,21 @@ class Train(Embedding):
         # loop over input text bundles (e.g. train & test)
         for i in range(len(text_bundles)):
             self.dataset_embeddings.append([])
-            tic()
-            info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
-            for j in range(len(text_bundles[i])):
-                word_list = text_bundles[i][j]
-                index_list = [ [dset.word_to_index[w]] if w in dset.vocabulary else [dset.undefined_word_index] for w in word_list]
-                embedding = pd.DataFrame(index_list, index = word_list)
-                debug("Text {}/{}".format(j+1, len(text_bundles[i])))
-                self.dataset_embeddings[-1].append(embedding)
-                if i > 0:
-                    for w in word_list:
-                        if w not in non_train_words:
-                            non_train_words.append(w)
+            with tictoc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles))):
+                info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
+                for j in range(len(text_bundles[i])):
+                    word_list = text_bundles[i][j]
+                    index_list = [ [dset.word_to_index[w]] if w in dset.vocabulary else [dset.undefined_word_index] for w in word_list]
+                    embedding = pd.DataFrame(index_list, index = word_list)
+                    debug("Text {}/{}".format(j+1, len(text_bundles[i])))
+                    self.dataset_embeddings[-1].append(embedding)
+                    if i > 0:
+                        for w in word_list:
+                            if w not in non_train_words:
+                                non_train_words.append(w)
                     # get test words, perhaps
 
 
-
-            toc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles)))
         self.words = [dset.vocabulary, non_train_words]
         # write mapped data
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())

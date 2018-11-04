@@ -62,18 +62,27 @@ def write_pickled(path, data):
         pickle.dump(data, f)
 
 # object to store times for tic-tocs
-class Timer:
-    times = []
 
+class tictoc:
+    start = None
+    func = None
+    msg = None
+    do_print = True
+    announce = True
 
-# matlabeqsque timing function start
-def tic():
-    Timer.times.append(time.time())
+    def __init__(self, msg, printer_func = logging.getLogger().info, do_print=True, announce=True):
+        self.msg = msg
+        self.func = printer_func
+        self.do_print = do_print
+        self.announce = announce
 
+    def __enter__(self):
+        self.start = time.time()
+        if self.announce:
+            self.func(">>> Starting: {}".format(self.msg))
 
-# timing function end
-def toc(msg):
-    # convert to smhd
-    elapsed = elapsed_str(Timer.times.pop())
-    logger = logging.getLogger()
-    logger.info("{} took {}.".format(msg, elapsed))
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # convert to smhd
+        elapsed = elapsed_str(self.start)
+        self.func("<<< {} took {}.".format(self.msg, elapsed))
+
