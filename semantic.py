@@ -10,6 +10,8 @@ from nltk.corpus import wordnet as wn
 
 class SemanticResource(Serializable):
     dir_name = "semantic"
+    semantic_name = None
+    name = None
     do_spread_activation = False
 
     def __init__(self, config):
@@ -22,6 +24,15 @@ class SemanticResource(Serializable):
         else:
             error("Undefined semantic resource: {}".format(name))
     pass
+
+    def get_semantic_name(config):
+        if not config.semantic.name:
+            return None
+        freq_filtering = "ALL" if not config.semantic.threshold else "fthres{}".format(config.semantic.threshold)
+        sem_weights = "w{}".format(config.semantic.weights)
+        disambig = "disam{}".format(config.semantic.disambiguation)
+        semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights, freq_filtering, disambig)
+        return semantic_name
 
 
 class Wordnet(SemanticResource):
@@ -48,8 +59,6 @@ class Wordnet(SemanticResource):
 
         # map nltk pos maps into meaningful wordnet ones
         self.pos_tag_mapping = {"VB": wn.VERB, "NN": wn.NOUN, "JJ": wn.ADJ, "RB": wn.ADV}
-        # ignore these
-        for p in ["IN"]: self.pos_tag_mapping[p] = "ingore"
 
         self.semantic_freq_threshold = config.semantic.threshold
         self.semantic_weights = config.semantic.weights
@@ -61,11 +70,8 @@ class Wordnet(SemanticResource):
                                                    config.semantic.spreading_activation[1]
 
         self.dataset_name = Dataset.get_limited_name(self.config)
-
-        freq_filtering = "ALL" if not self.semantic_freq_threshold else "fthres{}".format(self.semantic_freq_threshold)
-        sem_weights = "w{}".format(self.semantic_weights)
-        disambig = "disam{}".format(self.disambiguation)
-        self.name = "{}_{}_{}_{}_{}".format(self.dataset_name, self.name, sem_weights, freq_filtering, disambig)
+        self.semantic_name = SemanticResource.get_semantic_name(self.config)
+        self.name = "{}_{}".format(self.dataset_name, self.semantic_name)
         if self.do_spread_activation:
             self.name += "spread{}dec{}".format(self.spread_steps, self.spread_decay)
 
@@ -282,7 +288,7 @@ class Wordnet(SemanticResource):
     # function to map words to wordnet concepts
     def map_text(self, embedding, dataset):
         self.embedding = embedding
-        if self.loaded_preprocessed:
+        if self.loaded_preprocessed or self.embedding.loaded_enriched():
             return
 
         # process semantic embeddings, if applicable
@@ -366,8 +372,8 @@ class Wordnet(SemanticResource):
         if self.do_spread_activation:
             # climb the hypernym ladder
             hyper_activations = self.spread_activation(synset, self.spread_steps, self.spread_decay)
-        debug("Semantic activations (standard/spreaded): {} / {}".format(activations, hyper_activations))
-        activations = {**activations, **hyper_activations}
+            debug("Semantic activations (standard/spreaded): {} / {}".format(activations, hyper_activations))
+            activations = {**activations, **hyper_activations}
         return activations
 
     def spread_activation(self, synset, steps_to_go, current_decay):
@@ -385,8 +391,11 @@ class Wordnet(SemanticResource):
         return activations
 
 
+    def get_vectors(self):
+        return self.semantic_document_vectors
+
     # get semantic vector information, wrt to the configuration
-    def get_data(self, config):
+    def generate_vectors(self, config):
         # map dicts to vectors
         if not self.dataset_freqs:
             error("Attempted to generate semantic vectors from empty containers")
@@ -430,7 +439,7 @@ class Wordnet(SemanticResource):
         else:
             error("Unimplemented semantic vector method: {}.".format(self.semantic_weights))
 
-        return semantic_document_vectors
+        self.semantic_document_vectors = semantic_document_vectors
 
 
 class GoogleKnowledgeGraph:

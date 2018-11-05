@@ -1,4 +1,4 @@
-from os.path import join
+from os.path import join, dirname
 import os
 import pandas as pd
 import csv
@@ -6,6 +6,7 @@ from dataset import Dataset
 from utils import error, tictoc, info, debug, read_pickled, write_pickled
 import numpy as np
 from serializable import Serializable
+from semantic import SemanticResource
 
 
 class Embedding(Serializable):
@@ -19,6 +20,9 @@ class Embedding(Serializable):
     embedding_dim = None
     sequence_length = None
 
+    loaded_aggregated = False
+    loaded_finalized = False
+
     def create(config):
         name = config.embedding.name;
         if name == Glove.name:
@@ -27,6 +31,8 @@ class Embedding(Serializable):
             return Word2vec(config)
         if name == Train.name:
             return Train(config)
+        if name == VectorEmbedding.name:
+            return VectorEmbedding(config)
         else:
             error("Undefined embedding: {}".format(name))
 
@@ -39,6 +45,12 @@ class Embedding(Serializable):
         self.dataset_name = Dataset.get_limited_name(self.config)
         self.set_name()
 
+    def save_raw_embedding_weights(self, weights):
+        error("{} is for pretrained embeddings only.".format(self.name))
+
+    def loaded_enriched(self):
+        return self.loaded_finalized
+
     def set_name(self):
         self.name = "{}_{}_dim{}".format(self.base_name, self.dataset_name, self.embedding_dim)
 
@@ -49,13 +61,33 @@ class Embedding(Serializable):
         Serializable.__init__(self, self.dir_name)
         # check for serialized mapped data
         self.set_serialization_params()
+        # add paths for aggregated and enriched embeddings:
+        aggr = "".join(self.config.embedding.aggregation)
+        self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
+        sem = SemanticResource.get_semantic_name(self.config)
+        finalized_id = sem if sem else "nosem"
+        self.serialization_path_finalized = "{}/{}.aggregated_{}.finalized_{}.pickle".format(self.serialization_dir, self.name, aggr, finalized_id)
+        self.data_paths = [self.serialization_path_finalized, self.serialization_path_aggregated] + self.data_paths
+        self.read_functions = [read_pickled]*2 + self.read_functions
+        self.handler_functions = [self.handle_finalized, self.handle_aggregated] + self.handler_functions
+
         self.acquire2(fatal_error=not can_fail_loading)
+
+
+    def handle_aggregated(self, data):
+        self.handle_preprocessed(data)
+        self.loaded_aggregated = True
+
+    def handle_finalized(self, data):
+        self.handle_preprocessed(data)
+        self.loaded_finalized = True
+        self.final_dim = data[0][0].shape[-1]
 
     def get_zero_pad_element(self):
         return np.zeros((1, self.embedding_dim), np.float32)
 
     def get_vocabulary_size(self):
-        return len(self.words[0])
+        return len(self.dataset_words[0])
 
     def get_embeddings(self, words):
         word_embeddings = self.embeddings.loc[words].dropna()
@@ -73,9 +105,10 @@ class Embedding(Serializable):
 
     # prepare embedding data to be ready for classification
     def prepare(self):
+        if self.loaded_aggregated or self.loaded_finalized:
+            return
         info("Aggregating embeddings via the {} method.".format(self.aggregation))
         if self.aggregation[0] == "avg":
-            self.vectors_per_document = 1
             # average all word vectors in the doc
             for dset_idx in range(len(self.dataset_embeddings)):
                 aggregated_doc_vectors = []
@@ -87,7 +120,6 @@ class Embedding(Serializable):
             num = self.sequence_length
             filter = self.aggregation[1]
             info("Aggregation with pad params: {} {}".format(num, filter))
-            self.vectors_per_document = num
             zero_pad = self.get_zero_pad_element()
 
             for dset_idx in range(len(self.dataset_embeddings)):
@@ -106,17 +138,24 @@ class Embedding(Serializable):
                                            columns=df_words.columns)
                         num_padded +=1
                         self.dataset_embeddings[dset_idx][doc_idx] = pd.concat([df_words, pad])
-                info("Truncated {:3f}% and padded {:3f} % items.".format(
+                info("Truncated {:.3f}% and padded {:.3f} % items.".format(
                     *[x / len(self.dataset_embeddings[dset_idx]) * 100 for x in [num_truncated, num_padded]]))
+
+        # serialize aggregated
+        write_pickled(self.serialization_path_aggregated, self.get_all_preprocessed())
 
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion
-    def finalize(self, semantic_data):
-
+    def finalize(self, semantic):
+        if self.loaded_finalized:
+            return
+        finalized_name = self.name
         if self.config.semantic.enrichment is not None:
             if self.config.embedding.name == "train":
                 error("Semantic enrichment undefined for embedding training, for now.")
             info("Enriching {} embeddings with semantic information.".format(self.config.embedding.name))
+            semantic_data = semantic.get_vectors()
+            finalized_name += ".{}.enriched".format(SemanticResource.get_semantic_name(self.config))
 
             if self.config.semantic.enrichment == "concat":
                 composite_dim = self.embedding_dim + len(semantic_data[0][0])
@@ -157,6 +196,7 @@ class Embedding(Serializable):
                 error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
         else:
             info("Finalizing embeddings without semantic information.")
+            finalized_name += ".finalized"
             dim = self.embedding_dim if not self.config.embedding.name == "train" else 1
             self.final_dim = dim
             # concatenating embeddings for each dataset portion into a single dataframe
@@ -166,6 +206,9 @@ class Embedding(Serializable):
                     embeddings = self.dataset_embeddings[dset_idx][doc_idx]
                     new_dset_embeddings = np.vstack([new_dset_embeddings, embeddings])
                 self.dataset_embeddings[dset_idx] = new_dset_embeddings
+
+        # serialize finalized embeddings
+        write_pickled(self.serialization_path_finalized, self.get_all_preprocessed())
 
 
     def get_final_dim(self):
@@ -177,11 +220,12 @@ class Embedding(Serializable):
     def preprocess(self):
         error("Need to override embedding preprocessing for {}".format(self.name))
 
-class Glove(Embedding):
-    name = "glove"
-    dataset_name = ""
+class VectorEmbedding(Embedding):
+    name = "vector"
+    unknown_word_token = "unk"
 
     def get_raw_path(self):
+        # only serialized
         return None
 
     def handle_raw_serialized(self, raw_serialized):
@@ -199,26 +243,17 @@ class Glove(Embedding):
         self.handle_raw_serialized(raw_data)
 
     def fetch_raw(self, dummy_input):
-        raw_data_path = os.path.join("{}/glove.6B.{}d.txt".format(join(self.raw_data_dir), self.embedding_dim))
-
-        if os.path.exists(raw_data_path):
-            info("Reading raw embedding data from {}".format(raw_data_path))
-            with tictoc("Reading raw {} data.".format(self.name)):
-                self.embeddings = pd.read_csv(raw_data_path, index_col = 0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
-
-            return self.embeddings
-        # else, gotta download the raw data
-        error("Downloaded glove embeddings missing from {}. Get them from https://nlp.stanford.edu/projects/glove/".format(raw_data_path))
+        return dummy_input
 
     def preprocess(self):
         pass
 
     # transform input texts to embeddings
     def map_text(self, dset):
-
-        if self.loaded_preprocessed:
+        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
         info("Mapping {} to {} embeddings.".format(dset.name, self.name))
+        map_missing_unks = self.config.embedding.missing_words == "unk"
         text_bundles = dset.train, dset.test
         self.dataset_embeddings = []
         self.words_per_document = []
@@ -239,9 +274,17 @@ class Glove(Embedding):
                     text_embeddings = self.embeddings.loc[word_list]
 
                     # stats
-                    missing_words = text_embeddings[text_embeddings.isnull().any(axis=1)].index.tolist()
-                    text_embeddings = self.embeddings.loc[word_list].dropna()
-                    present_words = text_embeddings.index.tolist()
+                    nan_rows = text_embeddings.isnull().any(axis=1)
+                    missing_words = text_embeddings[nan_rows].index.tolist()
+                    if not map_missing_unks:
+                        text_embeddings = self.embeddings.loc[word_list].dropna()
+                        present_words = text_embeddings.index.tolist()
+                    else:
+                        text_embeddings = pd.DataFrame.fillna(text_embeddings, self.embeddings.loc["unk"])
+                        index = [self.unknown_word_token if x in missing_words else x for x in text_embeddings.index.tolist()]
+                        text_embeddings = pd.DataFrame(text_embeddings.values, index=index)
+                        present_words = [w for w in text_embeddings.index.tolist() if w != "unk"]
+
                     for w in present_words:
                         hist[w] += 1
                     for m in missing_words:
@@ -287,14 +330,37 @@ class Glove(Embedding):
         return self.present_word_indexes
 
 
+
+
+class Glove(VectorEmbedding):
+    name = "glove"
+    dataset_name = ""
+
+    def get_raw_path(self):
+        return join("{}/glove.6B.{}d.txt".format(join(self.raw_data_dir), self.embedding_dim))
+
+
+    def fetch_raw(self, raw_data_path):
+        if os.path.exists(raw_data_path):
+            info("Reading raw embedding data from {}".format(raw_data_path))
+            with tictoc("Reading raw {} data.".format(self.name)):
+                self.embeddings = pd.read_csv(raw_data_path, index_col = 0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
+
+            return self.embeddings
+        # else, gotta download the raw data
+        error("Downloaded glove embeddings missing from {}. Get them from https://nlp.stanford.edu/projects/glove/".format(raw_data_path))
+
+
+
 class Train(Embedding):
     name = "train"
+    undefined_word_name = "unk"
 
     def __init__(self, config):
         self.config = config
         Embedding.__init__(self, can_fail_loading=True)
 
-    
+
     # embedding training data (e.g. word indexes) does not depend on embedding dimension
     # so naming is overriden to omit embedding dimension
     def set_name(self):
@@ -304,7 +370,7 @@ class Train(Embedding):
     def map_text(self, dset):
         # assign all embeddings
         self.embeddings = pd.DataFrame(dset.vocabulary_index, dset.vocabulary)
-        if self.loaded_preprocessed:
+        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
         info("Mapping {} to {} embeddings.".format(dset.name, self.name))
         text_bundles = dset.train, dset.test
@@ -322,19 +388,17 @@ class Train(Embedding):
                     embedding = pd.DataFrame(index_list, index = word_list)
                     debug("Text {}/{}".format(j+1, len(text_bundles[i])))
                     self.dataset_embeddings[-1].append(embedding)
+                    # get test words, perhaps
                     if i > 0:
                         for w in word_list:
                             if w not in non_train_words:
                                 non_train_words.append(w)
-                    # get test words, perhaps
-
-
-        self.words = [dset.vocabulary, non_train_words]
+        self.dataset_words = [dset.vocabulary, non_train_words]
         # write mapped data
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_preprocessed(self):
-        return [self.dataset_embeddings, self.words, None, self.undefined_word_index, None]
+        return [self.dataset_embeddings, self.dataset_words, None, self.undefined_word_index, None]
 
     def get_zero_pad_element(self):
         return self.undefined_word_index
@@ -344,10 +408,22 @@ class Train(Embedding):
 
     def fetch_raw(self, dummy_input):
         return dummy_input
+
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.dataset_embeddings, self.words, self.missing, self.undefined_word_index, _ = preprocessed
+        self.dataset_embeddings, self.dataset_words, self.missing, self.undefined_word_index, _ = preprocessed
 
+    def save_raw_embedding_weights(self, weights, write_dir):
+        # rename to generic vectorembedding
+        emb_name = ("raw_" + self.name + "_dim{}.pickle".format(self.config.embedding.dimension)).replace(Train.name, VectorEmbedding.name)
+        writepath = join(write_dir, emb_name)
+        # associate with respective words
+        index = self.dataset_words[0] + [self.undefined_word_name]
+        data = pd.DataFrame(weights, index = index)
+        write_pickled(writepath, data)
+
+    def get_words(self):
+        return self.dataset_words
 
 
 class Universal_sentence_encoder:

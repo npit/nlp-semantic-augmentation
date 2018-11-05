@@ -5,6 +5,7 @@ import os
 from os.path import exists, isfile, join
 from os import makedirs
 from helpers import Config
+from nltk.tokenize import RegexpTokenizer
 from utils import error, tictoc, info, warning, read_pickled, write_pickled
 from sklearn.datasets import fetch_20newsgroups
 from keras.preprocessing.text import text_to_word_sequence
@@ -41,6 +42,7 @@ class Dataset(Serializable):
     # dataset creation
     def __init__(self):
         Serializable.__init__(self, self.dir_name)
+        self.nltk_tokenizer = RegexpTokenizer(r'\w+')
         self.set_serialization_params()
 
         # check for limited dataset
@@ -173,6 +175,7 @@ class Dataset(Serializable):
     # map text string into list of stopword-filtered words and POS tags
     def process_single_text(self, text, filt, stopwords):
         words = text_to_word_sequence(text, filters=filt, lower=True, split=' ')
+        # words = [w.lower() for w in self.nltk_tokenizer.tokenize(text)]
         pos_tags = nltk.pos_tag(words)
         # remove stopwords
         idx = [p for p in range(len(words)) if words[p] not in stopwords]

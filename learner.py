@@ -1,5 +1,6 @@
 import pickle
-import os
+from os.path import join, dirname
+from os import makedirs
 import random
 
 from sklearn import metrics
@@ -11,12 +12,11 @@ warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
 import numpy as np
 import pandas as pd
 
-from keras.models import Sequential
+from keras.models import Sequential, load_model
 from keras.layers import Activation, Dense, Dropout, Embedding, Reshape
 from keras.layers import LSTM as keras_lstm
 from keras.utils import to_categorical
 from keras import callbacks
-import gc
 
 from utils import info, debug, tictoc, error, write_pickled
 
@@ -34,6 +34,8 @@ class DNN:
     do_train_embeddings = False
     train_embeddings_params = []
     do_folds = False
+
+    model_paths = []
 
     def create(config):
         name = config.learner.name
@@ -109,13 +111,15 @@ class DNN:
     def get_callbacks(self):
         self.callbacks = []
         self.results_folder = self.config.folders.results
-        models_folder = os.path.join(self.results_folder, "models")
+        models_folder = join(self.results_folder, "models")
         logs_folder = self.results_folder
-        [os.makedirs(x, exist_ok=True) for x in  [self.results_folder, models_folder, logs_folder]]
+        [makedirs(x, exist_ok=True) for x in  [self.results_folder, models_folder, logs_folder]]
 
         # model saving with early stoppingtch_si
-        self.model_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index))
-        weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
+        self.model_path = join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index))
+        weights_path = self.model_path
+
+        # weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
         self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
                                                    save_best_only=True, save_weights_only=False,
                                                    mode='auto', period=1)
@@ -134,30 +138,32 @@ class DNN:
                                                           min_delta=0.0001, cooldown=0, min_lr=0)
         self.callbacks.append(self.lr_reducer)
         # logging
-        log_file = os.path.join(logs_folder,"{}_fold_{}.csv".format(self.name, self.fold_index))
+        log_file = join(logs_folder,"{}_fold_{}.csv".format(self.name, self.fold_index))
         self.csv_logger = callbacks.CSVLogger(log_file, separator=',', append=False)
         self.callbacks.append(self.csv_logger)
         return self.callbacks
 
     # to preliminary work
-    def make(self, embedding, targets, num_labels):
-        if embedding.base_name == "train":
+    def make(self, embeddings, targets, num_labels):
+        if embeddings.base_name == "train":
             self.do_train_embeddings = True
-            self.embedding_dim = embedding.get_dim()
+            self.embedding_name = embeddings.name
+            self.embedding_dim = embeddings.get_dim()
             info("Will train {}-dimensional embeddings.".format(self.embedding_dim))
-            self.final_dim = embedding.get_final_dim()
-            self.vocabulary_size = embedding.get_vocabulary_size()
-            emb_seqlen = embedding.sequence_length
+            self.final_dim = embeddings.get_final_dim()
+            self.vocabulary_size = embeddings.get_vocabulary_size()
+            emb_seqlen = embeddings.sequence_length
             if self.sequence_length is not None:
                 if emb_seqlen != self.sequence_length:
                     error("Specified embedding sequence of length {}, but learner sequence is of length {}".format(emb_seqlen, self.sequence_length))
             self.sequence_length = emb_seqlen
+            self.embeddings = embeddings
 
         self.verbosity = 1 if self.config.log_level == "debug" else 0
-        self.train, self.test = embedding.get_data()
+        self.train, self.test = embeddings.get_data()
         self.num_labels = num_labels
         self.train_labels, self.test_labels = [np.asarray(x, np.int32) for x in targets]
-        self.input_dim = embedding.get_final_dim()
+        self.input_dim = embeddings.get_final_dim()
 
         self.epochs = self.config.train.epochs
         self.folds = self.config.train.folds
@@ -189,6 +195,9 @@ class DNN:
         # get trainval data
         train_val_idxs = self.get_trainval_indexes()
 
+        # keep track of models' test performances and paths wrt selected metrics
+        model_paths = []
+
         with tictoc("Total training", do_print=self.do_folds, announce=False):
             # loop on folds, or do a single loop on the train-val portion split
             for fold_index, trainval_idx in enumerate(train_val_idxs):
@@ -201,8 +210,23 @@ class DNN:
                 # test the model
                 with tictoc("Testing {} on data: {}.".format(self.current_run_descr, len(self.test_labels))):
                     self.do_test(model)
+                    model_paths.append(self.model_saver.filepath)
             if self.do_folds:
                 self.report_across_folds()
+            # for embedding training, write the embeddings
+            if self.do_train_embeddings:
+                if self.do_folds:
+                    # decide on best model wrt to first preferred, else macro f1
+                    measure, aggr = [x[0] for x in [self.preferred_measures, self.preferred_aggregations]]
+                    best_fold = np.argmax(self.performance['run'][measure][aggr][0])
+                    model = load_model(model_paths[best_fold])
+                else:
+                    model = load_model(model_paths[0])
+                # get the embedding weights
+                weights = model.layers[0].get_weights()[0]
+                self.embeddings.save_raw_embedding_weights(weights, dirname(self.model_path))
+                pass
+
 
 
     # handle multi-vector items, expanding indexes to the specified sequence length
@@ -263,8 +287,8 @@ class DNN:
         # write the results in csv in the results directory
         # entries in a run_type - measure configuration list are the foldwise scores, followed by the mean
         df = pd.DataFrame.from_dict(self.performance)
-        df.to_csv(os.path.join(self.results_folder, "results.txt"))
-        with open(os.path.join(self.results_folder, "results.pickle"), "wb") as f:
+        df.to_csv(join(self.results_folder, "results.txt"))
+        with open(join(self.results_folder, "results.pickle"), "wb") as f:
             pickle.dump(df, f)
 
 
@@ -331,7 +355,6 @@ class DNN:
             self.performance[type][measure]["macro"]["folds"].append(ma)
             self.performance[type][measure]["micro"]["folds"].append(mi)
             self.performance[type][measure]["weighted"]["folds"].append(ws)
-
 
     # print performance of the latest run
     def print_performance(self):
