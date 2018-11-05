@@ -196,10 +196,10 @@ class DNN:
                 self.current_run_descr = "fold {}/{}".format(fold_index + 1, self.folds) if self.do_folds else \
                     "{}-val split".format(self.validation_portion)
                 # train the model
-                with tictoc("Training run {}".format(self.current_run_descr)):
+                with tictoc("Training run {} on data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
                     model = self.train_model2(trainval_idx)
                 # test the model
-                with tictoc("Testing {}".format(self.current_run_descr)):
+                with tictoc("Testing {} on data: {}.".format(self.current_run_descr, len(self.test_labels))):
                     self.do_test(model)
             if self.do_folds:
                 self.report_across_folds()

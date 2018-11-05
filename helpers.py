@@ -31,6 +31,7 @@ class Config:
         stats = None
         aggregations = None
         folds = None
+        measures = None
         pass
     class embedding:
         dimension = None
