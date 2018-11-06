@@ -8,7 +8,6 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # from nltk.corpora import wordnet as wn
 # import numpy as np
 
-from fetcher import Fetcher
 from dataset import Dataset
 from embedding import Embedding
 from semantic import SemanticResource

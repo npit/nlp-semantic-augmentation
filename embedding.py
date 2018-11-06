@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import csv
 from dataset import Dataset
-from utils import error, tictoc, info, debug, read_pickled, write_pickled
+from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning
 import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
@@ -24,17 +24,10 @@ class Embedding(Serializable):
     loaded_finalized = False
 
     def create(config):
-        name = config.embedding.name;
-        if name == Glove.name:
-            return Glove(config)
-        if name == Word2vec.name:
-            return Word2vec(config)
+        name = config.embedding.name
         if name == Train.name:
             return Train(config)
-        if name == VectorEmbedding.name:
-            return VectorEmbedding(config)
-        else:
-            error("Undefined embedding: {}".format(name))
+        return VectorEmbedding(config)
 
     def set_params(self):
         self.embedding_dim = self.config.embedding.dimension
@@ -43,6 +36,7 @@ class Embedding(Serializable):
         self.base_name = self.name
         self.sequence_length = self.config.embedding.sequence_length
         self.dataset_name = Dataset.get_limited_name(self.config)
+        self.map_missing_unks = self.config.embedding.missing_words == "unk"
         self.set_name()
 
     def save_raw_embedding_weights(self, weights):
@@ -220,21 +214,27 @@ class Embedding(Serializable):
     def preprocess(self):
         error("Need to override embedding preprocessing for {}".format(self.name))
 
+# generic class to load pickled embedding dataframes
 class VectorEmbedding(Embedding):
     name = "vector"
     unknown_word_token = "unk"
 
+    # expected raw data path
     def get_raw_path(self):
-        # only serialized
-        return None
+        return "{}/{}_dim{}.pickle".format(self.raw_data_dir, self.base_name, self.embedding_dim)
 
+    # mark word-index relations for stat computation, add unk if needed
     def handle_raw_serialized(self, raw_serialized):
+        # process as dataframe
         self.words_to_numeric_idx = {}
         self.embeddings = raw_serialized
         for w in self.embeddings.index.tolist():
             self.words_to_numeric_idx[w] = len(self.words_to_numeric_idx)
-        pass
+        if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
+            warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
+            self.embeddings.loc[self.unknown_word_token] = np.zeros(self.embedding_dim)
 
+    # mark preprocessing
     def handle_preprocessed(self, preprocessed):
         self.dataset_embeddings, self.words_per_document, self.missing, self.undefined_word_index, self.present_word_indexes = preprocessed
         self.loaded_preprocessed = True
@@ -242,8 +242,9 @@ class VectorEmbedding(Embedding):
     def handle_raw(self, raw_data):
         self.handle_raw_serialized(raw_data)
 
-    def fetch_raw(self, dummy_input):
-        return dummy_input
+    def fetch_raw(self, path):
+        # assume embeddings are dataframes
+        return read_pickled(path)
 
     def preprocess(self):
         pass
@@ -253,7 +254,6 @@ class VectorEmbedding(Embedding):
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
         info("Mapping {} to {} embeddings.".format(dset.name, self.name))
-        map_missing_unks = self.config.embedding.missing_words == "unk"
         text_bundles = dset.train, dset.test
         self.dataset_embeddings = []
         self.words_per_document = []
@@ -276,7 +276,7 @@ class VectorEmbedding(Embedding):
                     # stats
                     nan_rows = text_embeddings.isnull().any(axis=1)
                     missing_words = text_embeddings[nan_rows].index.tolist()
-                    if not map_missing_unks:
+                    if not self.map_missing_unks:
                         text_embeddings = self.embeddings.loc[word_list].dropna()
                         present_words = text_embeddings.index.tolist()
                     else:
@@ -296,8 +296,6 @@ class VectorEmbedding(Embedding):
                     self.dataset_embeddings[-1].append(text_embeddings)
                     present_words_doc_idx = [i for i in range(len(word_list)) if word_list[i] in present_words]
                     self.present_word_indexes[-1].append(present_words_doc_idx)
-
-
 
             num_words_hit, num_hit = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
             num_words_miss, num_miss = len(hist_missing.keys()), sum(hist_missing.values())
@@ -320,7 +318,7 @@ class VectorEmbedding(Embedding):
 
     def __init__(self, config):
         self.config = config
-        self.base_name = self.name
+        self.name = self.base_name = self.config.embedding.name
         Embedding.__init__(self)
 
     def get_all_preprocessed(self):
@@ -328,29 +326,6 @@ class VectorEmbedding(Embedding):
 
     def get_present_word_indexes(self):
         return self.present_word_indexes
-
-
-
-
-class Glove(VectorEmbedding):
-    name = "glove"
-    dataset_name = ""
-
-    def get_raw_path(self):
-        return join("{}/glove.6B.{}d.txt".format(join(self.raw_data_dir), self.embedding_dim))
-
-
-    def fetch_raw(self, raw_data_path):
-        if os.path.exists(raw_data_path):
-            info("Reading raw embedding data from {}".format(raw_data_path))
-            with tictoc("Reading raw {} data.".format(self.name)):
-                self.embeddings = pd.read_csv(raw_data_path, index_col = 0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
-
-            return self.embeddings
-        # else, gotta download the raw data
-        error("Downloaded glove embeddings missing from {}. Get them from https://nlp.stanford.edu/projects/glove/".format(raw_data_path))
-
-
 
 class Train(Embedding):
     name = "train"
