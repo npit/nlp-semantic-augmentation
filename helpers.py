@@ -104,8 +104,8 @@ class Config:
         logger.addHandler(handler)
 
         # file handler
-        logfile = os.path.join(self.folders.run, "log_{}.log".format(self.run_id))
-        fhandler = logging.FileHandler(logfile)
+        self.logfile = os.path.join(self.folders.run, "log_{}.log".format(self.run_id))
+        fhandler = logging.FileHandler(self.logfile)
         fhandler.setLevel(lvl)
         fhandler.setFormatter(formatter)
         logger.addHandler(fhandler)

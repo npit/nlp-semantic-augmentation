@@ -54,6 +54,8 @@ def main(config_file):
     learner.make(embedding, dataset.get_targets(), dataset.get_num_labels())
     learner.do_traintest()
 
+    info("Logfile is at: {}".format(config.logfile))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
