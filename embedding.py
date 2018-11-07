@@ -310,12 +310,8 @@ class VectorEmbedding(Embedding):
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
         # log missing words
-        for d in range(len(self.missing)):
-            l = ['train', 'test']
-            missing_filename = os.path.join(self.serialization_dir, "missing_words_{}_{}_{}.txt".format(self.name, dset.name, l[d]))
-            info("Writing missing words to {}".format(missing_filename))
-            with open(missing_filename, "w") as f:
-                f.write("\n".join(self.missing[d].keys()))
+        missing_filename = self.serialization_path_preprocessed + ".missingwords"
+        write_pickled(missing_filename, self.missing)
 
     def print_word_stats(self, hist, hist_missing):
         num_words_hit, num_hit = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())

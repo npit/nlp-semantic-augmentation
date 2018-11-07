@@ -173,8 +173,14 @@ class DNN:
         self.seed = self.config.get_seed()
         self.batch_size = self.config.train.batch_size
 
+        # sanity checks
         if self.do_folds and self.validation_portion:
             error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
+        # data / label matching
+        if len(self.train) != self.train_labels and (len(self.train) * self.sequence_length != self.train_labels):
+            error("Irreconcilable lengths of training data and labels: {}, {}").format(len(self.train), len(self.train_labels))
+        if len(self.train) != self.test_labels and (len(self.test_labels) * self.sequence_length != self.train_labels):
+            error("Irreconcilable lengths of training data and labels: {}, {}").format(len(self.train), len(self.train_labels))
 
     # potentially apply DNN input data tranformations
     def process_input(self, data):
