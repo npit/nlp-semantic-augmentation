@@ -94,8 +94,13 @@ class Dataset(Serializable):
     def handle_raw(self, raw_data):
         error("Need to override raw data handler for {}".format(self.name))
 
-    def handle_raw_serialized(self, raw_serialized):
-        error("Need to override raw serialized data handler for {}".format(self.name))
+    def handle_raw_serialized(self, deserialized_data):
+        self.train, self.train_target, self.train_label_names, \
+        self.test, self.test_target, self.test_label_names  = deserialized_data
+        self.num_labels = len(set(self.train_label_names))
+        self.loaded_raw_serialized = True
+
+
 
     # data getter
     def get_data(self):
@@ -276,13 +281,6 @@ class TwentyNewsGroups(Dataset):
         write_pickled(self.serialization_path, self.get_all_raw())
         self.loaded_raw = True
 
-    def handle_raw_serialized(self, deserialized_data):
-        self.train, self.train_target, self.train_label_names, \
-            self.test, self.test_target, self.test_label_names  = deserialized_data
-        self.num_labels = len(set(self.train_label_names))
-        self.loaded_raw_serialized = True
-
-
 
     def __init__(self, config):
         self.config = config
@@ -349,11 +347,6 @@ class Reuters(Dataset):
         write_pickled(self.serialization_path, raw_data)
         self.loaded_raw = True
         pass
-
-    def handle_raw_serialized(self, raw_serialized):
-        self.train, self.train_target, self.test, self.test_target, \
-        self.num_labels, self.train_label_names, self.test_label_names = raw_serialized
-        self.loaded_raw_serialized = True
 
     # raw path setter
     def get_raw_path(self):

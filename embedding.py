@@ -259,6 +259,8 @@ class VectorEmbedding(Embedding):
         self.words_per_document = []
         self.present_word_indexes = []
         self.vocabulary = dset.vocabulary
+
+        embedded_words, unknown_token = self.embeddings.index.values, self.unknown_word_token
         # loop over input text bundles (e.g. train & test)
         for i in range(len(text_bundles)):
             self.dataset_embeddings.append([])
@@ -268,41 +270,40 @@ class VectorEmbedding(Embedding):
                 info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
                 hist = {w: 0 for w in self.words_to_numeric_idx}
                 hist_missing = {}
-                for j in range(len(text_bundles[i])):
-                    word_list = text_bundles[i][j]
+                for j, word_list in enumerate(text_bundles[i]):
                     debug("Text {}/{}".format(j+1, len(text_bundles[i])))
-                    text_embeddings = self.embeddings.loc[word_list]
+                    # check present & missing words
+                    missing_words, missing_index, present_words, present_index = [], [], [], []
+                    for w, word in enumerate(word_list):
+                        if word not in embedded_words:
+                            missing_words.append(word)
+                            missing_index.append(w)
+                            if word not in hist_missing:
+                                hist_missing[word] = 0
+                            hist_missing[word] += 1
+                        else:
+                            present_words.append(word)
+                            present_index.append(word)
+                            hist[word] +=1
 
-                    # stats
-                    nan_rows = text_embeddings.isnull().any(axis=1)
-                    missing_words = text_embeddings[nan_rows].index.tolist()
+                    # handle missing
                     if not self.map_missing_unks:
-                        text_embeddings = self.embeddings.loc[word_list].dropna()
-                        present_words = text_embeddings.index.tolist()
+                        # ignore & discard missing words
+                        word_list = present_words
                     else:
-                        text_embeddings = pd.DataFrame.fillna(text_embeddings, self.embeddings.loc["unk"])
-                        index = [self.unknown_word_token if x in missing_words else x for x in text_embeddings.index.tolist()]
-                        text_embeddings = pd.DataFrame(text_embeddings.values, index=index)
-                        present_words = [w for w in text_embeddings.index.tolist() if w != "unk"]
+                        # map missing to UNKs
+                        for m in missing_index:
+                            word_list[m] = self.unknown_word_token
 
-                    for w in present_words:
-                        hist[w] += 1
-                    for m in missing_words:
-                        if m not in hist_missing:
-                            hist_missing[m] = 0
-                        hist_missing[m] += 1
-
-                    self.words_per_document[-1].append(present_words)
+                    # get embeddings
+                    text_embeddings = self.embeddings.loc[word_list]
                     self.dataset_embeddings[-1].append(text_embeddings)
-                    present_words_doc_idx = [i for i in range(len(word_list)) if word_list[i] in present_words]
-                    self.present_word_indexes[-1].append(present_words_doc_idx)
 
-            num_words_hit, num_hit = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
-            num_words_miss, num_miss = len(hist_missing.keys()), sum(hist_missing.values())
-            num_total = sum(list(hist.values()) + list(hist_missing.values()))
+                    # update present words and their index, per doc
+                    self.words_per_document[-1].append(present_words)
+                    self.present_word_indexes[-1].append(present_index)
 
-            debug("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit/num_total*100, num_total, num_words_hit))
-            debug("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss/num_total*100, num_total, num_words_miss))
+            self.print_word_stats(hist, hist_missing)
             self.missing.append(hist_missing)
 
         # write
@@ -315,6 +316,15 @@ class VectorEmbedding(Embedding):
             info("Writing missing words to {}".format(missing_filename))
             with open(missing_filename, "w") as f:
                 f.write("\n".join(self.missing[d].keys()))
+
+    def print_word_stats(self, hist, hist_missing):
+        num_words_hit, num_hit = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
+        num_words_miss, num_miss = len(hist_missing.keys()), sum(hist_missing.values())
+        num_total = sum(list(hist.values()) + list(hist_missing.values()))
+
+        debug("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit/num_total*100, num_total, num_words_hit))
+        debug("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss/num_total*100, num_total, num_words_miss))
+
 
     def __init__(self, config):
         self.config = config

@@ -165,7 +165,7 @@ class Config:
         self.embedding.name = embedding_opts["name"]
         self.embedding.aggregation = embedding_opts["aggregation"] if type(embedding_opts["aggregation"]) == list else [embedding_opts["aggregation"]]
         self.embedding.dimension = embedding_opts["dimension"]
-        self.embedding.sequence_length = self.get_value("sequence_length", default=None, base=embedding_opts)
+        self.embedding.sequence_length = self.get_value("sequence_length", default="drop", base=embedding_opts)
         self.embedding.missing_words = self.get_value("unknown_words", default="unk", base=embedding_opts)
 
         if self.has_value("semantic"):

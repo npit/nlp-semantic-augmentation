@@ -3,7 +3,7 @@ dataset:
   # which dataset
   name: 20newsgroups
   # limit the dataset to a number of documents for train / test: <int>
-  limit: 50
+  # data_limit: 50
   # class_limit: 2
 
 # embeddings
@@ -23,6 +23,10 @@ embedding:
   # --- freq: get the first NUM words that are most frequent in the dataset
   #aggregation: [pad, 10, first]
   aggregation: avg
+  # what to do with words missing from the embedding: drop / unk
+  # unk: map to an <unknown> category
+  # drop: discard them
+  unknown_words: unk
 
 
 # semantic
