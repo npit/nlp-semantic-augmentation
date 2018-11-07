@@ -403,7 +403,7 @@ class Wordnet(SemanticResource):
         synset_order = sorted(self.reference_synsets)
         semantic_document_vectors = [[] for _ in range(len(self.synset_freqs)) ]
 
-        if self.semantic_weights  == "freq":
+        if self.semantic_weights  == "frequencies":
             # get raw semantic frequencies
             for d in range(len(self.synset_freqs)):
                 for doc_dict in self.synset_freqs[d]:

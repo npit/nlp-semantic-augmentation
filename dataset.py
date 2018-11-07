@@ -311,11 +311,7 @@ class Reuters(Dataset):
             return None
         info("Downloading raw {} dataset".format(self.name))
         # get ids
-        documents = reuters.fileids()
         categories = reuters.categories()
-
-        #train_ids = list(filter(lambda doc: doc.startswith("train"), documents))
-        #test_ids = list(filter(lambda doc: doc.startswith("test"), documents))
         self.num_labels = len(categories)
         self.train_label_names, self.test_label_names = set(), set()
 
