@@ -283,7 +283,7 @@ class VectorEmbedding(Embedding):
                             hist_missing[word] += 1
                         else:
                             present_words.append(word)
-                            present_index.append(word)
+                            present_index.append(w)
                             hist[word] +=1
 
                     # handle missing

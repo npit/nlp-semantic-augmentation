@@ -285,7 +285,6 @@ class DNN:
 
     # train a model on training & validation data portions
     def train_model2(self, trainval_idx):
-        print("")
         # labels
         train_labels, val_labels = [
             to_categorical(labels, num_classes=self.num_labels) if len(labels) > 0 else np.empty((0,)) for labels in \

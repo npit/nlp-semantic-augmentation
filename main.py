@@ -2,25 +2,14 @@
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-
-# import keras
-#  wordnet api in nltk
-# from nltk.corpora import wordnet as wn
-# import numpy as np
-
 from dataset import Dataset
 from embedding import Embedding
 from semantic import SemanticResource
 from learner import DNN
 from helpers import Config
 import argparse
-import logging
 from utils import info
-
-
 print("Imports done.")
-
-print("googlesemantic, spreading act")
 
 def main(config_file):
     print("Running main.")
@@ -55,7 +44,6 @@ def main(config_file):
     learner.do_traintest()
 
     info("Logfile is at: {}".format(config.logfile))
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
