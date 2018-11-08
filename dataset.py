@@ -115,22 +115,30 @@ class Dataset(Serializable):
     # static method for external name computation
     def get_limited_name(config):
         name = config.dataset.name
-        if config.dataset.class_limit is not None:
+        if config.has_class_limit():
             name += "_clim_{}".format(config.dataset.class_limit)
-        if config.dataset.data_limit is not None:
-            name += "_dlim_{}".format(config.dataset.data_limit)
+        if config.has_data_limit():
+            ltrain, ltest = config.dataset.data_limit
+            if ltrain:
+                name += "_dlim_tr{}".format(ltrain)
+            if ltest:
+                name += "_dlim_te{}".format(ltest)
         return name
 
     def apply_data_limit(self, name):
-        d_lim = self.config.dataset.data_limit
-        if d_lim is not None:
-            name += "_dlim_{}".format(d_lim)
-        if self.train:
-            self.train = self.train[:d_lim]
-            self.test = self.test[:d_lim]
-            self.train_target = self.train_target[:d_lim]
-            self.test_target = self.test_target[:d_lim]
-            info("Limited {} loaded data to {} items per train/test portion.".format(self.base_name, d_lim))
+        ltrain, ltest = self.config.dataset.data_limit
+        if ltrain:
+            name += "_dlim_tr{}".format(ltrain)
+            if self.train:
+                self.train = self.train[:ltrain]
+                self.train_target = self.train_target[:ltrain]
+                info("Limited {} loaded data to {} train items.".format(self.base_name, ltrain))
+        if ltest:
+            name += "_dlim_te{}".format(ltest)
+            if self.test:
+                self.test = self.test[:ltest]
+                self.test_target = self.test_target[:ltest]
+                info("Limited {} loaded data to {} test items.".format(self.base_name, ltest))
         return name
 
     def apply_class_limit(self, name):
@@ -157,7 +165,7 @@ class Dataset(Serializable):
         return name
 
     def apply_limit(self):
-        if self.config.is_limited():
+        if self.config.has_limit():
             self.base_name = self.name
             name = self.apply_class_limit(self.base_name)
             self.name = self.apply_data_limit(name)
@@ -313,7 +321,8 @@ class Reuters(Dataset):
         # get ids
         categories = reuters.categories()
         self.num_labels = len(categories)
-        self.train_label_names, self.test_label_names = set(), set()
+        self.train_label_names, self.test_label_names = [], []
+        idx2label_train, idx2label_test = {}, {}
 
         # get content
         self.train, self.test = [], []
@@ -327,15 +336,22 @@ class Reuters(Dataset):
                 if doc.startswith("training"):
                     self.train.append(content)
                     self.train_target.append(cat_index)
-                    self.train_label_names.add(cat)
+                    if cat_index not in idx2label_train:
+                        idx2label_train[cat_index] = cat
                 else:
                     self.test.append(content)
                     self.test_target.append(cat_index)
-                    self.test_label_names.add(cat)
-        self.train_label_names = list(self.train_label_names)
+                    if cat_index not in idx2label_test:
+                        idx2label_test[cat_index] = cat
+
+        if len(idx2label_test) != len(idx2label_train):
+            error("{} number of label train/test mismatch: {} / {}".format(self.name, len(idx2label_test), len(idx2label_test)))
+        if idx2label_test != idx2label_train:
+            error("{} index-label mismatch".format(self.name, idx2label_test, idx2label_test))
+        self.train_label_names, self.test_label_names = [[idx2label_test[i] for i in idx2label_test]] * 2
         self.test_label_names = list(self.test_label_names)
         self.train_target = np.asarray(self.train_target, np.int32)
-        self.test_target = np.asarray(self.train_target, np.int32)
+        self.test_target = np.asarray(self.test_target, np.int32)
         return self.get_all_raw()
 
     def handle_raw(self, raw_data):

@@ -4,7 +4,7 @@ import logging
 import random
 import yaml
 import utils
-from utils import need
+from utils import need, error
 import shutil
 
 # from embeddings import Embedding
@@ -23,8 +23,8 @@ class Config:
 
     class dataset:
         name = None
-        data_limit = None
-        class_limit = None
+        data_limit = [None, None]
+        class_limit = [None, None]
 
     class print:
         run_types = None
@@ -62,8 +62,14 @@ class Config:
         validation_portion = None
         batch_size = None
 
-    def is_limited(self):
-        return any([x is not None for x in [self.dataset.data_limit or self.dataset.class_limit]])
+    def has_data_limit(self):
+        return any([x is not None for x in self.dataset.data_limit])
+
+    def has_class_limit(self):
+        return self.dataset.class_limit is not None
+
+    def has_limit(self):
+        return self.has_data_limit() or self.has_class_limit()
 
     def get_run_id(self):
         return self.run_id
@@ -157,8 +163,13 @@ class Config:
         need(self.has_value("dataset"), "Need dataset information")
         dataset_opts = self.conf["dataset"]
         self.dataset.name = dataset_opts["name"]
-        self.dataset.data_limit = self.get_value("data_limit", base = dataset_opts, default=None)
-        self.dataset.class_limit = self.get_value("class_limit", base = dataset_opts, default=None)
+        lims = self.get_value("data_limit", base=dataset_opts, default=[None, None])
+        if not(all([type(x) == int and x > 0 for x in lims]) and len(lims) in [1,2]):
+            error("Invalid data limits: {}".format(lims))
+        self.dataset.data_limit = lims
+        if len(lims) == 1:
+            self.dataset.data_limit = [lims[0] if type(lims) == list else lims, None]
+        self.dataset.class_limit = self.get_value("class_limit", base=dataset_opts, default=None)
         # read embedding options
         need(self.has_value("embedding"), "Need embedding information")
         embedding_opts = self.conf["embedding"]
@@ -187,7 +198,7 @@ class Config:
         self.learner.name = learner_opts["name"]
         self.learner.hidden_dim = learner_opts["hidden_dim"]
         self.learner.num_layers = learner_opts["layers"]
-        self.learner.sequence_length = self.get_value("sequence_length", default=None, base = learner_opts)
+        self.learner.sequence_length = self.get_value("sequence_length", default=None, base=learner_opts)
 
         need(self.has_value("train"), "Need training information")
         training_opts = self.conf["train"]

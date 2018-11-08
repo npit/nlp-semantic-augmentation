@@ -34,6 +34,7 @@ class DNN:
     do_train_embeddings = False
     train_embeddings_params = []
     do_folds = False
+    do_validate_portion = False
 
     model_paths = []
 
@@ -119,12 +120,14 @@ class DNN:
         self.model_path = join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index))
         weights_path = self.model_path
 
+
         # weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
+        self.validation_exists = self.do_folds or self.do_validate_portion
         self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
-                                                   save_best_only=True, save_weights_only=False,
+                                                   save_best_only=self.validation_exists, save_weights_only=False,
                                                    mode='auto', period=1)
         self.callbacks.append(self.model_saver)
-        if self.early_stopping_patience:
+        if self.early_stopping_patience and self.validation_exists:
             self.early_stopping = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=self.early_stopping_patience, verbose=0,
                                                       mode='auto', baseline=None, restore_best_weights=False)
             self.callbacks.append(self.early_stopping)
@@ -133,10 +136,11 @@ class DNN:
         self.nan_terminator = callbacks.TerminateOnNaN()
         self.callbacks.append(self.nan_terminator)
         # learning rate modifier at loss function plateaus
-        self.lr_reducer = callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1,
-                                                          patience=10, verbose=0, mode='auto',
-                                                          min_delta=0.0001, cooldown=0, min_lr=0)
-        self.callbacks.append(self.lr_reducer)
+        if self.validation_exists:
+            self.lr_reducer = callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1,
+                                                              patience=10, verbose=0, mode='auto',
+                                                              min_delta=0.0001, cooldown=0, min_lr=0)
+            self.callbacks.append(self.lr_reducer)
         # logging
         log_file = join(logs_folder,"{}_fold_{}.csv".format(self.name, self.fold_index))
         self.csv_logger = callbacks.CSVLogger(log_file, separator=',', append=False)
@@ -161,26 +165,29 @@ class DNN:
 
         self.verbosity = 1 if self.config.log_level == "debug" else 0
         self.train, self.test = embeddings.get_data()
-        self.num_labels = num_labels
         self.train_labels, self.test_labels = [np.asarray(x, np.int32) for x in targets]
+        self.num_labels = num_labels
+        self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
+            list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
         self.input_dim = embeddings.get_final_dim()
 
         self.epochs = self.config.train.epochs
         self.folds = self.config.train.folds
-        self.do_folds = self.folds and self.folds > 1
         self.validation_portion = self.config.train.validation_portion
+        self.do_folds = self.folds and self.folds > 1
+        self.do_validate_portion = self.validation_portion is not None and  self.validation_portion > 0.0
         self.early_stopping_patience = self.config.train.early_stopping_patience
         self.seed = self.config.get_seed()
         self.batch_size = self.config.train.batch_size
 
         # sanity checks
-        if self.do_folds and self.validation_portion:
+        if self.do_folds and self.do_validate_portion:
             error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
         # data / label matching
-        if len(self.train) != self.train_labels and (len(self.train) * self.sequence_length != self.train_labels):
-            error("Irreconcilable lengths of training data and labels: {}, {}").format(len(self.train), len(self.train_labels))
-        if len(self.train) != self.test_labels and (len(self.test_labels) * self.sequence_length != self.train_labels):
-            error("Irreconcilable lengths of training data and labels: {}, {}").format(len(self.train), len(self.train_labels))
+        if self.num_train != self.num_train_labels and (self.num_train != self.sequence_length * self.num_train_labels):
+            error("Irreconcilable lengths of training data and labels: {}, {}".format(self.num_train, self.num_train_labels))
+        if self.num_test != self.num_test_labels and (self.num_test != self.sequence_length * self.num_test_labels):
+            error("Irreconcilable lengths of test data and labels: {}, {}".format(self.num_test, self.num_test_labels))
 
     # potentially apply DNN input data tranformations
     def process_input(self, data):
@@ -191,7 +198,7 @@ class DNN:
 
     # print information pertaining to early stopping
     def report_early_stopping(self):
-        if self.early_stopping_patience:
+        if self.validation_exists:
             info("Stopped on epoch {}/{}".format(self.early_stopping.stopped_epoch+1, self.epochs))
             write_pickled(self.model_path + ".early_stopping", self.early_stopping.stopped_epoch)
 
@@ -208,13 +215,18 @@ class DNN:
             # loop on folds, or do a single loop on the train-val portion split
             for fold_index, trainval_idx in enumerate(train_val_idxs):
                 self.fold_index = fold_index
-                self.current_run_descr = "fold {}/{}".format(fold_index + 1, self.folds) if self.do_folds else \
-                    "{}-val split".format(self.validation_portion)
+                if self.do_folds:
+                    self.current_run_descr = "fold {}/{}".format(fold_index + 1, self.folds)
+                elif self.do_validate_portion:
+                    self.current_run_descr = "{}-val split".format(self.validation_portion)
+                else:
+                    self.current_run_descr = "(no-validation)"
+
                 # train the model
-                with tictoc("Training run {} on data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
+                with tictoc("Training run {} on train/val data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
                     model = self.train_model2(trainval_idx)
                 # test the model
-                with tictoc("Testing {} on data: {}.".format(self.current_run_descr, len(self.test_labels))):
+                with tictoc("Testing {} on data: {}.".format(self.current_run_descr, self.num_test_labels)):
                     self.do_test(model)
                     model_paths.append(self.model_saver.filepath)
             if self.do_folds:
@@ -238,29 +250,36 @@ class DNN:
     # handle multi-vector items, expanding indexes to the specified sequence length
     def expand_index_to_sequence(self, fold_data):
         # map to indexes in the full-sequence data (e.g. times sequence_length)
-        fold_data = list(map( lambda x: x * self.sequence_length, fold_data))
+        fold_data = list(map( lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
         for i in range(len(fold_data)):
+            if fold_data[i] is None:
+                continue
             # expand with respective sequence members (add an increment, vstack)
-            fold_data[i] = np.vstack([fold_data[i]+incr for incr in range(self.sequence_length)])
+            stacked = np.vstack([fold_data[i]+incr for incr in range(self.sequence_length)])
+            # reshape to a single vector, in the vertical (column) direction, that increases incrementally
+            fold_data[i] = np.ndarray.flatten(stacked, order='F')
         return fold_data
 
     # train a model on training & validation data portions
     def train_model2(self, trainval_idx):
+        print("")
         # labels
-        train_labels, val_labels = [to_categorical(data, num_classes=self.num_labels) for data in \
-                                    [self.train_labels[idx] for idx in trainval_idx]]
+        train_labels, val_labels = [
+            to_categorical(labels, num_classes=self.num_labels) if len(labels) > 0 else np.empty((0,)) for labels in \
+                                    [self.train_labels[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
         # data
-        if len(self.train) != len(self.train_labels):
+        if self.num_train != self.num_train_labels:
             trainval_idx = self.expand_index_to_sequence(trainval_idx)
-        train_data, val_data = [self.process_input(data) for data in \
-                                [self.train[idx] for idx in trainval_idx]]
+        train_data, val_data = [self.process_input(data) if len(data) > 0 else np.empty((0,)) for data in \
+                                [self.train[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
+        val_datalabels = (val_data, val_labels) if val_data else None
         # build model
         model = self.get_model()
         # train the damn thing!
         model.fit(train_data, train_labels,
                     batch_size=self.batch_size,
                     epochs=self.epochs,
-                    validation_data = (val_data, val_labels),
+                    validation_data = val_datalabels,
                     verbose = self.verbosity,
                     callbacks = self.get_callbacks())
         self.report_early_stopping()
@@ -312,11 +331,15 @@ class DNN:
     # produce training / validation splits, with respect to sample indexes
     def get_trainval_indexes(self):
         if self.do_folds:
-            info("Training {} with input data: {} on {} stratified folds".format(self.name, len(self.train), self.folds))
-            splitter = StratifiedKFold(self.folds, shuffle=False, random_state = self.seed)
-        else:
+            info("Training {} with input data: {} samples, {} labels, on {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
+            splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
+            return list(splitter.split(np.zeros(self.num_train_labels), self.train_labels, shuffle=True, random_state=self.seed))
+        elif self.do_validate_portion:
+            info("Splitting {} with input data: {} samples, {} labels, on a {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
             splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion)
-        return list(splitter.split(np.zeros(len(self.train_labels)), self.train_labels))
+            return list(splitter.split(np.zeros(self.num_train_labels), self.train_labels, shuffle=True, random_state=self.seed))
+        else:
+            return [(np.arange(self.num_train_labels), np.arange(0))]
 
 
     # add softmax classification layer
@@ -340,7 +363,7 @@ class DNN:
                 maxfreq = freq
                 maxlabel = t
 
-        majpred = np.repeat(maxlabel, len(self.test_labels))
+        majpred = np.repeat(maxlabel, len(predictions))
         self.add_performance("majority", majpred)
         randpred = np.asarray([random.choice(list(range(self.num_labels))) for _ in self.test_labels], np.int32)
         self.add_performance("random", randpred)
