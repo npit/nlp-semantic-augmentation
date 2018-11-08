@@ -1,5 +1,5 @@
 import pickle
-from os.path import join, dirname
+from os.path import join, dirname, exists, basename
 from os import makedirs
 import random
 
@@ -18,11 +18,12 @@ from keras.layers import LSTM as keras_lstm
 from keras.utils import to_categorical
 from keras import callbacks
 
-from utils import info, debug, tictoc, error, write_pickled
+from utils import info, debug, tictoc, error, write_pickled, read_pickled
 
 class DNN:
-    save_dir = "models"
+    save_dir = "models0"
     folds = None
+    fold_index = 0
     performance = {}
     cw_performance = {}
     run_types = ['random', 'majority', 'run']
@@ -108,21 +109,26 @@ class DNN:
             model.add(Embedding(self.vocabulary_size + 1, self.embedding_dim, input_length = self.sequence_length))
         return model
 
+    def get_current_model_path(self):
+        filepath = join(self.models_folder,"{}".format(self.name))
+        if self.do_folds:
+            filepath += "_fold{}".format(self.fold_index)
+        if self.do_validate_portion:
+            filepath += "_valportion{}".format(self.validation_portion)
+        return filepath
+
     # define useful keras callbacks for the training process
     def get_callbacks(self):
         self.callbacks = []
-        self.results_folder = self.config.folders.results
-        models_folder = join(self.results_folder, "models")
         logs_folder = self.results_folder
-        [makedirs(x, exist_ok=True) for x in  [self.results_folder, models_folder, logs_folder]]
+        [makedirs(x, exist_ok=True) for x in  [self.results_folder, self.models_folder, logs_folder]]
 
         # model saving with early stoppingtch_si
-        self.model_path = join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index))
+        self.model_path = self.get_current_model_path()
         weights_path = self.model_path
 
 
         # weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
-        self.validation_exists = self.do_folds or self.do_validate_portion
         self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
                                                    save_best_only=self.validation_exists, save_weights_only=False,
                                                    mode='auto', period=1)
@@ -142,8 +148,9 @@ class DNN:
                                                               min_delta=0.0001, cooldown=0, min_lr=0)
             self.callbacks.append(self.lr_reducer)
         # logging
-        log_file = join(logs_folder,"{}_fold_{}.csv".format(self.name, self.fold_index))
-        self.csv_logger = callbacks.CSVLogger(log_file, separator=',', append=False)
+        results_csv_file = join(self.results_folder, basename(self.get_current_model_path()) + ".csv")
+
+        self.csv_logger = callbacks.CSVLogger(results_csv_file, separator=',', append=False)
         self.callbacks.append(self.csv_logger)
         return self.callbacks
 
@@ -171,11 +178,14 @@ class DNN:
             list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
         self.input_dim = embeddings.get_final_dim()
 
+        self.results_folder = self.config.folders.results
+        self.models_folder = join(self.results_folder, "models")
         self.epochs = self.config.train.epochs
         self.folds = self.config.train.folds
         self.validation_portion = self.config.train.validation_portion
         self.do_folds = self.folds and self.folds > 1
         self.do_validate_portion = self.validation_portion is not None and  self.validation_portion > 0.0
+        self.validation_exists = self.do_folds or self.do_validate_portion
         self.early_stopping_patience = self.config.train.early_stopping_patience
         self.seed = self.config.get_seed()
         self.batch_size = self.config.train.batch_size
@@ -203,6 +213,14 @@ class DNN:
             write_pickled(self.model_path + ".early_stopping", self.early_stopping.stopped_epoch)
 
 
+    def already_completed(self):
+        predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
+        if exists(predictions_file):
+            info("Reading existing predictions: {}".format(predictions_file))
+            return read_pickled(predictions_file)
+        return None
+
+
     # perfrom a train-test loop
     def do_traintest(self):
         # get trainval data
@@ -222,6 +240,11 @@ class DNN:
                 else:
                     self.current_run_descr = "(no-validation)"
 
+                # check if the run is completed already
+                existing_predictions = self.already_completed()
+                if existing_predictions is not None:
+                    self.compute_performance(existing_predictions)
+                    continue
                 # train the model
                 with tictoc("Training run {} on train/val data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
                     model = self.train_model2(trainval_idx)
@@ -229,6 +252,7 @@ class DNN:
                 with tictoc("Testing {} on data: {}.".format(self.current_run_descr, self.num_test_labels)):
                     self.do_test(model)
                     model_paths.append(self.model_saver.filepath)
+
             if self.do_folds:
                 self.report_across_folds()
             # for embedding training, write the embeddings
@@ -272,7 +296,7 @@ class DNN:
             trainval_idx = self.expand_index_to_sequence(trainval_idx)
         train_data, val_data = [self.process_input(data) if len(data) > 0 else np.empty((0,)) for data in \
                                 [self.train[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
-        val_datalabels = (val_data, val_labels) if val_data is not None else None
+        val_datalabels = (val_data, val_labels) if val_data.size > 0 else None
         # build model
         model = self.get_model()
         # train the damn thing!
@@ -322,24 +346,48 @@ class DNN:
         print_results = self.do_folds and self.config.print.folds or not self.folds
         test_data = self.process_input(self.test)
         predictions = model.predict(test_data, batch_size=self.batch_size, verbose=self.verbosity)
-        predictions_amax = np.argmax(predictions, axis=1)
         # get baseline performances
-        self.compute_performance(predictions_amax)
+        self.compute_performance(predictions)
         if print_results:
             self.print_performance()
+        # write fold predictions
+        predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
+        write_pickled(predictions_file, predictions)
 
     # produce training / validation splits, with respect to sample indexes
     def get_trainval_indexes(self):
+        if not self.validation_exists:
+            return [(np.arange(self.num_train_labels), np.arange(0))]
+
+        trainval_serialization_file = join(self.results_folder, basename(self.get_current_model_path()) + ".trainval.pickle")
         if self.do_folds:
+            # check if such data exists
+            if exists(trainval_serialization_file):
+                info("Training {} with input data: {} samples, {} labels, on loaded existing {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
+                deser = read_pickled(trainval_serialization_file)
+                if not len(deser) == self.folds:
+                    error("Mismatch between expected folds ({}) and loaded data of {} splits.".format(self.folds, len(deser)))
+                return deser
             info("Training {} with input data: {} samples, {} labels, on {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
             splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
-            return list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
-        elif self.do_validate_portion:
+
+        if self.do_validate_portion:
+            # check if such data exists
+            if exists(trainval_serialization_file):
+                info("Training {} with input data: {} samples, {} labels, on loaded existing {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
+                deser = read_pickled(trainval_serialization_file)
+                info("Loaded train/val split of {} / {}.".format(*list(map(len, deser[0]))))
+                return deser
             info("Splitting {} with input data: {} samples, {} labels, on a {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
-            splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, shuffle=True, random_state=self.seed)
-            return list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
-        else:
-            return [(np.arange(self.num_train_labels), np.arange(0))]
+            splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
+
+        # save and return the splitter splits
+        splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
+        makedirs(dirname(trainval_serialization_file), exist_ok=True)
+        write_pickled(trainval_serialization_file, splits)
+        return splits
+
+
 
 
     # add softmax classification layer
@@ -355,6 +403,7 @@ class DNN:
     # compute classification baselines
     def compute_performance(self, predictions):
         # add run performance
+        predictions = np.argmax(predictions, axis=1)
         self.add_performance("run", predictions)
         maxfreq, maxlabel = -1, -1
         for t in set(self.test_labels):
@@ -367,6 +416,7 @@ class DNN:
         self.add_performance("majority", majpred)
         randpred = np.asarray([random.choice(list(range(self.num_labels))) for _ in self.test_labels], np.int32)
         self.add_performance("random", randpred)
+
 
     # compute scores and append to per-fold lists
     def add_performance(self, type, preds):
