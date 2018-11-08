@@ -4,7 +4,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from dataset import Dataset
 from embedding import Embedding
-from semantic import SemanticResource
+from semantic import SemanticResource, GoogleKnowledgeGraph
 from learner import DNN
 from helpers import Config
 import argparse
@@ -12,10 +12,14 @@ from utils import info
 print("Imports done.")
 
 def main(config_file):
+
     print("Running main.")
     # initialize configuration
     config = Config()
     config.initialize(config_file)
+
+    gkg = GoogleKnowledgeGraph(config)
+    gkg.lookup("dog")
 
     # datasets loading & preprocessing
     info("===== DATASET =====")

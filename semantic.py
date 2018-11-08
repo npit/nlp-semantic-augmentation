@@ -1,4 +1,3 @@
-# import gensim
 from os.path import join, exists
 from dataset import Dataset
 import pickle
@@ -6,6 +5,8 @@ from utils import tictoc, error, info, debug, warning, write_pickled
 import numpy as np
 from serializable import Serializable
 from nltk.corpus import wordnet as wn
+import json
+import urllib
 
 
 class SemanticResource(Serializable):
@@ -34,6 +35,9 @@ class SemanticResource(Serializable):
         semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights, freq_filtering, disambig)
         return semantic_name
 
+
+    def lookup(self, candidate):
+        error("Attempted to lookup from the base class")
 
 class Wordnet(SemanticResource):
 
@@ -440,10 +444,35 @@ class Wordnet(SemanticResource):
             error("Unimplemented semantic vector method: {}.".format(self.semantic_weights))
 
         self.semantic_document_vectors = semantic_document_vectors
+        # serialize
+        write_pickled(self.serialization_path_preprocessed + ".generated")
 
 
-class GoogleKnowledgeGraph:
-    pass
+class GoogleKnowledgeGraph(SemanticResource):
+    query_url = 'https://kgsearch.googleapis.com/v1/entities:search'
+    key = None
+
+    def __init__(self, config):
+        self.config = config
+        self.key = config.misc.keys["googleapi"]
+        self.query_params = {
+            'limit': 10,
+            'indent': True,
+            'key': self.key,
+        }
+
+        SemanticResource.__init__(self, config)
+    def lookup(self, candidate):
+        self.query_params["query"] = candidate
+        url = self.query_url + '?' + urllib.parse.urlencode(self.query_params)
+        response = json.loads(urllib.request.urlopen(url).read())
+        for element in response['itemListElement']:
+            print(element['result']['name'] + ' (' + str(element['resultScore']) + ')')
+            score = element['resultScore']
+
+
+
+
 class PPDB:
     # ppdb reading code:
     # https://github.com/erickrf/ppdb

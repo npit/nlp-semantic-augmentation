@@ -61,6 +61,8 @@ class Config:
         early_stopping_patience = None
         validation_portion = None
         batch_size = None
+    class misc:
+        keys = {}
 
     def has_data_limit(self):
         return self.dataset.data_limit is not None and any([x is not None for x in self.dataset.data_limit])
@@ -223,6 +225,12 @@ class Config:
             self.print.aggregations = self.get_value("aggregations", base=print_opts)
             self.print.folds = self.get_value("folds", base=print_opts, default=False)
 
+        if self.has_value("misc"):
+            if self.has_value("keys", base=self.conf["misc"]):
+                for kname, kvalue in self.conf["misc"]['keys'].items():
+                    self.misc.keys[kname] = kvalue
+
+
         self.log_level = self.get_value("log_level", default="info")
         print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
 
@@ -278,5 +286,7 @@ class Config:
             base = self.conf
         return base[name] if name in base else default
 
-    def has_value(self, name):
-        return name in self.conf and self.conf[name]
+    def has_value(self, name, base=None):
+        if base is None:
+            base = self.conf
+        return name in base and base[name] is not None

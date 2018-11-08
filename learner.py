@@ -2,23 +2,20 @@ import pickle
 from os.path import join, dirname, exists, basename
 from os import makedirs
 import random
-
 from sklearn import metrics
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
 import warnings
-warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
-
 import numpy as np
 import pandas as pd
-
 from keras.models import Sequential, load_model
 from keras.layers import Activation, Dense, Dropout, Embedding, Reshape
 from keras.layers import LSTM as keras_lstm
 from keras.utils import to_categorical
 from keras import callbacks
+from utils import info, debug, tictoc, error, write_pickled, read_pickled, warning
 
-from utils import info, debug, tictoc, error, write_pickled, read_pickled
+warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
 
 class DNN:
     save_dir = "models0"
@@ -68,6 +65,9 @@ class DNN:
             # remove undefined combos
             for aggr in [x for x in self.classwise_aggregations if x not in ["macro", "classwise"]]:
                 del self.performance[run_type]["accuracy"][aggr]
+        # add AP, AUC by hand
+        for m in ["AUC", "AP"]:
+            self.performance["run"][m] = {}
 
         # pritn only these, from config
         self.preferred_types = self.config.print.run_types if self.config.print.run_types else self.run_types
@@ -87,6 +87,17 @@ class DNN:
         ma = cr.loc[metric].iloc[-2]
         we = cr.loc[metric].iloc[-1]
         return cw, mi, ma, we
+
+    def get_roc(self, raw_preds, average, gt=None):
+        if gt is None:
+            gt = self.test_labels
+        try:
+            auc_roc = metrics.roc_auc_score(gt, raw_preds, average=average)
+            ap_prc = metrics.average_precision_score(gt, raw_preds, average=average)
+        except:
+            warning("Failed to get AUC/AP scores.")
+            auc_roc, ap_prc = 0, 0
+        return auc_roc, ap_prc
 
     # get average accuracy
     def compute_accuracy(self, preds, gt=None):
@@ -400,7 +411,13 @@ class DNN:
 
     # compute classification baselines
     def compute_performance(self, predictions):
-        # add run performance
+        # get multiclass performance
+        for av in ["macro", "micro"]:
+            auc, ap = self.get_roc(predictions, average=av)
+            self.performance["run"]["AP"][av] = ap
+            self.performance["run"]["AUC"][av] = auc
+
+        # add run performance wrt argmax predictions
         predictions = np.argmax(predictions, axis=1)
         self.add_performance("run", predictions)
         maxfreq, maxlabel = -1, -1
