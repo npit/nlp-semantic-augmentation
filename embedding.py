@@ -230,9 +230,6 @@ class VectorEmbedding(Embedding):
         self.embeddings = raw_serialized
         for w in self.embeddings.index.tolist():
             self.words_to_numeric_idx[w] = len(self.words_to_numeric_idx)
-        if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
-            warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
-            self.embeddings.loc[self.unknown_word_token] = np.zeros(self.embedding_dim)
 
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
@@ -259,6 +256,11 @@ class VectorEmbedding(Embedding):
         self.words_per_document = []
         self.present_word_indexes = []
         self.vocabulary = dset.vocabulary
+
+
+        if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
+            warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
+            self.embeddings.loc[self.unknown_word_token] = np.zeros(self.embedding_dim)
 
         embedded_words, unknown_token = self.embeddings.index.values, self.unknown_word_token
         # loop over input text bundles (e.g. train & test)
