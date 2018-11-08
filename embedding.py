@@ -270,7 +270,7 @@ class VectorEmbedding(Embedding):
             self.present_word_indexes.append([])
             with tictoc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles))):
                 info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
-                hist = {w: 0 for w in self.words_to_numeric_idx}
+                hist = {w: 0 for w in embedded_words}
                 hist_missing = {}
                 for j, word_list in enumerate(text_bundles[i]):
                     debug("Text {}/{}".format(j+1, len(text_bundles[i])))

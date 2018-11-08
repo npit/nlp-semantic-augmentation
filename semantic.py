@@ -336,8 +336,8 @@ class Wordnet(SemanticResource):
     # and a local word cache. Updates synset frequencies as well.
     def get_synset(self, word_information, freqs, force_reference_synsets = False):
         word, _ = word_information
-        if word in self.word_synset_lookup_cache:
-            synset_activations = self.word_synset_lookup_cache[word]
+        if word_information in self.word_synset_lookup_cache:
+            synset_activations = self.word_synset_lookup_cache[word_information]
             synset_activations = self.restrict_to_reference(force_reference_synsets, synset_activations)
             freqs = self.update_frequencies(synset_activations, freqs)
         else:
@@ -355,7 +355,7 @@ class Wordnet(SemanticResource):
                 return None, freqs
             freqs = self.update_frequencies(synset_activations, freqs)
             # populate cache
-            self.word_synset_lookup_cache[word] = synset_activations
+            self.word_synset_lookup_cache[word_information] = synset_activations
 
         if word not in self.assignments:
             self.assignments[word] = synset_activations
