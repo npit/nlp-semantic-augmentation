@@ -36,6 +36,7 @@ class DNN:
     train_embeddings_params = []
     do_folds = False
     do_validate_portion = False
+    early_stopping = None
 
     model_paths = []
 
@@ -120,8 +121,7 @@ class DNN:
     # define useful keras callbacks for the training process
     def get_callbacks(self):
         self.callbacks = []
-        logs_folder = self.results_folder
-        [makedirs(x, exist_ok=True) for x in  [self.results_folder, self.models_folder, logs_folder]]
+        [makedirs(x, exist_ok=True) for x in  [self.results_folder, self.models_folder]]
 
         # model saving with early stoppingtch_si
         self.model_path = self.get_current_model_path()
@@ -148,9 +148,8 @@ class DNN:
                                                               min_delta=0.0001, cooldown=0, min_lr=0)
             self.callbacks.append(self.lr_reducer)
         # logging
-        results_csv_file = join(self.results_folder, basename(self.get_current_model_path()) + ".csv")
-
-        self.csv_logger = callbacks.CSVLogger(results_csv_file, separator=',', append=False)
+        train_csv_logfile = join(self.results_folder, basename(self.get_current_model_path()) + "train.csv")
+        self.csv_logger = callbacks.CSVLogger(train_csv_logfile, separator=',', append=False)
         self.callbacks.append(self.csv_logger)
         return self.callbacks
 
@@ -208,7 +207,7 @@ class DNN:
 
     # print information pertaining to early stopping
     def report_early_stopping(self):
-        if self.validation_exists:
+        if self.validation_exists and self.early_stopping is not None:
             info("Stopped on epoch {}/{}".format(self.early_stopping.stopped_epoch+1, self.epochs))
             write_pickled(self.model_path + ".early_stopping", self.early_stopping.stopped_epoch)
 
