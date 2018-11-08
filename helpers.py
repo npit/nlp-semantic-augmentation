@@ -24,7 +24,7 @@ class Config:
     class dataset:
         name = None
         data_limit = [None, None]
-        class_limit = [None, None]
+        class_limit = None
 
     class print:
         run_types = None
@@ -63,10 +63,10 @@ class Config:
         batch_size = None
 
     def has_data_limit(self):
-        return any([x is not None for x in self.dataset.data_limit])
+        return self.dataset.data_limit is not None and any([x is not None for x in self.dataset.data_limit])
 
     def has_class_limit(self):
-        return self.dataset.class_limit is not None
+        return self.dataset.class_limit is not None and self.dataset.class_limit is not None
 
     def has_limit(self):
         return self.has_data_limit() or self.has_class_limit()
@@ -163,13 +163,14 @@ class Config:
         need(self.has_value("dataset"), "Need dataset information")
         dataset_opts = self.conf["dataset"]
         self.dataset.name = dataset_opts["name"]
-        lims = self.get_value("data_limit", base=dataset_opts, default=[None, None])
-        if not(all([type(x) == int and x > 0 for x in lims]) and len(lims) in [1,2]):
-            error("Invalid data limits: {}".format(lims))
-        self.dataset.data_limit = lims
-        if len(lims) == 1:
-            self.dataset.data_limit = [lims[0] if type(lims) == list else lims, None]
-        self.dataset.class_limit = self.get_value("class_limit", base=dataset_opts, default=None)
+        lims = self.get_value("data_limit", base=dataset_opts, default=None)
+        if lims is not None:
+            if not(all([type(x) == int and x > 0 for x in lims]) and len(lims) in [1,2]):
+                error("Invalid data limits: {}".format(lims))
+            self.dataset.data_limit = lims
+            if len(lims) == 1:
+                self.dataset.data_limit = [lims[0] if type(lims) == list else lims, None]
+            self.dataset.class_limit = self.get_value("class_limit", base=dataset_opts, default=None)
         # read embedding options
         need(self.has_value("embedding"), "Need embedding information")
         embedding_opts = self.conf["embedding"]

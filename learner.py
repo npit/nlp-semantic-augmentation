@@ -272,7 +272,7 @@ class DNN:
             trainval_idx = self.expand_index_to_sequence(trainval_idx)
         train_data, val_data = [self.process_input(data) if len(data) > 0 else np.empty((0,)) for data in \
                                 [self.train[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
-        val_datalabels = (val_data, val_labels) if val_data else None
+        val_datalabels = (val_data, val_labels) if val_data is not None else None
         # build model
         model = self.get_model()
         # train the damn thing!
@@ -333,11 +333,11 @@ class DNN:
         if self.do_folds:
             info("Training {} with input data: {} samples, {} labels, on {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
             splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
-            return list(splitter.split(np.zeros(self.num_train_labels), self.train_labels, shuffle=True, random_state=self.seed))
+            return list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
         elif self.do_validate_portion:
             info("Splitting {} with input data: {} samples, {} labels, on a {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
-            splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion)
-            return list(splitter.split(np.zeros(self.num_train_labels), self.train_labels, shuffle=True, random_state=self.seed))
+            splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, shuffle=True, random_state=self.seed)
+            return list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
         else:
             return [(np.arange(self.num_train_labels), np.arange(0))]
 
