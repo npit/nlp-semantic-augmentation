@@ -184,7 +184,7 @@ class Config:
             semantic_opts = self.conf["semantic"]
             self.semantic.name = semantic_opts["name"]
             self.semantic.unit = semantic_opts["unit"]
-            self.semantic.enrichment = semantic_opts["enrichment"]
+            self.semantic.enrichment = self.get_value("enrichment", base=semantic_opts, default=None)
             self.semantic.disambiguation = semantic_opts["disambiguation"]
             self.semantic.weights = semantic_opts["weights"]
             self.semantic.threshold = self.get_value("threshold", base=semantic_opts)
@@ -234,8 +234,8 @@ class Config:
     def get_dataset(self):
         return self.conf["dataset"]
 
-    def has_enrichment(self):
-        return self.has_value("semantic")
+    def has_semantic(self):
+        return all([x is not None for x in [self.semantic.enrichment, self.semantic.name]])
 
     def is_debug(self):
         return self.conf["log_level"] == "debug"
@@ -278,5 +278,7 @@ class Config:
             base = self.conf
         return base[name] if name in base else default
 
-    def has_value(self, name):
-        return name in self.conf and self.conf[name]
+    def has_value(self, name, base=None):
+        if base is None:
+            base = self.conf
+        return name in base and base[name]

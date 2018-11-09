@@ -37,6 +37,7 @@ class Embedding(Serializable):
         self.sequence_length = self.config.embedding.sequence_length
         self.dataset_name = Dataset.get_limited_name(self.config)
         self.map_missing_unks = self.config.embedding.missing_words == "unk"
+        self.vectors_per_doc = 1 if self.aggregation == "avg" else self.sequence_length
         self.set_name()
 
     def save_raw_embedding_weights(self, weights):
@@ -56,11 +57,12 @@ class Embedding(Serializable):
         # check for serialized mapped data
         self.set_serialization_params()
         # add paths for aggregated and enriched embeddings:
-        aggr = "".join(self.config.embedding.aggregation)
+        aggr = "".join(list(map(str, self.config.embedding.aggregation + [self.sequence_length])))
         self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
         sem = SemanticResource.get_semantic_name(self.config)
-        finalized_id = sem if sem else "nosem"
-        self.serialization_path_finalized = "{}/{}.aggregated_{}.finalized_{}.pickle".format(self.serialization_dir, self.name, aggr, finalized_id)
+        finalized_id = sem + "_" + self.config.semantic.enrichment if sem else "nosem"
+        self.serialization_path_finalized = "{}/{}.aggregated_{}.finalized_{}.pickle".format(
+            self.serialization_dir, self.name, aggr, finalized_id)
         self.data_paths = [self.serialization_path_finalized, self.serialization_path_aggregated] + self.data_paths
         self.read_functions = [read_pickled]*2 + self.read_functions
         self.handler_functions = [self.handle_finalized, self.handle_aggregated] + self.handler_functions
@@ -117,23 +119,25 @@ class Embedding(Serializable):
             zero_pad = self.get_zero_pad_element()
 
             for dset_idx in range(len(self.dataset_embeddings)):
-                num_truncated, num_padded = 0, 0
+                cumulative_dataset_vectors = np.ndarray((0, self.embedding_dim), np.float32)
+                num_total, num_truncated, num_padded = len(self.dataset_embeddings[dset_idx]), 0, 0
                 for doc_idx in range(len(self.dataset_embeddings[dset_idx])):
-                    df_words = self.dataset_embeddings[dset_idx][doc_idx]
-                    num_words = len(df_words)
+                    word_vectors = self.dataset_embeddings[dset_idx][doc_idx].values
+                    num_words = len(word_vectors)
                     if num_words > num:
                         # truncate
-                        self.dataset_embeddings[dset_idx][doc_idx] = df_words[:num]
-                        num_truncated +=1
+                        word_vectors = word_vectors[:num, :]
+                        num_truncated += 1
                     elif num_words < num:
                         # make pad and stack vertically
                         num_to_pad = num - num_words
-                        pad = pd.DataFrame(np.tile(zero_pad, (num_to_pad, 1)), index=['N' for _ in range(num_to_pad)],
-                                           columns=df_words.columns)
+                        pad = np.tile(zero_pad, (num_to_pad, 1), np.float32)
                         num_padded +=1
-                        self.dataset_embeddings[dset_idx][doc_idx] = pd.concat([df_words, pad])
+                        word_vectors = np.append(word_vectors, pad, axis=0)
+                    cumulative_dataset_vectors = np.append(cumulative_dataset_vectors, word_vectors, axis=0)
+                self.dataset_embeddings[dset_idx] = cumulative_dataset_vectors
                 info("Truncated {:.3f}% and padded {:.3f} % items.".format(
-                    *[x / len(self.dataset_embeddings[dset_idx]) * 100 for x in [num_truncated, num_padded]]))
+                    *[x / num_total * 100 for x in [num_truncated, num_padded]]))
 
         # serialize aggregated
         write_pickled(self.serialization_path_aggregated, self.get_all_preprocessed())
@@ -152,39 +156,55 @@ class Embedding(Serializable):
             finalized_name += ".{}.enriched".format(SemanticResource.get_semantic_name(self.config))
 
             if self.config.semantic.enrichment == "concat":
-                composite_dim = self.embedding_dim + len(semantic_data[0][0])
-                self.final_dim = composite_dim
+                semantic_dim = len(semantic_data[0][0])
+                self.final_dim = self.embedding_dim + semantic_dim
                 for dset_idx in range(len(semantic_data)):
                     info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx+1, len(semantic_data), self.final_dim))
-                    new_dset_embeddings = np.ndarray((0, self.final_dim), np.float32)
-                    for doc_idx in range(len(semantic_data[dset_idx])):
-                        debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
-                        embeddings = self.dataset_embeddings[dset_idx][doc_idx]
-                        sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
-                        if embeddings.ndim > 1:
-                            # tile sem. vectors
-                            sem_vectors = np.tile(sem_vectors, (len(embeddings), 1))
-                            new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors], axis=1)])
-                        else:
-                            new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors])])
-                    self.dataset_embeddings[dset_idx] = new_dset_embeddings
+                    if self.vectors_per_doc > 1:
+                        # tile the vector the needed times to the right, reshape to the correct dim
+                        semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.vectors_per_doc)),
+                                                             (-1, semantic_dim))
+                    print(self.dataset_embeddings[dset_idx].shape, semantic_data[dset_idx].shape)
+                    self.dataset_embeddings[dset_idx] = np.concatenate(
+                        [self.dataset_embeddings[dset_idx], semantic_data[dset_idx]], axis=1)
+
+
+#                    new_dset_embeddings = np.ndarray((0, self.final_dim), np.float32)
+#                    for doc_idx in range(len(semantic_data[dset_idx])):
+#                        debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
+#                        embeddings = self.dataset_embeddings[dset_idx][doc_idx]
+#                        sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
+#                        if embeddings.ndim > 1:
+#                            # tile sem. vectors
+#                            sem_vectors = np.tile(sem_vectors, (len(embeddings), 1))
+#                            new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors], axis=1)])
+#                        else:
+#                            new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors])])
+#                    self.dataset_embeddings[dset_idx] = new_dset_embeddings
 
             elif self.config.semantic.enrichment == "replace":
                 self.final_dim = len(semantic_data[0][0])
                 for dset_idx in range(len(semantic_data)):
                     info("Replacing dataset part {}/{} with semantic info of dimension: {}".format(dset_idx+1, len(semantic_data), self.final_dim))
-                    new_dset_embeddings = np.ndarray((0, self.final_dim), np.float32)
-                    for doc_idx in range(len(semantic_data[dset_idx])):
-                        debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
-                        embeddings = self.dataset_embeddings[dset_idx][doc_idx]
-                        sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
-                        if embeddings.ndim > 1:
-                            # tile sem. vectors
-                            sem_vectors = np.tile(sem_vectors, (len(embeddings), 1))
-                            new_dset_embeddings = np.vstack([new_dset_embeddings, sem_vectors])
-                        else:
-                            new_dset_embeddings = np.vstack([new_dset_embeddings, sem_vectors])
-                    self.dataset_embeddings[dset_idx] = new_dset_embeddings
+                    if self.vectors_per_doc > 1:
+                        # tile the vector the needed times to the right, reshape to the correct dim
+                        semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.vectors_per_doc)),
+                                                             (-1, self.final_dim))
+                    self.dataset_embeddings[dset_idx] = semantic_data[dset_idx]
+
+
+#                     new_dset_embeddings = np.ndarray((0, self.final_dim), np.float32)
+#                     for doc_idx in range(len(semantic_data[dset_idx])):
+#                         debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
+#                         embeddings = self.dataset_embeddings[dset_idx][doc_idx]
+#                         sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
+#                         if embeddings.ndim > 1:
+#                             # tile sem. vectors
+#                             sem_vectors = np.tile(sem_vectors, (len(embeddings), 1))
+#                             new_dset_embeddings = np.vstack([new_dset_embeddings, sem_vectors])
+#                         else:
+#                             new_dset_embeddings = np.vstack([new_dset_embeddings, sem_vectors])
+#                     self.dataset_embeddings[dset_idx] = new_dset_embeddings
 
             else:
                 error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
