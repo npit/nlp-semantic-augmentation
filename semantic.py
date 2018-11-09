@@ -1,7 +1,7 @@
 from os.path import join, exists
 from dataset import Dataset
 import pickle
-from utils import tictoc, error, info, debug, warning, write_pickled
+from utils import tictoc, error, info, debug, warning, write_pickled, read_pickled
 import numpy as np
 from serializable import Serializable
 from nltk.corpus import wordnet as wn
@@ -14,6 +14,7 @@ class SemanticResource(Serializable):
     semantic_name = None
     name = None
     do_spread_activation = False
+    loaded_vectorized = False
 
     def __init__(self, config):
         Serializable.__init__(self, self.dir_name)
@@ -27,13 +28,18 @@ class SemanticResource(Serializable):
     pass
 
     def get_semantic_name(config):
-        if not config.semantic.name:
+        if not config.has_semantic():
             return None
         freq_filtering = "ALL" if not config.semantic.threshold else "fthres{}".format(config.semantic.threshold)
         sem_weights = "w{}".format(config.semantic.weights)
         disambig = "disam{}".format(config.semantic.disambiguation)
         semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights, freq_filtering, disambig)
         return semantic_name
+
+    def handle_vectorized(self, data):
+        self.semantic_document_vectors, self.synset_order = data
+        self.loaded_preprocessed = True
+        self.loaded_vectorized = True
 
 
     def lookup(self, candidate):
@@ -110,6 +116,11 @@ class Wordnet(SemanticResource):
 
         # setup serialization paramas
         self.set_serialization_params()
+        # add extras
+        self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
+        self.data_paths.insert(0, self.serialization_path_vectorized)
+        self.read_functions.insert(0, read_pickled)
+        self.handler_functions.insert(0, self.handle_vectorized)
 
         # load if existing
         self.acquire2(fatal_error=False)
@@ -340,8 +351,8 @@ class Wordnet(SemanticResource):
     # and a local word cache. Updates synset frequencies as well.
     def get_synset(self, word_information, freqs, force_reference_synsets = False):
         word, _ = word_information
-        if word in self.word_synset_lookup_cache:
-            synset_activations = self.word_synset_lookup_cache[word]
+        if word_information in self.word_synset_lookup_cache:
+            synset_activations = self.word_synset_lookup_cache[word_information]
             synset_activations = self.restrict_to_reference(force_reference_synsets, synset_activations)
             freqs = self.update_frequencies(synset_activations, freqs)
         else:
@@ -359,7 +370,7 @@ class Wordnet(SemanticResource):
                 return None, freqs
             freqs = self.update_frequencies(synset_activations, freqs)
             # populate cache
-            self.word_synset_lookup_cache[word] = synset_activations
+            self.word_synset_lookup_cache[word_information] = synset_activations
 
         if word not in self.assignments:
             self.assignments[word] = synset_activations
@@ -399,27 +410,30 @@ class Wordnet(SemanticResource):
         return self.semantic_document_vectors
 
     # get semantic vector information, wrt to the configuration
-    def generate_vectors(self, config):
+    def generate_vectors(self):
+        if self.loaded_vectorized or self.embedding.loaded_enriched():
+            return
         # map dicts to vectors
         if not self.dataset_freqs:
             error("Attempted to generate semantic vectors from empty containers")
         info("Getting {} semantic data.".format(self.semantic_weights))
         synset_order = sorted(self.reference_synsets)
-        semantic_document_vectors = [[] for _ in range(len(self.synset_freqs)) ]
+        self.dimension = len(synset_order)
+        semantic_document_vectors = [np.ndarray((0, self.dimension), np.float32) for _ in range(len(self.synset_freqs)) ]
 
         if self.semantic_weights  == "frequencies":
             # get raw semantic frequencies
             for d in range(len(self.synset_freqs)):
                 for doc_dict in self.synset_freqs[d]:
-                    doc_vector = [doc_dict[s] if s in doc_dict else 0 for s in synset_order]
-                    semantic_document_vectors[d].append(doc_vector)
+                    doc_vector = np.asarray([[doc_dict[s] if s in doc_dict else 0 for s in synset_order]], np.float32)
+                    semantic_document_vectors[d] = np.append(semantic_document_vectors[d], doc_vector, axis=0)
 
         elif self.semantic_weights == "tfidf":
             # get tfidf weights
             for d in range(len(self.synset_tfidf_freqs)):
                 for doc_dict in self.synset_tfidf_freqs[d]:
-                    doc_vector = [doc_dict[s] if s in doc_dict else 0 for s in synset_order]
-                    semantic_document_vectors[d].append(doc_vector)
+                    doc_vector = np.asarray([[doc_dict[s] if s in doc_dict else 0 for s in synset_order]], np.float32)
+                    semantic_document_vectors[d] = np.append(semantic_document_vectors[d], doc_vector, axis=0)
 
         elif self.semantic_weights == "embeddings":
             if self.disambiguation != "context-embedding":
@@ -439,13 +453,12 @@ class Wordnet(SemanticResource):
                         # aggregate them
                         if self.semantic_embedding_aggr == "avg":
                             doc_vector = np.mean(doc_sem_embeddings, axis=0)
-                    semantic_document_vectors[d].append(doc_vector)
+                    semantic_document_vectors[d] = np.append(semantic_document_vectors[d], doc_vector, axis=0)
         else:
             error("Unimplemented semantic vector method: {}.".format(self.semantic_weights))
 
         self.semantic_document_vectors = semantic_document_vectors
-        # serialize
-        write_pickled(self.serialization_path_preprocessed + ".generated")
+        write_pickled(self.serialization_path_vectorized, [self.semantic_document_vectors, synset_order])
 
 
 class GoogleKnowledgeGraph(SemanticResource):
@@ -469,7 +482,6 @@ class GoogleKnowledgeGraph(SemanticResource):
         for element in response['itemListElement']:
             print(element['result']['name'] + ' (' + str(element['resultScore']) + ')')
             score = element['resultScore']
-
 
 
 

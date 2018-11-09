@@ -309,6 +309,9 @@ class DNN:
         # build model
         model = self.get_model()
         # train the damn thing!
+        debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
+        if val_datalabels is not None:
+            debug("Using validation shapes: {} {}".format(*[v.shape if v is not None else "none" for v in  val_datalabels]))
         model.fit(train_data, train_labels,
                     batch_size=self.batch_size,
                     epochs=self.epochs,

@@ -33,11 +33,11 @@ def main(config_file):
 
     semantic = None
     # semantic enrichment
-    if config.has_enrichment():
+    if config.has_semantic():
         info("===== SEMANTIC =====")
         semantic = SemanticResource.create(config)
         semantic.map_text(embedding, dataset)
-        semantic.generate_vectors(config)
+        semantic.generate_vectors()
     embedding.finalize(semantic)
 
     # learning
