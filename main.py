@@ -18,8 +18,8 @@ def main(config_file):
     config = Config()
     config.initialize(config_file)
 
-    gkg = GoogleKnowledgeGraph(config)
-    gkg.lookup("dog")
+    #gkg = GoogleKnowledgeGraph(config)
+    #gkg.lookup("dog")
 
     # datasets loading & preprocessing
     info("===== DATASET =====")

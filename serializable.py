@@ -31,6 +31,10 @@ class Serializable:
         self.read_functions = [read_pickled, read_pickled, self.fetch_raw]
         self.handler_functions = [self.handle_preprocessed, self.handle_raw_serialized, self.handle_raw]
 
+
+    def get_raw_path(self):
+        return None
+
     # set paths according to serializable name
     def set_paths_by_name(self, name = None, raw_path = None):
         if name is None:
