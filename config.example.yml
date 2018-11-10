@@ -34,7 +34,7 @@ semantic:
   # which semantic resource will be used. Values: wordnet
   name: wordnet
   # what is considered as a semantic information. Values: synset
-  unit: synset
+  unit: concept
   # the form of semantic information to use. Values: frequencies / tfidf
   weights: tfidf
   # optional threshold, if weights are frequencies. units with less frequencies are discarded. Values: <int>
@@ -59,7 +59,7 @@ semantic:
   # path to pre-computed context of each semantic unit
   context_file: wordnet_synset_examples_definitions.pickle
   # context word-wise frequency threshold. semantic units with less context than this are dropped
-  context_freq_threshold: 25
+  context_threshold: 25
 
 # learning model
 # dnn,hiddensize,numlayers
@@ -74,6 +74,8 @@ learner:
   hidden_dim:  1024
   layers: 2
   sequence_length: 10
+  # forbid loading existing predictions
+  noload: False
 
 
 

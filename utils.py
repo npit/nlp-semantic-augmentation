@@ -2,6 +2,8 @@ import time
 import pickle
 import logging
 
+def shapes_list(thelist):
+    return [x.shape for x in thelist]
 
 # split lists into sublists
 def sublist(llist, sublist_length, only_index=False):
@@ -35,7 +37,9 @@ def datetime_str():
 def need(condition, msg):
     if not condition:
        error(msg)
-def error(msg):
+def error(msg, condition=True):
+    if not condition:
+        return
     logger = logging.getLogger()
     logger.error(msg)
     raise Exception(msg)

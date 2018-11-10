@@ -174,6 +174,7 @@ class DNN:
             self.final_dim = embeddings.get_final_dim()
             self.vocabulary_size = embeddings.get_vocabulary_size()
             emb_seqlen = embeddings.sequence_length
+            self.sequence_length = self.config.learner.sequence_length
             if self.sequence_length is not None:
                 if emb_seqlen != self.sequence_length:
                     error("Specified embedding sequence of length {}, but learner sequence is of length {}".format(emb_seqlen, self.sequence_length))
@@ -188,6 +189,8 @@ class DNN:
             list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
         self.input_dim = embeddings.get_final_dim()
 
+        self.forbid_load = self.config.learner.noload
+        self.sequence_length = self.config.learner.sequence_length
         self.results_folder = self.config.folders.results
         self.models_folder = join(self.results_folder, "models")
         self.epochs = self.config.train.epochs
@@ -199,15 +202,18 @@ class DNN:
         self.early_stopping_patience = self.config.train.early_stopping_patience
         self.seed = self.config.get_seed()
         self.batch_size = self.config.train.batch_size
+        info("Learner data/labels: train: {}, {} test: {}, {}".format(self.train.shape, self.train_labels.shape, self.test.shape, self.test_labels.shape))
 
         # sanity checks
         if self.do_folds and self.do_validate_portion:
             error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
         # data / label matching
         if self.num_train != self.num_train_labels and (self.num_train != self.sequence_length * self.num_train_labels):
-            error("Irreconcilable lengths of training data and labels: {}, {}".format(self.num_train, self.num_train_labels))
+            error("Irreconcilable lengths of training data and labels: {}, {} with learner sequence length of {}.".\
+                  format(self.num_train, self.num_train_labels, self.sequence_length))
         if self.num_test != self.num_test_labels and (self.num_test != self.sequence_length * self.num_test_labels):
-            error("Irreconcilable lengths of test data and labels: {}, {}".format(self.num_test, self.num_test_labels))
+            error("Irreconcilable lengths of test data and labels: {}, {} with learner sequence length of {}.".\
+                  format(self.num_test, self.num_test_labels, self.sequence_length))
 
     # potentially apply DNN input data tranformations
     def process_input(self, data):
@@ -250,11 +256,12 @@ class DNN:
                 else:
                     self.current_run_descr = "(no-validation)"
 
-                # check if the run is completed already
-                existing_predictions = self.already_completed()
-                if existing_predictions is not None:
-                    self.compute_performance(existing_predictions)
-                    continue
+                # check if the run is completed already, if allowed
+                if not self.forbid_load:
+                    existing_predictions = self.already_completed()
+                    if existing_predictions is not None:
+                        self.compute_performance(existing_predictions)
+                        continue
                 # train the model
                 with tictoc("Training run {} on train/val data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
                     model = self.train_model2(trainval_idx)
@@ -263,8 +270,7 @@ class DNN:
                     self.do_test(model)
                     model_paths.append(self.model_saver.filepath)
 
-            if self.do_folds:
-                self.report_across_folds()
+            self.report_results()
             # for embedding training, write the embeddings
             if self.do_train_embeddings:
                 if self.do_folds:
@@ -323,7 +329,7 @@ class DNN:
 
 
     # print performance across folds and compute foldwise aggregations
-    def report_across_folds(self):
+    def report_results(self):
         info("==============================")
         info("Mean / var / std performance across all {} folds:".format(self.folds))
         for type in self.run_types:
@@ -334,7 +340,6 @@ class DNN:
                     container = self.performance[type][measure][aggr]
                     if not container:
                         continue
-                    #print(type, measure, aggr, container)
                     mean_perf = np.mean(container["folds"])
                     var_perf = np.var(container["folds"])
                     std_perf = np.std(container["folds"])
@@ -476,7 +481,6 @@ class MLP(DNN):
         self.config = config
         self.hidden = self.config.learner.hidden_dim
         self.layers = self.config.learner.num_layers
-        self.sequence_length = self.config.learner.sequence_length
         DNN.__init__(self)
 
 

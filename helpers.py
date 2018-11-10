@@ -46,6 +46,7 @@ class Config:
         hidden_dim = None
         num_layers = None
         sequence_length = None
+        noload = False
         def to_str():
             return "{} {} {} {}".format(Config.learner.name, Config.learner.hidden_dim, Config.learner.num_layers, Config.learner.sequence_length)
 
@@ -179,7 +180,7 @@ class Config:
         self.embedding.name = embedding_opts["name"]
         self.embedding.aggregation = embedding_opts["aggregation"] if type(embedding_opts["aggregation"]) == list else [embedding_opts["aggregation"]]
         self.embedding.dimension = embedding_opts["dimension"]
-        self.embedding.sequence_length = self.get_value("sequence_length", default="drop", base=embedding_opts)
+        self.embedding.sequence_length = self.get_value("sequence_length", default=1, base=embedding_opts)
         self.embedding.missing_words = self.get_value("unknown_words", default="unk", base=embedding_opts)
 
         if self.has_value("semantic"):
@@ -191,9 +192,9 @@ class Config:
             self.semantic.weights = semantic_opts["weights"]
             self.semantic.threshold = self.get_value("threshold", base=semantic_opts)
             # context file only relevant on semantic embedding disamgibuation
-            self.semantic.context_file = self.get_value("context_file", base = semantic_opts)
+            self.semantic.context_file = self.get_value("context_file", base=semantic_opts)
             self.semantic.context_aggregation = self.get_value("context_aggregation", base=semantic_opts)
-            self.semantic.context_threshold = self.get_value("context_freq_threshold", base=semantic_opts)
+            self.semantic.context_threshold = self.get_value("context_threshold", base=semantic_opts)
             self.semantic.spreading_activation = self.get_value("spreading_activation", base=semantic_opts)
 
         need(self.has_value("learner"), "Need learner information")
@@ -201,7 +202,8 @@ class Config:
         self.learner.name = learner_opts["name"]
         self.learner.hidden_dim = learner_opts["hidden_dim"]
         self.learner.num_layers = learner_opts["layers"]
-        self.learner.sequence_length = self.get_value("sequence_length", default=None, base=learner_opts)
+        self.learner.sequence_length = self.get_value("sequence_length", default=1, base=learner_opts)
+        self.learner.noload = self.get_value("noload", default=False, base=learner_opts)
 
         need(self.has_value("train"), "Need training information")
         training_opts = self.conf["train"]

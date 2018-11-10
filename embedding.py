@@ -1,9 +1,7 @@
 from os.path import join, dirname
-import os
 import pandas as pd
-import csv
 from dataset import Dataset
-from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning
+from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list
 import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
@@ -37,7 +35,15 @@ class Embedding(Serializable):
         self.sequence_length = self.config.embedding.sequence_length
         self.dataset_name = Dataset.get_limited_name(self.config)
         self.map_missing_unks = self.config.embedding.missing_words == "unk"
-        self.vectors_per_doc = 1 if self.aggregation == "avg" else self.sequence_length
+        if type(self.aggregation) == list:
+            if self.aggregation[0] == "pad":
+                self.vectors_per_doc = self.sequence_length
+            elif self.aggregation[0] == "avg":
+                self.vectors_per_doc = 1
+            else:
+                error("Undefined aggregation: {}".format(self.aggregation))
+        else:
+            error("Undefined aggregation: {}".format(self.aggregation))
         self.set_name()
 
     def save_raw_embedding_weights(self, weights):
@@ -51,6 +57,7 @@ class Embedding(Serializable):
 
     def set_raw_data_path(self):
         pass
+
     def __init__(self, can_fail_loading=False):
         self.set_params()
         Serializable.__init__(self, self.dir_name)
@@ -66,18 +73,24 @@ class Embedding(Serializable):
         self.data_paths = [self.serialization_path_finalized, self.serialization_path_aggregated] + self.data_paths
         self.read_functions = [read_pickled]*2 + self.read_functions
         self.handler_functions = [self.handle_finalized, self.handle_aggregated] + self.handler_functions
-
         self.acquire2(fatal_error=not can_fail_loading)
+
+        if self.config.semantic.disambiguation == "context_embedding":
+            # need the raw embeddings even if processed embedding data is available
+            if self.embeddings is None:
+                self.handle_raw(self.read_functions[-1](self.get_raw_path()))
 
 
     def handle_aggregated(self, data):
         self.handle_preprocessed(data)
         self.loaded_aggregated = True
+        debug("Read aggregated dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_embeddings)))
 
     def handle_finalized(self, data):
         self.handle_preprocessed(data)
         self.loaded_finalized = True
         self.final_dim = data[0][0].shape[-1]
+        debug("Read finalized dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_embeddings)))
 
     def get_zero_pad_element(self):
         return np.zeros((1, self.embedding_dim), np.float32)
@@ -86,7 +99,8 @@ class Embedding(Serializable):
         return len(self.dataset_words[0])
 
     def get_embeddings(self, words):
-        word_embeddings = self.embeddings.loc[words].dropna()
+        words = [w for w in words if w in self.embeddings.index]
+        word_embeddings = self.embeddings.loc[words]
         # drop the nans and return
         return word_embeddings
 
@@ -146,12 +160,13 @@ class Embedding(Serializable):
     # if semantic enrichment is selected, do the infusion
     def finalize(self, semantic):
         if self.loaded_finalized:
+            info("Skipping embeddings finalizing, since finalized data was already loaded.")
             return
         finalized_name = self.name
         if self.config.semantic.enrichment is not None:
             if self.config.embedding.name == "train":
                 error("Semantic enrichment undefined for embedding training, for now.")
-            info("Enriching {} embeddings with semantic information.".format(self.config.embedding.name))
+            info("Enriching {} embeddings with semantic information, former having {} vecs/doc.".format(self.config.embedding.name, self.vectors_per_doc))
             semantic_data = semantic.get_vectors()
             finalized_name += ".{}.enriched".format(SemanticResource.get_semantic_name(self.config))
 
@@ -164,23 +179,9 @@ class Embedding(Serializable):
                         # tile the vector the needed times to the right, reshape to the correct dim
                         semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.vectors_per_doc)),
                                                              (-1, semantic_dim))
-                    print(self.dataset_embeddings[dset_idx].shape, semantic_data[dset_idx].shape)
                     self.dataset_embeddings[dset_idx] = np.concatenate(
                         [self.dataset_embeddings[dset_idx], semantic_data[dset_idx]], axis=1)
 
-
-#                    new_dset_embeddings = np.ndarray((0, self.final_dim), np.float32)
-#                    for doc_idx in range(len(semantic_data[dset_idx])):
-#                        debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
-#                        embeddings = self.dataset_embeddings[dset_idx][doc_idx]
-#                        sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
-#                        if embeddings.ndim > 1:
-#                            # tile sem. vectors
-#                            sem_vectors = np.tile(sem_vectors, (len(embeddings), 1))
-#                            new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors], axis=1)])
-#                        else:
-#                            new_dset_embeddings = np.vstack([new_dset_embeddings, np.concatenate([embeddings, sem_vectors])])
-#                    self.dataset_embeddings[dset_idx] = new_dset_embeddings
 
             elif self.config.semantic.enrichment == "replace":
                 self.final_dim = len(semantic_data[0][0])
@@ -191,21 +192,6 @@ class Embedding(Serializable):
                         semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.vectors_per_doc)),
                                                              (-1, self.final_dim))
                     self.dataset_embeddings[dset_idx] = semantic_data[dset_idx]
-
-
-#                     new_dset_embeddings = np.ndarray((0, self.final_dim), np.float32)
-#                     for doc_idx in range(len(semantic_data[dset_idx])):
-#                         debug("Enriching document {}/{}".format(doc_idx+1, len(semantic_data[dset_idx])))
-#                         embeddings = self.dataset_embeddings[dset_idx][doc_idx]
-#                         sem_vectors = np.asarray(semantic_data[dset_idx][doc_idx], np.float32)
-#                         if embeddings.ndim > 1:
-#                             # tile sem. vectors
-#                             sem_vectors = np.tile(sem_vectors, (len(embeddings), 1))
-#                             new_dset_embeddings = np.vstack([new_dset_embeddings, sem_vectors])
-#                         else:
-#                             new_dset_embeddings = np.vstack([new_dset_embeddings, sem_vectors])
-#                     self.dataset_embeddings[dset_idx] = new_dset_embeddings
-
             else:
                 error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
         else:
@@ -253,8 +239,10 @@ class VectorEmbedding(Embedding):
 
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
-        self.dataset_embeddings, self.words_per_document, self.missing, self.undefined_word_index, self.present_word_indexes = preprocessed
+        self.dataset_embeddings, self.words_per_document, self.missing,  \
+        self.undefined_word_index, self.present_word_indexes = preprocessed
         self.loaded_preprocessed = True
+        debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_embeddings))))
 
     def handle_raw(self, raw_data):
         self.handle_raw_serialized(raw_data)
@@ -293,7 +281,7 @@ class VectorEmbedding(Embedding):
                 hist = {w: 0 for w in embedded_words}
                 hist_missing = {}
                 for j, word_list in enumerate(text_bundles[i]):
-                    debug("Text {}/{}".format(j+1, len(text_bundles[i])))
+                    debug("Text {}/{} with {} words".format(j+1, len(text_bundles[i]), len(word_list)))
                     # check present & missing words
                     missing_words, missing_index, present_words, present_index = [], [], [], []
                     for w, word in enumerate(word_list):
