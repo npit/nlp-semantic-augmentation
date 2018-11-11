@@ -1,4 +1,4 @@
-from os.path import join, exists, splitext
+from os.path import join, exists, splitext, basename
 from dataset import Dataset
 import pickle
 from utils import tictoc, error, info, debug, warning, write_pickled, read_pickled, shapes_list
@@ -307,7 +307,10 @@ class SemanticResource(Serializable):
     # function to map words to wordnet concepts
     def map_text(self, embedding, dataset):
         self.embedding = embedding
-        if self.loaded_preprocessed or self.embedding.loaded_enriched():
+        if self.loaded_preprocessed:
+            info("Skipping mapping text due to preprocessed data already loaded.")
+            return
+        if self.embedding.loaded_enriched():
             info("Skipping mapping text due to enriched data already loaded.")
             return
 
@@ -350,7 +353,7 @@ class SemanticResource(Serializable):
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         self.assignments, self.concept_freqs, self.dataset_freqs, self.concept_tfidf_freqs, self.reference_concepts = preprocessed
-        debug("Read preprocessed concept docs shapes: {}, {}".format(*shapes_list(self.concept_freqs)))
+        debug("Read preprocessed concept docs shapes: {}, {}".format(*list(map(len,self.concept_freqs))))
 
 
 
@@ -429,7 +432,7 @@ class ContextEmbedding(SemanticResource):
         thr=""
         if self.context_threshold:
             thr += "_thresh{}".format(self.context_threshold)
-        self.name += "_ctx{}_emb{}{}".format(splitext(self.context_file)[0], self.config.embedding.name, thr)
+        self.name += "_ctx{}_emb{}{}".format(basename(splitext(self.context_file)[0]), self.config.embedding.name, thr)
 
 
     def get_raw_path(self):
