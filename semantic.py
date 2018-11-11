@@ -1,4 +1,4 @@
-from os.path import join, exists, splitext
+from os.path import join, exists, splitext, basename
 from dataset import Dataset
 import pickle
 import nltk
@@ -128,10 +128,10 @@ class SemanticResource(Serializable):
     def get_semantic_name(config):
         if not config.has_semantic():
             return None
-        freq_filtering = "ALL" if not config.semantic.threshold else "fthres{}".format(config.semantic.threshold)
+        filtering = "ALL" if  config.semantic.limit is None else "".join(list(map(str,config.semantic.limit)))
         sem_weights = "w{}".format(config.semantic.weights)
         disambig = "disam{}".format(config.semantic.disambiguation)
-        semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights, freq_filtering, disambig)
+        semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights,filtering, disambig)
         return semantic_name
 
     def handle_vectorized(self, data):
@@ -160,7 +160,6 @@ class SemanticResource(Serializable):
             self.do_limit = True
             self.limit_type, self.limit_number = self.config.semantic.limit
 
-        self.semantic_freq_threshold = self.config.semantic.threshold
         self.semantic_weights = self.config.semantic.weights
         self.semantic_unit = self.config.semantic.unit
         self.disambiguation = self.config.semantic.disambiguation.lower()
@@ -188,8 +187,8 @@ class SemanticResource(Serializable):
         self.embedding = embedding
 
     # prune semantic information units wrt a frequency threshold
-    def apply_freq_filtering(self, freq_dict_list, dataset_freqs, force_reference=False):
-        info("Applying concept frequency filtering with a threshold of {}".format(self.semantic_freq_threshold))
+    def apply_limiting(self, freq_dict_list, dataset_freqs, force_reference=False):
+        info("Applying concept frequency filtering with a limiting config of {}-{}".format(self.limit_type, self.limit_number))
         with tictoc("Dataset-level frequency filtering"):
             # delete from dataset-level dicts
             concepts_to_delete = set()
@@ -224,8 +223,8 @@ class SemanticResource(Serializable):
                     dataset_freqs[concept] = 0
                 dataset_freqs[concept] += freq
         # frequency filtering, if defined
-        if self.semantic_freq_threshold:
-            freq_dict_list, dataset_freqs = self.apply_freq_filtering(freq_dict_list, dataset_freqs, force_reference)
+        if self.do_limit:
+            freq_dict_list, dataset_freqs = self.apply_limiting(freq_dict_list, dataset_freqs, force_reference)
 
         # complete document-level freqs with zeros for dataset-level concepts missing in the document level
         #for d, doc_dict in enumerate(freq_dict_list):
@@ -435,7 +434,7 @@ class ContextEmbedding(SemanticResource):
         thr=""
         if self.context_threshold:
             thr += "_thresh{}".format(self.context_threshold)
-        self.name += "_ctx{}_emb{}{}".format(splitext(self.context_file)[0], self.config.embedding.name, thr)
+        self.name += "_ctx{}_emb{}{}".format(basename(splitext(self.context_file)[0]), self.config.embedding.name, thr)
 
 
     def get_raw_path(self):
