@@ -37,8 +37,11 @@ semantic:
   unit: concept
   # the form of semantic information to use. Values: frequencies / tfidf
   weights: tfidf
-  # optional threshold, if weights are frequencies. units with less frequencies are discarded. Values: <int>
-  unit_threshold: 15
+  # optional limit to enforce on semantic information. <num, filter>
+  # filter: how to enforce the limit.
+  # - first: keep the <limit> first concepts, with the highest weight
+  # - frequency-threshold: keep only concepts that appear at least <num> times in the dataset
+  limit: 15, first
   # how the semantic information is combined with the textual one. Values: concat, replace
   enrichment: replace
 

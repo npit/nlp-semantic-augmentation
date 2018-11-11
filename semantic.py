@@ -1,6 +1,7 @@
 from os.path import join, exists, splitext
 from dataset import Dataset
 import pickle
+import nltk
 from utils import tictoc, error, info, debug, warning, write_pickled, read_pickled, shapes_list
 import numpy as np
 from serializable import Serializable
@@ -155,6 +156,10 @@ class SemanticResource(Serializable):
 
 
     def set_parameters(self):
+        if self.config.semantic.limit is not None:
+            self.do_limit = True
+            self.limit_type, self.limit_number = self.config.semantic.limit
+
         self.semantic_freq_threshold = self.config.semantic.threshold
         self.semantic_weights = self.config.semantic.weights
         self.semantic_unit = self.config.semantic.unit
@@ -368,6 +373,7 @@ class Wordnet(SemanticResource):
 
 
     def fetch_raw(self, dummy_input):
+        nltk.download("wordnet")
         return None
 
 
