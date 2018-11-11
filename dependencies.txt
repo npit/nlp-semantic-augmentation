@@ -4,3 +4,4 @@ nltk
 pandas
 numpy
 sklearn
+gensim

@@ -75,7 +75,7 @@ class Embedding(Serializable):
         self.handler_functions = [self.handle_finalized, self.handle_aggregated] + self.handler_functions
         self.acquire2(fatal_error=not can_fail_loading)
 
-        if self.config.semantic.disambiguation == "context_embedding":
+        if self.config.has_semantic() and self.config.semantic.disambiguation == "context_embedding":
             # need the raw embeddings even if processed embedding data is available
             if self.embeddings is None:
                 self.handle_raw(self.read_functions[-1](self.get_raw_path()))
