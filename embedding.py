@@ -75,10 +75,14 @@ class Embedding(Serializable):
         self.handler_functions = [self.handle_finalized, self.handle_aggregated] + self.handler_functions
         self.acquire2(fatal_error=not can_fail_loading)
 
-        if self.config.has_semantic() and self.config.semantic.disambiguation == "context_embedding":
+        if self.config.has_semantic() and self.config.semantic.name == "context":
             # need the raw embeddings even if processed embedding data is available
             if self.embeddings is None:
-                self.handle_raw(self.read_functions[-1](self.get_raw_path()))
+                info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
+                self.data_paths= [self.get_raw_path()]
+                self.read_functions = [read_pickled]
+                self.handler_functions = [self.handle_raw]
+                self.acquire2()
 
 
     def handle_aggregated(self, data):

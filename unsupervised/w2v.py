@@ -3,6 +3,7 @@ from gensim.utils import simple_preprocess
 from sklearn.datasets import fetch_20newsgroups
 from nltk.corpus import reuters
 
+import getpass
 import pandas
 import smtplib
 # build vocabulary and train model
@@ -60,17 +61,19 @@ def get_20ng():
 
 num_epochs = 50
 window=10
-size=50
+size=300
 word_threshold=2
 
-email=""
-passw=open("mail")
+email="pittarasnikif@gmail.com"
+print("mail password:")
+passw=getpass.getpass()
 
 
 data = get_reuters()
 data=[simple_preprocess(d) for d in data]
 
 
+print("Epochs {}, window {}, size {}, word-freq-thresh {}".format(num_epochs, window, size, word_threshold))
 print("Defining w2v model")
 model = Word2Vec(
     data,

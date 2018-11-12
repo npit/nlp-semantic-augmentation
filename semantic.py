@@ -133,6 +133,9 @@ class SemanticResource(Serializable):
         sem_weights = "w{}".format(config.semantic.weights)
         disambig = "disam{}".format(config.semantic.disambiguation)
         semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights,filtering, disambig)
+        if config.semantic.spreading_activation:
+            steps, decay = config.semantic.spreading_activation
+            semantic_name += "_spread{}-{}".format(steps, decay)
         return semantic_name
 
     def handle_vectorized(self, data):
@@ -172,9 +175,6 @@ class SemanticResource(Serializable):
         self.dataset_name = Dataset.get_limited_name(self.config)
         self.semantic_name = SemanticResource.get_semantic_name(self.config)
         self.form_name()
-        if self.do_spread_activation:
-            self.name += "_spread{}dec{}".format(self.spread_steps, self.spread_decay)
-
 
 
     # make name string from components
@@ -487,6 +487,7 @@ class ContextEmbedding(SemanticResource):
 
 
     def map_text(self, embedding, dataset):
+        self.embedding = embedding
         self.compute_semantic_embeddings()
         # kdtree for fast lookup
         self.kdtree = spatial.KDTree(self.concept_embeddings)

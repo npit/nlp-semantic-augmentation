@@ -287,7 +287,7 @@ class Config:
         if base is None:
             base = self.conf
         value =  base[name] if name in base else default
-        if expected_type is not None:
+        if expected_type is not None and value is not None:
             if type(value) != expected_type:
                 error("Argument {} got value {} which is of type {}, but {} is required."
                                         .format(name, value, type(value), expected_type))
