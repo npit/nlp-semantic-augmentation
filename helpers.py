@@ -190,7 +190,7 @@ class Config:
             self.semantic.enrichment = self.get_value("enrichment", base=semantic_opts, default=None)
             self.semantic.disambiguation = semantic_opts["disambiguation"]
             self.semantic.weights = semantic_opts["weights"]
-            self.semantic.threshold = self.get_value("threshold", base=semantic_opts)
+            self.semantic.limit = self.get_value("limit", base=semantic_opts, default=None, expected_type=list)
             # context file only relevant on semantic embedding disamgibuation
             self.semantic.context_file = self.get_value("context_file", base=semantic_opts)
             self.semantic.context_aggregation = self.get_value("context_aggregation", base=semantic_opts)
@@ -283,10 +283,15 @@ class Config:
     def explicit_run_id(self):
         return self.has_value("run_id")
 
-    def get_value(self, name, default=None, base=None):
+    def get_value(self, name, default=None, base=None, expected_type=None):
         if base is None:
             base = self.conf
-        return base[name] if name in base else default
+        value =  base[name] if name in base else default
+        if expected_type is not None:
+            if type(value) != expected_type:
+                error("Argument {} got value {} which is of type {}, but {} is required."
+                                        .format(name, value, type(value), expected_type))
+        return value
 
     def has_value(self, name, base=None):
         if base is None:

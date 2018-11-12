@@ -31,21 +31,23 @@ embedding:
 
 # semantic
 semantic:
-  # which semantic resource will be used. Values: wordnet
+  # which semantic resource will be used. Values: wordnet, context
   name: wordnet
   # what is considered as a semantic information. Values: synset
   unit: concept
   # the form of semantic information to use. Values: frequencies / tfidf
   weights: tfidf
-  # optional threshold, if weights are frequencies. units with less frequencies are discarded. Values: <int>
-  unit_threshold: 15
+  # optional limit to enforce on semantic information. <num, filter>
+  # filter: how to enforce the limit.
+  # - first: keep the <limit> first concepts, with the highest weight
+  # - frequency-threshold: keep only concepts that appear at least <num> times in the dataset
+  limit: 15, first
   # how the semantic information is combined with the textual one. Values: concat, replace
   enrichment: replace
 
   # how candidate semantic information units are selected, given a word. Values: first, pos, context_embedding
   # first: get first retrieved unit
   # pos: get first that matches the POS tag assigned
-  # context_embedding: select unit by min proximity to precomputed semantic embeddings
   #disambiguation: first
   disambiguation: pos
   # spread semantic unit activation: <maxsteps>, <decay>

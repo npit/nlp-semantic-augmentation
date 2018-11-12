@@ -1,6 +1,8 @@
 from os.path import join, exists, splitext, basename
+from os import listdir
 from dataset import Dataset
 import pickle
+import nltk
 from utils import tictoc, error, info, debug, warning, write_pickled, read_pickled, shapes_list
 import numpy as np
 from serializable import Serializable
@@ -127,10 +129,10 @@ class SemanticResource(Serializable):
     def get_semantic_name(config):
         if not config.has_semantic():
             return None
-        freq_filtering = "ALL" if not config.semantic.threshold else "fthres{}".format(config.semantic.threshold)
+        filtering = "ALL" if  config.semantic.limit is None else "".join(list(map(str,config.semantic.limit)))
         sem_weights = "w{}".format(config.semantic.weights)
         disambig = "disam{}".format(config.semantic.disambiguation)
-        semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights, freq_filtering, disambig)
+        semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights,filtering, disambig)
         return semantic_name
 
     def handle_vectorized(self, data):
@@ -155,7 +157,10 @@ class SemanticResource(Serializable):
 
 
     def set_parameters(self):
-        self.semantic_freq_threshold = self.config.semantic.threshold
+        if self.config.semantic.limit is not None:
+            self.do_limit = True
+            self.limit_type, self.limit_number = self.config.semantic.limit
+
         self.semantic_weights = self.config.semantic.weights
         self.semantic_unit = self.config.semantic.unit
         self.disambiguation = self.config.semantic.disambiguation.lower()
@@ -168,7 +173,7 @@ class SemanticResource(Serializable):
         self.semantic_name = SemanticResource.get_semantic_name(self.config)
         self.form_name()
         if self.do_spread_activation:
-            self.name += "spread{}dec{}".format(self.spread_steps, self.spread_decay)
+            self.name += "_spread{}dec{}".format(self.spread_steps, self.spread_decay)
 
 
 
@@ -182,15 +187,30 @@ class SemanticResource(Serializable):
     def assign_embedding(self, embedding):
         self.embedding = embedding
 
+
     # prune semantic information units wrt a frequency threshold
-    def apply_freq_filtering(self, freq_dict_list, dataset_freqs, force_reference=False):
-        info("Applying concept frequency filtering with a threshold of {}".format(self.semantic_freq_threshold))
-        with tictoc("Dataset-level frequency filtering"):
-            # delete from dataset-level dicts
-            concepts_to_delete = set()
-            for concept in dataset_freqs:
-                if dataset_freqs[concept] < self.semantic_freq_threshold:
-                    concepts_to_delete.add(concept)
+    def apply_limiting(self, freq_dict_list, dataset_freqs, force_reference=False):
+        info("Applying concept filtering with a limiting config of {}-{}".format(self.limit_type, self.limit_number))
+        if self.limit_type == "frequency":
+            # discard concepts with a lower frequency than the specified threshold
+            with tictoc("Dataset-level frequency filtering"):
+                # delete from dataset-level dicts
+                concepts_to_delete = set()
+                for concept in dataset_freqs:
+                    if dataset_freqs[concept] < self.limit_number:
+                        concepts_to_delete.add(concept)
+            return self.check_delete_concepts(freq_dict_list, dataset_freqs, force_reference, concepts_to_delete)
+
+        elif self.limit_type == "first":
+            # keep only the specified number of concepts with the highest weight
+            sorted_dset_freqs = sorted(dataset_freqs, reverse=True, key = lambda x : dataset_freqs[x])
+            concepts_to_delete = sorted_dset_freqs[self.limit_number:]
+            return self.check_delete_concepts(freq_dict_list, dataset_freqs, force_reference, concepts_to_delete)
+        else:
+            error("Undefined semantic limiting type: {}".format(self.limit_type))
+
+
+    def check_delete_concepts(self, freq_dict_list, dataset_freqs, force_reference, concepts_to_delete):
         # if forcing reference, we can override the freq threshold for these concepts
         if force_reference:
             orig_num = len(concepts_to_delete)
@@ -198,7 +218,8 @@ class SemanticResource(Serializable):
             info("Limiting concepts-to-delete from {} to {} due to forcing to reference concept set".format(orig_num, len(concepts_to_delete)))
         if not concepts_to_delete:
             return  freq_dict_list, dataset_freqs
-        info("Will remove {}/{} concepts due to a freq threshold of {}".format(len(concepts_to_delete), len(dataset_freqs), self.semantic_freq_threshold))
+        info("Will remove {}/{} concepts due to a limiting config of {}-{}".format(
+            len(concepts_to_delete), len(dataset_freqs), self.limit_type, self.limit_number))
         with tictoc("Document-level frequency filtering"):
             # delete
             for concept in concepts_to_delete:
@@ -206,8 +227,9 @@ class SemanticResource(Serializable):
                 for doc_dict in freq_dict_list:
                     if concept in doc_dict:
                         del doc_dict[concept]
-        info("Synset frequency filtering resulted in {} concepts.".format(len(dataset_freqs)))
+        info("Concept filtering resulted in {} concepts.".format(len(dataset_freqs)))
         return  freq_dict_list, dataset_freqs
+
 
     # merge list of document-wise frequency dicts
     # to a single, dataset-wise frequency dict
@@ -219,8 +241,8 @@ class SemanticResource(Serializable):
                     dataset_freqs[concept] = 0
                 dataset_freqs[concept] += freq
         # frequency filtering, if defined
-        if self.semantic_freq_threshold:
-            freq_dict_list, dataset_freqs = self.apply_freq_filtering(freq_dict_list, dataset_freqs, force_reference)
+        if self.do_limit:
+            freq_dict_list, dataset_freqs = self.apply_limiting(freq_dict_list, dataset_freqs, force_reference)
 
         # complete document-level freqs with zeros for dataset-level concepts missing in the document level
         #for d, doc_dict in enumerate(freq_dict_list):
@@ -292,7 +314,6 @@ class SemanticResource(Serializable):
             if word_pos is None:
                 return self.disambiguate(concepts, word_information, override="first")
             if word_pos not in self.pos_tag_mapping:
-                warning("{} pos unhandled.".format(word_information))
                 return self.disambiguate(concepts, word_information, override="first")
             # if encountered matching pos, get it.
             for synset in concepts:
@@ -313,12 +334,6 @@ class SemanticResource(Serializable):
         if self.embedding.loaded_enriched():
             info("Skipping mapping text due to enriched data already loaded.")
             return
-
-        # process semantic embeddings, if applicable
-        if self.disambiguation == "context_embedding":
-            self.compute_semantic_embeddings()
-            # kdtree for fast lookup
-            self.kdtree = spatial.KDTree(self.concept_embeddings)
 
         # process the data
         dataset_pos = dataset.get_pos(self.embedding.get_present_word_indexes())
@@ -371,6 +386,8 @@ class Wordnet(SemanticResource):
 
 
     def fetch_raw(self, dummy_input):
+        if not self.base_name in listdir(nltk.data.find("corpora")):
+            nltk.download("wordnet")
         return None
 
 
@@ -391,7 +408,6 @@ class Wordnet(SemanticResource):
         if self.do_spread_activation:
             # climb the hypernym ladder
             hyper_activations = self.spread_activation(synsets, self.spread_steps, self.spread_decay)
-            debug("Semantic activations (standard/spreaded): {} / {}".format(activations, hyper_activations))
             activations = {**activations, **hyper_activations}
         return activations
 
@@ -405,7 +421,7 @@ class Wordnet(SemanticResource):
             # get hypernyms of synset
             for hyper in synset.hypernyms():
                 activations[hyper._name] = current_decay
-                hypers = self.spread_activation(hyper, steps_to_go-1, new_decay)
+                hypers = self.spread_activation([hyper], steps_to_go-1, new_decay)
                 if hypers:
                     activations = {**activations, **hypers}
         return activations
@@ -426,6 +442,9 @@ class ContextEmbedding(SemanticResource):
         self.context_file = self.config.semantic.context_file
         # calculate the synset embeddings path
         SemanticResource.__init__(self, config)
+        if not any([x for x in self.load_flags]):
+            error("Failed to load semantic embeddings context.")
+
 
     def form_name(self):
         SemanticResource.form_name(self)
@@ -465,6 +484,17 @@ class ContextEmbedding(SemanticResource):
             data = pickle.load(f)
         return data
 
+
+
+    def map_text(self, embedding, dataset):
+        self.compute_semantic_embeddings()
+        # kdtree for fast lookup
+        self.kdtree = spatial.KDTree(self.concept_embeddings)
+        SemanticResource.map_text(self, embedding, dataset)
+
+
+
+
     def lookup(self, candidate):
         word, _ = candidate
         if word in self.word_concept_embedding_cache:
@@ -472,6 +502,8 @@ class ContextEmbedding(SemanticResource):
         else:
             word_embedding = self.embedding.get_embeddings([word])
             _, conc_idx = self.kdtree.query(word_embedding)
+            if conc_idx is None or len(conc_idx) == 0:
+                return {}
             concept = self.reference_concepts[int(conc_idx)]
         # no spreading activation defined here.
         return { concept: 1}

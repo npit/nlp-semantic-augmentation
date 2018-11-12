@@ -269,6 +269,7 @@ class TwentyNewsGroups(Dataset):
         if self.name != self.base_name:
             return None
         info("Downloading {} via sklearn".format(self.name))
+
         seed = self.config.get_seed()
         train = fetch_20newsgroups(subset='train', shuffle=True, random_state=seed)
         test = fetch_20newsgroups(subset='test', shuffle=True, random_state=seed)
@@ -318,6 +319,7 @@ class Reuters(Dataset):
         if self.name != self.base_name:
             return None
         info("Downloading raw {} dataset".format(self.name))
+        nltk.download("reuters")
         # get ids
         categories = reuters.categories()
         self.num_labels = len(categories)
