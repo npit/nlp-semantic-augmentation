@@ -31,7 +31,7 @@ embedding:
 
 # semantic
 semantic:
-  # which semantic resource will be used. Values: wordnet
+  # which semantic resource will be used. Values: wordnet, context
   name: wordnet
   # what is considered as a semantic information. Values: synset
   unit: concept
@@ -48,7 +48,6 @@ semantic:
   # how candidate semantic information units are selected, given a word. Values: first, pos, context_embedding
   # first: get first retrieved unit
   # pos: get first that matches the POS tag assigned
-  # context_embedding: select unit by min proximity to precomputed semantic embeddings
   #disambiguation: first
   disambiguation: pos
   # spread semantic unit activation: <maxsteps>, <decay>

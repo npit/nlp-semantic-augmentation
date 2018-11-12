@@ -1,4 +1,5 @@
 from os.path import join, exists, splitext, basename
+from os import listdir
 from dataset import Dataset
 import pickle
 import nltk
@@ -186,15 +187,30 @@ class SemanticResource(Serializable):
     def assign_embedding(self, embedding):
         self.embedding = embedding
 
+
     # prune semantic information units wrt a frequency threshold
     def apply_limiting(self, freq_dict_list, dataset_freqs, force_reference=False):
-        info("Applying concept frequency filtering with a limiting config of {}-{}".format(self.limit_type, self.limit_number))
-        with tictoc("Dataset-level frequency filtering"):
-            # delete from dataset-level dicts
-            concepts_to_delete = set()
-            for concept in dataset_freqs:
-                if dataset_freqs[concept] < self.semantic_freq_threshold:
-                    concepts_to_delete.add(concept)
+        info("Applying concept filtering with a limiting config of {}-{}".format(self.limit_type, self.limit_number))
+        if self.limit_type == "frequency":
+            # discard concepts with a lower frequency than the specified threshold
+            with tictoc("Dataset-level frequency filtering"):
+                # delete from dataset-level dicts
+                concepts_to_delete = set()
+                for concept in dataset_freqs:
+                    if dataset_freqs[concept] < self.limit_number:
+                        concepts_to_delete.add(concept)
+            return self.check_delete_concepts(freq_dict_list, dataset_freqs, force_reference, concepts_to_delete)
+
+        elif self.limit_type == "first":
+            # keep only the specified number of concepts with the highest weight
+            sorted_dset_freqs = sorted(dataset_freqs, reverse=True, key = lambda x : dataset_freqs[x])
+            concepts_to_delete = sorted_dset_freqs[self.limit_number:]
+            return self.check_delete_concepts(freq_dict_list, dataset_freqs, force_reference, concepts_to_delete)
+        else:
+            error("Undefined semantic limiting type: {}".format(self.limit_type))
+
+
+    def check_delete_concepts(self, freq_dict_list, dataset_freqs, force_reference, concepts_to_delete):
         # if forcing reference, we can override the freq threshold for these concepts
         if force_reference:
             orig_num = len(concepts_to_delete)
@@ -202,7 +218,8 @@ class SemanticResource(Serializable):
             info("Limiting concepts-to-delete from {} to {} due to forcing to reference concept set".format(orig_num, len(concepts_to_delete)))
         if not concepts_to_delete:
             return  freq_dict_list, dataset_freqs
-        info("Will remove {}/{} concepts due to a freq threshold of {}".format(len(concepts_to_delete), len(dataset_freqs), self.semantic_freq_threshold))
+        info("Will remove {}/{} concepts due to a limiting config of {}-{}".format(
+            len(concepts_to_delete), len(dataset_freqs), self.limit_type, self.limit_number))
         with tictoc("Document-level frequency filtering"):
             # delete
             for concept in concepts_to_delete:
@@ -210,8 +227,9 @@ class SemanticResource(Serializable):
                 for doc_dict in freq_dict_list:
                     if concept in doc_dict:
                         del doc_dict[concept]
-        info("Synset frequency filtering resulted in {} concepts.".format(len(dataset_freqs)))
+        info("Concept filtering resulted in {} concepts.".format(len(dataset_freqs)))
         return  freq_dict_list, dataset_freqs
+
 
     # merge list of document-wise frequency dicts
     # to a single, dataset-wise frequency dict
@@ -315,12 +333,6 @@ class SemanticResource(Serializable):
             info("Skipping mapping text due to enriched data already loaded.")
             return
 
-        # process semantic embeddings, if applicable
-        if self.disambiguation == "context_embedding":
-            self.compute_semantic_embeddings()
-            # kdtree for fast lookup
-            self.kdtree = spatial.KDTree(self.concept_embeddings)
-
         # process the data
         dataset_pos = dataset.get_pos(self.embedding.get_present_word_indexes())
         self.concept_freqs = []
@@ -372,7 +384,8 @@ class Wordnet(SemanticResource):
 
 
     def fetch_raw(self, dummy_input):
-        nltk.download("wordnet")
+        if not self.base_name in listdir(nltk.data.find("corpora")):
+            nltk.download("wordnet")
         return None
 
 
@@ -466,6 +479,17 @@ class ContextEmbedding(SemanticResource):
         with open(self.context_file, "rb") as f:
             data = pickle.load(f)
         return data
+
+
+
+    def map_text(self, embedding, dataset):
+        self.compute_semantic_embeddings()
+        # kdtree for fast lookup
+        self.kdtree = spatial.KDTree(self.concept_embeddings)
+        SemanticResource.map_text(self, embedding, dataset)
+
+
+
 
     def lookup(self, candidate):
         word, _ = candidate
