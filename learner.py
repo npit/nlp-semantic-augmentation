@@ -321,9 +321,9 @@ class DNN:
         model.fit(train_data, train_labels,
                     batch_size=self.batch_size,
                     epochs=self.epochs,
-                    validation_data = val_datalabels,
-                    verbose = self.verbosity,
-                    callbacks = self.get_callbacks())
+                    validation_data=val_datalabels,
+                    verbose=self.verbosity,
+                    callbacks=self.get_callbacks())
         self.report_early_stopping()
         return model
 
