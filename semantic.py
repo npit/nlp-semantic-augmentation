@@ -109,7 +109,7 @@ class SemanticResource(Serializable):
     # and a local word cache. Updates concept frequencies as well.
     def get_concept(self, word_information, freqs, force_reference_concepts = False):
         word, _ = word_information
-        if word in self.word_concept_lookup_cache:
+        if word_information in self.word_concept_lookup_cache:
             concept_activations = self.word_concept_lookup_cache[word_information]
             concept_activations = self.restrict_to_reference(force_reference_concepts, concept_activations)
             freqs = self.update_frequencies(concept_activations, freqs)
@@ -121,6 +121,7 @@ class SemanticResource(Serializable):
             freqs = self.update_frequencies(concept_activations, freqs)
             # populate cache
             self.word_concept_lookup_cache[word_information] = concept_activations
+            print(self.word_concept_lookup_cache[word_information].keys())
 
         if word not in self.assignments:
             self.assignments[word] = concept_activations
@@ -324,6 +325,18 @@ class SemanticResource(Serializable):
         else:
             error("Undefined disambiguation method: " + self.disambiguation)
 
+    # read existing resource-wise serialized semantic cache from previous runs to speedup resolving
+    def load_semantic_cache(self):
+        cache_file = join(self.config.folders.raw_data, self.base_name + ".cache.pickle")
+        if exists(cache_file):
+            self.word_concept_lookup_cache = read_pickled(cache_file)
+        info("Read a {}-long semantic cache from {}.".format(len(self.word_concept_lookup_cache), cache_file))
+
+    # write the semantic cache after resolution of the current dataset
+    def write_semantic_cache(self):
+        cache_file = join(self.config.folders.raw_data, self.base_name + ".cache.pickle")
+        info("Writing a {}-long semantic cache to {}.".format(len(self.word_concept_lookup_cache), cache_file))
+        write_pickled(cache_file, self.word_concept_lookup_cache)
 
     # function to map words to wordnet concepts
     def map_text(self, embedding, dataset):
@@ -338,6 +351,9 @@ class SemanticResource(Serializable):
         # process the data
         dataset_pos = dataset.get_pos(self.embedding.get_present_word_indexes())
         self.concept_freqs = []
+        # read the semantic resource cache, if existing
+        self.load_semantic_cache()
+
         for d, dset in enumerate(dataset_pos):
             info("Extracting {} semantic information from dataset {}/{}".format(self.name, d+1, len(dataset_pos)))
             # process data within a dataset portion
@@ -351,6 +367,7 @@ class SemanticResource(Serializable):
         # write results: word assignments, raw, dataset-wise and tf-idf weights
         info("Writing semantic assignment results to {}.".format(self.serialization_path))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+        self.write_semantic_cache()
         info("Semantic mapping completed.")
 
     def update_frequencies(self, activations, frequencies):

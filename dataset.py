@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import os
 from os.path import exists, isfile, join
-from os import makedirs
+from os import makedirs, listdir
 from helpers import Config
 from nltk.tokenize import RegexpTokenizer
 from utils import error, tictoc, info, warning, read_pickled, write_pickled
@@ -319,7 +319,8 @@ class Reuters(Dataset):
         if self.name != self.base_name:
             return None
         info("Downloading raw {} dataset".format(self.name))
-        nltk.download("reuters")
+        if not self.base_name + ".zip" in listdir(nltk.data.find("corpora")):
+            nltk.download("reuters")
         # get ids
         categories = reuters.categories()
         self.num_labels = len(categories)
