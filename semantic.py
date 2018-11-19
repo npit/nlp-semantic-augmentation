@@ -1,4 +1,4 @@
-from os.path import join, exists, splitext, basename
+from os.path import join, exists, splitext, basename, dirname
 from os import listdir
 from dataset import Dataset
 import pickle
@@ -22,7 +22,7 @@ class SemanticResource(Serializable):
     do_spread_activation = False
     loaded_vectorized = False
 
-    word_concept_lookup_cache = {}
+    lookup_cache = {}
     word_concept_embedding_cache = {}
 
     concept_freqs = []
@@ -141,8 +141,8 @@ class SemanticResource(Serializable):
     # and a local word cache. Updates concept frequencies as well.
     def get_concept(self, word_information, freqs, force_reference_concepts = False):
         word, _ = word_information
-        if word_information in self.word_concept_lookup_cache:
-            concept_activations = self.word_concept_lookup_cache[word_information]
+        if word_information in self.lookup_cache:
+            concept_activations = self.lookup_cache[word_information]
             concept_activations = self.restrict_to_reference(force_reference_concepts, concept_activations)
             freqs = self.update_frequencies(concept_activations, freqs)
         else:
@@ -152,11 +152,9 @@ class SemanticResource(Serializable):
             concept_activations = self.restrict_to_reference(force_reference_concepts, concept_activations)
             freqs = self.update_frequencies(concept_activations, freqs)
             # populate cache
-            self.word_concept_lookup_cache[word_information] = concept_activations
-            print(self.word_concept_lookup_cache[word_information].keys())
-
-        if word not in self.assignments:
-            self.assignments[word] = concept_activations
+            self.lookup_cache[word_information] = concept_activations
+            if word not in self.assignments:
+                self.assignments[word] = concept_activations
         return concept_activations, freqs
 
     def get_semantic_name(config, filtering=None, sem_weights=None):
@@ -359,18 +357,25 @@ class SemanticResource(Serializable):
         else:
             error("Undefined disambiguation method: " + self.disambiguation)
 
+    def get_cache_path(self):
+        return join(self.config.folders.raw_data, self.dir_name, self.base_name + ".cache.pickle")
+
     # read existing resource-wise serialized semantic cache from previous runs to speedup resolving
     def load_semantic_cache(self):
-        cache_file = join(self.config.folders.raw_data, self.base_name + ".cache.pickle")
-        if exists(cache_file):
-            self.word_concept_lookup_cache = read_pickled(cache_file)
-        info("Read a {}-long semantic cache from {}.".format(len(self.word_concept_lookup_cache), cache_file))
+        cache_path = self.get_cache_path()
+        if exists(cache_path):
+            self.lookup_cache = read_pickled(cache_path)
+            info("Read a {}-long semantic cache from {}.".format(len(self.lookup_cache), cache_path))
+            return self.lookup_cache
+        return {}
 
     # write the semantic cache after resolution of the current dataset
     def write_semantic_cache(self):
-        cache_file = join(self.config.folders.raw_data, self.base_name + ".cache.pickle")
-        info("Writing a {}-long semantic cache to {}.".format(len(self.word_concept_lookup_cache), cache_file))
-        write_pickled(cache_file, self.word_concept_lookup_cache)
+        cache_path = self.get_cache_path()
+        if not exists(dirname(cache_path)):
+            makedirs(dirname(cache_path), exist_ok=True)
+        info("Writing a {}-long semantic cache to {}.".format(len(self.lookup_cache), cache_path))
+        write_pickled(cache_path, self.lookup_cache)
 
     # function to map words to wordnet concepts
     def map_text(self, embedding, dataset):
