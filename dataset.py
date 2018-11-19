@@ -367,3 +367,9 @@ class Reuters(Dataset):
     def get_raw_path(self):
         # dataset is downloadable
         pass
+
+#class MultilingMMS:
+#    name = "multiling-mms"
+#    def get_raw_path():
+#        pass
+#

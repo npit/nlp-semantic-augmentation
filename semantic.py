@@ -7,9 +7,12 @@ from utils import tictoc, error, info, debug, warning, write_pickled, read_pickl
 import numpy as np
 from serializable import Serializable
 from nltk.corpus import wordnet as wn
+from nltk.corpus import framenet as fn
 import json
 import urllib
 from scipy import spatial
+
+import defs
 
 
 class SemanticResource(Serializable):
@@ -30,24 +33,51 @@ class SemanticResource(Serializable):
     concept_context_word_threshold = None
 
     reference_concepts = None
+    do_limit = False
 
     disambiguation = None
     pos_tag_mapping = {}
 
+    def get_appropriate_config_names(self):
+        semantic_names = []
+        # + no filtering, if filtered is specified
+        filter_vals = [defs.semantic.limit.none]
+        if self.do_limit:
+            filter_vals.append(defs.semantic.limit.to_string(self.config))
+        # any combo of weights, since they're all stored
+        weight_vals = defs.semantic.weights.avail()
+        for w in weight_vals:
+            for f in filter_vals:
+                semantic_names.append(
+                    SemanticResource.get_semantic_name(self.config, filtering=f, sem_weights=w))
+                debug("Semantic config candidate: {}".format(semantic_names[-1]))
+
+        return semantic_names
+
+
+
     def __init__(self, config):
         Serializable.__init__(self, self.dir_name)
         self.set_parameters()
-        # setup serialization paramas
-        self.set_serialization_params()
-        # add extras
-        self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
-        self.data_paths.insert(0, self.serialization_path_vectorized)
-        self.read_functions.insert(0, read_pickled)
-        self.handler_functions.insert(0, self.handle_vectorized)
-
-        # load if existing
-        self.acquire2(fatal_error=False)
-
+        config_names = self.get_appropriate_config_names()
+        for s, semantic_name in enumerate(config_names):
+            debug("Attempting to load semantic info from source {}/{}: {}".format(s+1, len(config_names), semantic_name))
+            self.semantic_name = semantic_name
+            self.form_name()
+            self.set_serialization_params()
+            # add extras
+            self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
+            self.data_paths.insert(0, self.serialization_path_vectorized)
+            self.read_functions.insert(0, read_pickled)
+            self.handler_functions.insert(0, self.handle_vectorized)
+            self.acquire2(fatal_error=False)
+            if any(self.load_flags):
+                info("Loaded by using semantic name: {}".format(semantic_name))
+                break
+        # restore correct config
+        self.semantic_name = SemanticResource.get_semantic_name(self.config)
+        info("Restored specifid semantic name to : {}".format(self.semantic_name))
+        self.form_name()
 
 
     def create(config):
@@ -58,6 +88,8 @@ class SemanticResource(Serializable):
             return GoogleKnowledgeGraph(config)
         if name == ContextEmbedding.name:
             return ContextEmbedding(config)
+        if name == Framenet.name:
+            return Framenet(config)
         error("Undefined semantic resource: {}".format(name))
     pass
 
@@ -115,9 +147,9 @@ class SemanticResource(Serializable):
             freqs = self.update_frequencies(concept_activations, freqs)
         else:
             concept_activations = self.lookup(word_information)
-            concept_activations = self.restrict_to_reference(force_reference_concepts, concept_activations)
             if not concept_activations:
                 return None, freqs
+            concept_activations = self.restrict_to_reference(force_reference_concepts, concept_activations)
             freqs = self.update_frequencies(concept_activations, freqs)
             # populate cache
             self.word_concept_lookup_cache[word_information] = concept_activations
@@ -127,11 +159,13 @@ class SemanticResource(Serializable):
             self.assignments[word] = concept_activations
         return concept_activations, freqs
 
-    def get_semantic_name(config):
+    def get_semantic_name(config, filtering=None, sem_weights=None):
         if not config.has_semantic():
             return None
-        filtering = "ALL" if  config.semantic.limit is None else "".join(list(map(str,config.semantic.limit)))
-        sem_weights = "w{}".format(config.semantic.weights)
+        if filtering is None:
+            filtering = defs.semantic.limit.to_string(config)
+        if sem_weights is None:
+            sem_weights = defs.semantic.weights.to_string(config)
         disambig = "disam{}".format(config.semantic.disambiguation)
         semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights,filtering, disambig)
         if config.semantic.spreading_activation:
@@ -317,9 +351,9 @@ class SemanticResource(Serializable):
             if word_pos not in self.pos_tag_mapping:
                 return self.disambiguate(concepts, word_information, override="first")
             # if encountered matching pos, get it.
-            for synset in concepts:
-                if synset._pos == self.pos_tag_mapping[word_pos]:
-                    return [synset]
+            for concept in concepts:
+                if concept._pos == self.pos_tag_mapping[word_pos]:
+                    return [concept]
             # no pos match, revert to first
             return self.disambiguate(concepts, word_information, override="first")
         else:
@@ -424,7 +458,7 @@ class Wordnet(SemanticResource):
         activations = {synset._name: 1 for synset in synsets}
         if self.do_spread_activation:
             # climb the hypernym ladder
-            hyper_activations = self.spread_activation(synsets, self.spread_steps, self.spread_decay)
+            hyper_activations = self.spread_activation(synsets, self.spread_steps, 1)
             activations = {**activations, **hyper_activations}
         return activations
 
@@ -432,9 +466,9 @@ class Wordnet(SemanticResource):
         if steps_to_go == 0:
             return
         activations = {}
+        # current weight value
+        new_decay = current_decay * self.spread_decay
         for synset in synsets:
-            # current weight value
-            new_decay = current_decay * self.spread_decay
             # get hypernyms of synset
             for hyper in synset.hypernyms():
                 activations[hyper._name] = current_decay
@@ -610,13 +644,11 @@ class GoogleKnowledgeGraph(SemanticResource):
             results = element['result']
             if "name" not in results:
                 continue
-            # print(results)
             scores.append(element['resultScore'])
             names.append(results['name'])
             hypers.append(results['@type'])
             # descr = results['description']
             # detailed_descr = results['detailedDescription'] if 'detailedDescription' in results else None
-            # print("\t", names[-1], scores[-1])
 
         names = self.disambiguate(names, candidate)
         activations = {n: 1 for n in names}
@@ -637,8 +669,85 @@ class GoogleKnowledgeGraph(SemanticResource):
         return activations
 
 
+class Framenet(SemanticResource):
+    name = "framenet"
+    relations_to_spread = ["Inheritance"]
 
-class PPDB:
-    # ppdb reading code:
-    # https://github.com/erickrf/ppdb
-    pass
+    def __init__(self, config):
+        self.config = config
+        self.base_name = self.name
+        SemanticResource.__init__(self, config)
+        # map nltk pos maps into meaningful framenet ones
+        self.pos_tag_mapping = {"VB": "V", "NN": "N", "JJ": "A", "RB": "ADV"}
+
+    def fetch_raw(self, dummy_input):
+        if not self.base_name + "_v17" in listdir(nltk.data.find("corpora")):
+            nltk.download("framenet_v17")
+        return None
+
+    def lookup(self, candidate):
+        # http://www.nltk.org/howto/framenet.html
+        word, word_pos = candidate
+        # in framenet, pos-disambiguation is done via the lookup
+        if self.disambiguation == defs.semantic.disam.pos:
+            frames = self.lookup_with_POS(candidate)
+        else:
+            frames = fn.frames_by_lemma(word)
+            if not frames:
+                return None
+            frames = self.disambiguate(frames, candidate)
+        if not frames:
+            return None
+        activations = {x.name: 1 for x in frames}
+        if self.do_spread_activation:
+            parent_activations = self.spread_activation(frames, self.spread_steps, 1)
+            activations = {**activations, **parent_activations}
+        return activations
+
+    def lookup_with_POS(self, candidate):
+        word, word_pos = candidate
+        if word_pos in self.pos_tag_mapping:
+            word += "." + self.pos_tag_mapping[word_pos]
+        frames = fn.frames_by_lemma(word)
+        if not frames:
+            return None
+        return self.disambiguate(frames, candidate, override=defs.semantic.disam.first)
+
+
+    def get_related_frames(self, frame):
+        # get just parents
+        return [fr.Parent for fr in frame.frameRelations if fr.type.name == "Inheritance" and fr.Child == frame]
+
+    def spread_activation(self, frames, steps_to_go, current_decay):
+        if steps_to_go == 0:
+            return
+        activations = {}
+        current_decay *= self.spread_decay
+        for frame in frames:
+            related_frames = self.get_related_frames(frame)
+            for rel in related_frames:
+                activations[rel.name] = current_decay
+                parents = self.spread_activation([rel], steps_to_go-1, current_decay)
+                if parents:
+                    activations = {**activations, **parents}
+        return activations
+
+class BabelNet:
+    name = "babelnet"
+    def get_raw_path(self):
+        return None
+
+    def __init__(self, config):
+        self.config = config
+        self.base_name = self.name
+        SemanticResource.__init__(self, config)
+        # map nltk pos maps into meaningful framenet ones
+        self.pos_tag_mapping = {"VB": "V", "NN": "N", "JJ": "A", "RB": "ADV"}
+
+    # lookup for babelnet should be about a (large) set of words
+    # written into a file, read by the java api
+    # results written into a file (json), read from here.
+    # run calls the java program
+
+
+
