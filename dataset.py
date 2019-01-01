@@ -1,19 +1,14 @@
 import random
 import numpy as np
-import pickle
-import os
-from os.path import exists, isfile, join
-from os import makedirs, listdir
-from helpers import Config
+from os import listdir
 from nltk.tokenize import RegexpTokenizer
-from utils import error, tictoc, info, warning, read_pickled, write_pickled
+from utils import error, tictoc, info, write_pickled, align_index, debug
 from sklearn.datasets import fetch_20newsgroups
 from keras.preprocessing.text import text_to_word_sequence
 from nltk.corpus import stopwords, reuters
 import nltk
 
 from serializable import Serializable
-
 
 
 class Dataset(Serializable):
@@ -26,6 +21,7 @@ class Dataset(Serializable):
     undefined_word_index = None
     preprocessed = False
     train, test = None, None
+    multilabel = False
 
     pos_tags = []
 
@@ -37,7 +33,6 @@ class Dataset(Serializable):
             return Reuters(config)
         else:
             error("Undefined dataset: {}".format(name))
-
 
     # dataset creation
     def __init__(self):
@@ -60,7 +55,7 @@ class Dataset(Serializable):
             self.read_functions = self.read_functions[1:]
             self.handler_functions = self.handler_functions[1:]
             # get the data but do not preprocess
-            res = self.acquire2(do_preprocess=False)
+            self.acquire2(do_preprocess=False)
             self.loaded_index = self.load_flags.index(True)
             # reapply the limit
             self.apply_limit()
@@ -69,12 +64,11 @@ class Dataset(Serializable):
         if not self.loaded_preprocessed:
             self.preprocess()
 
-
     def handle_preprocessed(self, preprocessed):
         info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
         self.train, self.train_target, self.train_label_names, \
-        self.test, self.test_target, self.test_label_names, \
-        self.vocabulary, self.vocabulary_index, self.undefined_word_index, self.pos_tags = preprocessed
+            self.test, self.test_target, self.test_label_names, \
+            self.vocabulary, self.vocabulary_index, self.undefined_word_index, self.pos_tags = preprocessed
 
         self.num_labels = len(self.train_label_names)
         for index, word in enumerate(self.vocabulary):
@@ -84,6 +78,9 @@ class Dataset(Serializable):
 
     def suspend_limit(self):
         self.name = self.base_name
+
+    def is_multilabel(self):
+        return self.multilabel
 
     def get_raw_path(self):
         error("Need to override raw path datasea getter for {}".format(self.name))
@@ -96,11 +93,9 @@ class Dataset(Serializable):
 
     def handle_raw_serialized(self, deserialized_data):
         self.train, self.train_target, self.train_label_names, \
-        self.test, self.test_target, self.test_label_names  = deserialized_data
+            self.test, self.test_target, self.test_label_names = deserialized_data
         self.num_labels = len(set(self.train_label_names))
         self.loaded_raw_serialized = True
-
-
 
     # data getter
     def get_data(self):
@@ -141,27 +136,38 @@ class Dataset(Serializable):
                 info("Limited {} loaded data to {} test items.".format(self.base_name, ltest))
         return name
 
+    def restrict_to_classes(self, data, labels, restrict_classes):
+        new_data, new_labels = [], []
+        for d, l in zip(data, labels):
+            rl = list(set(l).intersection(restrict_classes))
+            if not rl:
+                continue
+            new_data.append(d)
+            new_labels.append(rl)
+        return new_data, new_labels
+
     def apply_class_limit(self, name):
         c_lim = self.config.dataset.class_limit
         if c_lim is not None:
             name += "_clim_{}".format(c_lim)
             if self.train:
+                # data have been loaded -- apply limit
                 retained_classes = random.sample(list(range(self.num_labels)), c_lim)
                 info("Limiting to classes: {}".format(retained_classes))
-                data = [(x,y) for (x,y) in zip(self.train, self.train_target) if y in retained_classes]
-                self.train, self.train_target = [list(x) for x in zip(*data)]
-                data = [(x,y) for (x,y) in zip(self.test, self.test_target) if y in retained_classes]
-                self.test, self.test_target = [list(x) for x in zip(*data)]
+                debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_target)), max(map(len, self.test_target))))
+                self.train, self.train_target = self.restrict_to_classes(self.train, self.train_target, retained_classes)
+                self.test, self.test_target = self.restrict_to_classes(self.test, self.test_target, retained_classes)
                 self.num_labels = len(retained_classes)
                 # remap retained classes to indexes starting from 0
-                self.train_target = [retained_classes.index(rc) for rc in self.train_target]
-                self.test_target = [retained_classes.index(rc) for rc in self.test_target]
+                self.train_target = align_index(self.train_target, retained_classes)
+                self.test_target = align_index(self.test_target, retained_classes)
                 # fix the label names
                 self.train_label_names = [self.train_label_names[rc] for rc in retained_classes]
                 self.test_label_names = [self.test_label_names[rc] for rc in retained_classes]
                 info("Limited {} dataset to {} classes: {} - i.e. {} - resulting in {} train and {} test data."\
                      .format(self.base_name, self.num_labels, retained_classes,
                              self.train_label_names, len(self.train), len(self.test)))
+                debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_target)), max(map(len, self.test_target))))
         return name
 
     def apply_limit(self):
@@ -184,7 +190,6 @@ class Dataset(Serializable):
         except LookupError:
             nltk.download('averaged_perceptron_tagger')
 
-
     # map text string into list of stopword-filtered words and POS tags
     def process_single_text(self, text, filt, stopwords):
         words = text_to_word_sequence(text, filters=filt, lower=True, split=' ')
@@ -206,13 +211,13 @@ class Dataset(Serializable):
                 out_pos[-1].append(pos)
         return out_pos
 
-
+    # preprocess single
     def preprocess_single_chunk(self, document_list, track_vocabulary=False):
         self.setup_nltk_resources()
         filt = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
         stopw = set(stopwords.words(self.language))
         ret_words, ret_pos, ret_voc = [], [], set()
-        num_words =[]
+        num_words = []
         for i in range(len(document_list)):
             words, pos_tags = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
             ret_words.append(words)
@@ -223,7 +228,6 @@ class Dataset(Serializable):
         stats = [x(num_words) for x in [np.mean, np.var, np.std]]
         info("Words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
         return ret_words, ret_pos, ret_voc
-
 
     # preprocess raw texts into word list
     def preprocess(self):
@@ -249,12 +253,10 @@ class Dataset(Serializable):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        return [self.train, self.train_target, self.train_label_names,
-                         self.test, self.test_target, self.test_label_names ]
+        return [self.train, self.train_target, self.train_label_names, self.test, self.test_target, self.test_label_names ]
 
     def get_all_preprocessed(self):
         return self.get_all_raw() + [self.vocabulary, self.vocabulary_index, self.undefined_word_index, self.pos_tags]
-
 
     def get_name(self):
         return self.name
@@ -311,6 +313,7 @@ class Reuters(Dataset):
 
     def __init__(self, config):
         self.config = config
+        self.multilabel = True
         self.base_name = self.name
         Dataset.__init__(self)
 
@@ -325,7 +328,9 @@ class Reuters(Dataset):
         categories = reuters.categories()
         self.num_labels = len(categories)
         self.train_label_names, self.test_label_names = [], []
-        idx2label_train, idx2label_test = {}, {}
+        cat_idx2label_train, cat_idx2label_test = {}, {}
+        train_docs, test_docs = [], []
+        doc2labels = {}
 
         # get content
         self.train, self.test = [], []
@@ -333,28 +338,40 @@ class Reuters(Dataset):
         for cat_index, cat in enumerate(categories):
             # get all docs in that category
             for doc in reuters.fileids(cat):
+                # document to label mappings
+                if doc not in doc2labels:
+                    doc2labels[doc] = []
+                doc2labels[doc].append(cat_index)
                 # get its content
                 content = reuters.raw(doc)
                 # assign content
                 if doc.startswith("training"):
+                    train_docs.append(doc)
                     self.train.append(content)
-                    self.train_target.append(cat_index)
-                    if cat_index not in idx2label_train:
-                        idx2label_train[cat_index] = cat
+                    if cat_index not in cat_idx2label_train:
+                        cat_idx2label_train[cat_index] = cat
                 else:
+                    test_docs.append(doc)
                     self.test.append(content)
-                    self.test_target.append(cat_index)
-                    if cat_index not in idx2label_test:
-                        idx2label_test[cat_index] = cat
+                    if cat_index not in cat_idx2label_test:
+                        cat_idx2label_test[cat_index] = cat
+        
+        # list out labels
+        for doc in train_docs:
+            self.train.append(doc)
+            self.train_target.append(doc2labels[doc])
+        for doc in test_docs:
+            self.test.append(doc)
+            self.test_target.append(doc2labels[doc])
 
-        if len(idx2label_test) != len(idx2label_train):
-            error("{} number of label train/test mismatch: {} / {}".format(self.name, len(idx2label_test), len(idx2label_test)))
-        if idx2label_test != idx2label_train:
-            error("{} index-label mismatch".format(self.name, idx2label_test, idx2label_test))
-        self.train_label_names, self.test_label_names = [[idx2label_test[i] for i in idx2label_test]] * 2
+        if len(cat_idx2label_test) != len(cat_idx2label_train):
+            error("{} number of label train/test mismatch: {} / {}".format(self.name, len(cat_idx2label_test), len(cat_idx2label_test)))
+        if cat_idx2label_test != cat_idx2label_train:
+            error("{} index-label mismatch".format(self.name, cat_idx2label_test, cat_idx2label_test))
+        self.train_label_names, self.test_label_names = [[cat_idx2label_test[i] for i in cat_idx2label_test]] * 2
         self.test_label_names = list(self.test_label_names)
-        self.train_target = np.asarray(self.train_target, np.int32)
-        self.test_target = np.asarray(self.test_target, np.int32)
+        # self.train_target = np.asarray(self.train_target, np.int32)
+        # self.test_target = np.asarray(self.test_target, np.int32)
         return self.get_all_raw()
 
     def handle_raw(self, raw_data):
@@ -366,7 +383,7 @@ class Reuters(Dataset):
     # raw path setter
     def get_raw_path(self):
         # dataset is downloadable
-        pass
+        return None
 
 #class MultilingMMS:
 #    name = "multiling-mms"

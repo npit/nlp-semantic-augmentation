@@ -1,9 +1,39 @@
 import time
 import pickle
 import logging
+import numpy as np
+
+
+# function for one-hot encoding, can handle multilabel
+def one_hot(labels, num_labels):
+    output = np.empty((0, num_labels), np.float32)
+    for annot in labels:
+        binarized = np.zeros((1, num_labels), np.float32)
+        if type(annot) == list:
+            for lbl in annot:
+                binarized[0, lbl] = 1.0
+        else:
+            binarized[0, lbl] = 1.0
+        output = np.append(output, binarized, axis=0)
+    return output
+
 
 def shapes_list(thelist):
     return [x.shape for x in thelist]
+
+
+# converts elements of l to the index they appear in the reference
+# flattens, if necessary
+def align_index(input, reference):
+    output = []
+    for l in input:
+        if type(l) == list:
+            res = align_index(l, reference)
+            output.append(res)
+        else:
+            output.append(reference.index(l))
+    return output
+
 
 # split lists into sublists
 def sublist(llist, sublist_length, only_index=False):
@@ -15,7 +45,7 @@ def sublist(llist, sublist_length, only_index=False):
     if only_index:
         # just the lengths
         return [len(d) for d in divisions]
-    return [llist[i:i+sublist_length] for i in divisions]
+    return [llist[i:i + sublist_length] for i in divisions]
 
 
 # print elapsed time to string
@@ -36,7 +66,9 @@ def datetime_str():
 # Logging
 def need(condition, msg):
     if not condition:
-       error(msg)
+        error(msg)
+
+
 def error(msg, condition=True):
     if not condition:
         return
@@ -53,11 +85,13 @@ def warning(msg):
     logger = logging.getLogger()
     logger.warning(msg)
 
+
 # read pickled data
 def read_pickled(path):
     info("Reading serialized from {}".format(path))
     with open(path, "rb") as f:
         return pickle.load(f)
+
 
 # write pickled data
 def write_pickled(path, data):
@@ -65,8 +99,8 @@ def write_pickled(path, data):
     with open(path, "wb") as f:
         pickle.dump(data, f)
 
-# object to store times for tic-tocs
 
+# object to store times for tic-tocs
 class tictoc:
     start = None
     func = None

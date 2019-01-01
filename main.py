@@ -1,15 +1,15 @@
 #! /home/nik/work/iit/submissions/NLE-special/venv/bin/python3.6
 import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
-
 from dataset import Dataset
-from embedding import Embedding
+from embedding import Representation
 from semantic import SemanticResource, GoogleKnowledgeGraph
 from learner import DNN
 from helpers import Config
 import argparse
 from utils import info
+warnings.simplefilter(action='ignore', category=FutureWarning)
 print("Imports done.")
+
 
 def main(config_file):
 
@@ -27,24 +27,24 @@ def main(config_file):
 
     # embedding
     info("===== EMBEDDING =====")
-    embedding = Embedding.create(config)
-    embedding.map_text(dataset)
-    embedding.prepare()
+    representation = Representation.create(config)
+    representation.map_text(dataset)
+    representation.prepare()
 
     semantic = None
     # semantic enrichment
     if config.has_semantic():
         info("===== SEMANTIC =====")
         semantic = SemanticResource.create(config)
-        semantic.map_text(embedding, dataset)
+        semantic.map_text(representation, dataset)
         semantic.generate_vectors()
-    embedding.finalize(semantic)
+    representation.finalize(semantic)
 
     # learning
     info("===== LEARNING =====")
     # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
     learner = DNN.create(config)
-    learner.make(embedding, dataset.get_targets(), dataset.get_num_labels())
+    learner.make(representation, dataset.get_targets(), dataset.get_num_labels())
     learner.do_traintest()
 
     info("Logfile is at: {}".format(config.logfile))

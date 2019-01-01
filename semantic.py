@@ -1,5 +1,5 @@
 from os.path import join, exists, splitext, basename, dirname
-from os import listdir
+from os import listdir, makedirs
 from dataset import Dataset
 import pickle
 import nltk
@@ -37,6 +37,7 @@ class SemanticResource(Serializable):
 
     disambiguation = None
     pos_tag_mapping = {}
+    representation = None
 
     def get_appropriate_config_names(self):
         semantic_names = []
@@ -101,7 +102,7 @@ class SemanticResource(Serializable):
         if self.loaded_vectorized:
             info("Skipping generating, since loaded vectorized data already.")
             return
-        if self.embedding.loaded_enriched():
+        if self.representation.loaded_enriched():
             info("Skipping generating, since loaded enriched data already.")
             return
         # map dicts to vectors
@@ -217,8 +218,8 @@ class SemanticResource(Serializable):
     def fetch_raw(self, dummy_input):
         return None
 
-    def assign_embedding(self, embedding):
-        self.embedding = embedding
+    def assign_representation(self, representation):
+        self.representation = representation
 
 
     # prune semantic information units wrt a frequency threshold
@@ -378,17 +379,17 @@ class SemanticResource(Serializable):
         write_pickled(cache_path, self.lookup_cache)
 
     # function to map words to wordnet concepts
-    def map_text(self, embedding, dataset):
-        self.embedding = embedding
+    def map_text(self, representation, dataset):
+        self.representation = representation
         if self.loaded_preprocessed:
             info("Skipping mapping text due to preprocessed data already loaded.")
             return
-        if self.embedding.loaded_enriched():
+        if self.representation.loaded_enriched():
             info("Skipping mapping text due to enriched data already loaded.")
             return
 
         # process the data
-        dataset_pos = dataset.get_pos(self.embedding.get_present_word_indexes())
+        dataset_pos = dataset.get_pos(self.representation.get_present_word_indexes())
         self.concept_freqs = []
         # read the semantic resource cache, if existing
         self.load_semantic_cache()
@@ -490,10 +491,10 @@ class ContextEmbedding(SemanticResource):
         self.config = config
         # incompatible with embedding training
         error("Embedding context data missing: {}".format("Embedding train mode incompatible with semantic embeddings."),
-              self.config.embedding.name == "train")
+              self.config.representation.name == "train")
         # read specific params
         self.embedding_aggregation = self.config.semantic.context_aggregation
-        self.embedding_dim = self.config.embedding.dimension
+        self.representation_dim = self.config.representation.dimension
         self.context_threshold = self.config.semantic.context_threshold
         self.context_file = self.config.semantic.context_file
         # calculate the synset embeddings path
@@ -507,7 +508,7 @@ class ContextEmbedding(SemanticResource):
         thr=""
         if self.context_threshold:
             thr += "_thresh{}".format(self.context_threshold)
-        self.name += "_ctx{}_emb{}{}".format(basename(splitext(self.context_file)[0]), self.config.embedding.name, thr)
+        self.name += "_ctx{}_emb{}{}".format(basename(splitext(self.context_file)[0]), self.config.representation.name, thr)
 
 
     def get_raw_path(self):
@@ -575,9 +576,9 @@ class ContextEmbedding(SemanticResource):
     def compute_semantic_embeddings(self):
         if self.loaded_raw_serialized:
             return
-        info("Computing semantic embeddings, using {} embeddings of dim {}.".format(self.embedding.name, self.embedding_dim))
+        info("Computing semantic embeddings, using {} embeddings of dim {}.".format(self.embedding.name, self.representation_dim))
         retained_reference_concepts = []
-        self.concept_embeddings = np.ndarray((0, self.embedding_dim), np.float32)
+        self.concept_embeddings = np.ndarray((0, self.representation_dim), np.float32)
         for s, concept in enumerate(self.reference_concepts):
             # get the embeddings for the words in the concept's context
             words = self.semantic_context[concept]
@@ -604,14 +605,14 @@ class ContextEmbedding(SemanticResource):
         self.loaded_raw_serialized = True
 
     def get_semantic_embeddings(self):
-        semantic_document_vectors = np.ndarray((0, self.embedding_dim), np.float32)
+        semantic_document_vectors = np.ndarray((0, self.representation_dim), np.float32)
         # get raw semantic frequencies
         for d in range(len(self.concept_freqs)):
             for doc_index, doc_dict in enumerate(self.concept_freqs[d]):
-                doc_sem_embeddings = np.ndarray((0, self.semantic_embedding_dim), np.float32)
+                doc_sem_embeddings = np.ndarray((0, self.semantic_representation_dim), np.float32)
                 if not doc_dict:
                     warning("Attempting to get semantic embedding vectors of document {}/{} with no semantic mappings. Defaulting to zero vector.".format(doc_index + 1, len(self.concept_freqs[d])))
-                    doc_vector = np.zeros((self.semantic_embedding_dim,), np.float32)
+                    doc_vector = np.zeros((self.semantic_representation_dim,), np.float32)
                 else:
                     # gather semantic embeddings of all document concepts
                     for concept in doc_dict:

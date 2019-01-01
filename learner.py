@@ -11,11 +11,11 @@ import pandas as pd
 from keras.models import Sequential, load_model
 from keras.layers import Activation, Dense, Dropout, Embedding, Reshape
 from keras.layers import LSTM as keras_lstm
-from keras.utils import to_categorical
 from keras import callbacks
-from utils import info, debug, tictoc, error, write_pickled, read_pickled, warning
+from utils import info, debug, tictoc, error, write_pickled, read_pickled, warning, one_hot
 
 warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
+
 
 class DNN:
     save_dir = "models0"
@@ -23,13 +23,14 @@ class DNN:
     fold_index = 0
     performance = {}
     cw_performance = {}
-    run_types = ['random', 'majority', 'run']
+    run_types = ["random", "majority", "run"]
     measures = ["precision", "recall", "f1-score", "accuracy"]
     classwise_aggregations = ["macro", "micro", "classwise", "weighted"]
     stats = ["mean", "var", "std", "folds"]
     sequence_length = None
 
     do_train_embeddings = False
+    do_multilabel = False
     train_embeddings_params = []
     do_folds = False
     do_validate_portion = False
@@ -37,6 +38,7 @@ class DNN:
 
     model_paths = []
 
+    @staticmethod
     def create(config):
         name = config.learner.name
         if name == LSTM.name:
@@ -75,7 +77,6 @@ class DNN:
         self.preferred_aggregations = self.config.print.aggregations if self.config.print.aggregations else self.classwise_aggregations
         self.preferred_stats = self.stats
 
-
     # aggregated evaluation measure function shortcuts
     def get_pre_rec_f1(self, preds, metric, gt=None):
         if gt is None:
@@ -105,7 +106,6 @@ class DNN:
             gt = self.test_labels
         return metrics.accuracy_score(gt, preds)
 
-
     # get class-wise accuracies
     def compute_classwise_accuracy(self, preds, gt=None):
         if gt is None:
@@ -114,15 +114,14 @@ class DNN:
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         return cm.diagonal()
 
-
     # add an embedding layer, if necessary
     def check_add_embedding_layer(self, model):
         if self.do_train_embeddings:
-            model.add(Embedding(self.vocabulary_size + 1, self.embedding_dim, input_length = self.sequence_length))
+            model.add(Embedding(self.vocabulary_size + 1, self.representation_dim, input_length=self.sequence_length))
         return model
 
     def get_current_model_path(self):
-        filepath = join(self.models_folder,"{}".format(self.name))
+        filepath = join(self.models_folder, "{}".format(self.name))
         if self.do_folds:
             filepath += "_fold{}".format(self.fold_index)
         if self.do_validate_portion:
@@ -132,22 +131,21 @@ class DNN:
     # define useful keras callbacks for the training process
     def get_callbacks(self):
         self.callbacks = []
-        [makedirs(x, exist_ok=True) for x in  [self.results_folder, self.models_folder]]
+        [makedirs(x, exist_ok=True) for x in [self.results_folder, self.models_folder]]
 
         # model saving with early stoppingtch_si
         self.model_path = self.get_current_model_path()
         weights_path = self.model_path
 
-
         # weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
         self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
-                                                   save_best_only=self.validation_exists, save_weights_only=False,
-                                                   mode='auto', period=1)
+                                                     save_best_only=self.validation_exists, save_weights_only=False,
+                                                     mode='auto', period=1)
         self.callbacks.append(self.model_saver)
         if self.early_stopping_patience and self.validation_exists:
             self.early_stopping = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=self.early_stopping_patience, verbose=0,
-                                                      mode='auto', baseline=None, restore_best_weights=False)
-            self.callbacks.append(self.early_stopping)
+                                                          mode='auto', baseline=None, restore_best_weights=False)
+        self.callbacks.append(self.early_stopping)
 
         # stop on NaN
         self.nan_terminator = callbacks.TerminateOnNaN()
@@ -155,8 +153,8 @@ class DNN:
         # learning rate modifier at loss function plateaus
         if self.validation_exists:
             self.lr_reducer = callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1,
-                                                              patience=10, verbose=0, mode='auto',
-                                                              min_delta=0.0001, cooldown=0, min_lr=0)
+                                                          patience=10, verbose=0, mode='auto',
+                                                          min_delta=0.0001, cooldown=0, min_lr=0)
             self.callbacks.append(self.lr_reducer)
         # logging
         train_csv_logfile = join(self.results_folder, basename(self.get_current_model_path()) + "train.csv")
@@ -169,8 +167,8 @@ class DNN:
         if embeddings.base_name == "train":
             self.do_train_embeddings = True
             self.embedding_name = embeddings.name
-            self.embedding_dim = embeddings.get_dim()
-            info("Will train {}-dimensional embeddings.".format(self.embedding_dim))
+            self.representation_dim = embeddings.get_dim()
+            info("Will train {}-dimensional embeddings.".format(self.representation_dim))
             self.final_dim = embeddings.get_final_dim()
             self.vocabulary_size = embeddings.get_vocabulary_size()
             emb_seqlen = embeddings.sequence_length
@@ -183,7 +181,9 @@ class DNN:
 
         self.verbosity = 1 if self.config.log_level == "debug" else 0
         self.train, self.test = embeddings.get_data()
-        self.train_labels, self.test_labels = [np.asarray(x, np.int32) for x in targets]
+        # self.train_labels, self.test_labels = [np.asarray(x, np.int32) for x in targets]
+        self.train_labels, self.test_labels = [x for x in targets]
+        self.do_multilabel = any([len(x) > 1 for x in self.train_labels + self.test_labels])
         self.num_labels = num_labels
         self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
             list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
@@ -197,22 +197,22 @@ class DNN:
         self.folds = self.config.train.folds
         self.validation_portion = self.config.train.validation_portion
         self.do_folds = self.folds and self.folds > 1
-        self.do_validate_portion = self.validation_portion is not None and  self.validation_portion > 0.0
+        self.do_validate_portion = self.validation_portion is not None and self.validation_portion > 0.0
         self.validation_exists = self.do_folds or self.do_validate_portion
         self.early_stopping_patience = self.config.train.early_stopping_patience
         self.seed = self.config.get_seed()
         self.batch_size = self.config.train.batch_size
-        info("Learner data/labels: train: {}, {} test: {}, {}".format(self.train.shape, self.train_labels.shape, self.test.shape, self.test_labels.shape))
+        info("Learner data/labels: train: {} test: {}".format(self.train.shape, self.test.shape))
 
         # sanity checks
         if self.do_folds and self.do_validate_portion:
             error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
         # data / label matching
         if self.num_train != self.num_train_labels and (self.num_train != self.sequence_length * self.num_train_labels):
-            error("Irreconcilable lengths of training data and labels: {}, {} with learner sequence length of {}.".\
+            error("Irreconcilable lengths of training data and labels: {}, {} with learner sequence length of {}.".
                   format(self.num_train, self.num_train_labels, self.sequence_length))
         if self.num_test != self.num_test_labels and (self.num_test != self.sequence_length * self.num_test_labels):
-            error("Irreconcilable lengths of test data and labels: {}, {} with learner sequence length of {}.".\
+            error("Irreconcilable lengths of test data and labels: {}, {} with learner sequence length of {}.".
                   format(self.num_test, self.num_test_labels, self.sequence_length))
 
     # potentially apply DNN input data tranformations
@@ -225,9 +225,8 @@ class DNN:
     # print information pertaining to early stopping
     def report_early_stopping(self):
         if self.validation_exists and self.early_stopping is not None:
-            info("Stopped on epoch {}/{}".format(self.early_stopping.stopped_epoch+1, self.epochs))
+            info("Stopped on epoch {}/{}".format(self.early_stopping.stopped_epoch + 1, self.epochs))
             write_pickled(self.model_path + ".early_stopping", self.early_stopping.stopped_epoch)
-
 
     def already_completed(self):
         predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
@@ -235,7 +234,6 @@ class DNN:
             info("Reading existing predictions: {}".format(predictions_file))
             return read_pickled(predictions_file)
         return None
-
 
     # perfrom a train-test loop
     def do_traintest(self):
@@ -285,31 +283,43 @@ class DNN:
                 self.embeddings.save_raw_embedding_weights(weights, dirname(self.model_path))
                 pass
 
-
-
     # handle multi-vector items, expanding indexes to the specified sequence length
     def expand_index_to_sequence(self, fold_data):
         # map to indexes in the full-sequence data (e.g. times sequence_length)
-        fold_data = list(map( lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
+        fold_data = list(map(lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
         for i in range(len(fold_data)):
             if fold_data[i] is None:
                 continue
             # expand with respective sequence members (add an increment, vstack)
-            stacked = np.vstack([fold_data[i]+incr for incr in range(self.sequence_length)])
+            stacked = np.vstack([fold_data[i] + incr for incr in range(self.sequence_length)])
             # reshape to a single vector, in the vertical (column) direction, that increases incrementally
             fold_data[i] = np.ndarray.flatten(stacked, order='F')
         return fold_data
 
+    # split train/val labels and convert to one-hot
+    def prepare_labels(self, trainval_idx):
+        train_idx, val_idx = trainval_idx
+        train_labels = self.train_labels
+        if len(train_idx) > 0:
+            train_labels = [self.train_labels[i] for i in train_idx]
+            train_labels = one_hot(train_labels, self.num_labels)
+        else:
+            train_labels = np.empty((0,))
+        if len(val_idx) > 0:
+            val_labels = [self.train_labels[i] for i in val_idx]
+            val_labels = one_hot(val_labels, self.num_labels)
+        else:
+            val_labels = np.empty((0,))
+        return train_labels, val_labels
+
     # train a model on training & validation data portions
     def train_model2(self, trainval_idx):
         # labels
-        train_labels, val_labels = [
-            to_categorical(labels, num_classes=self.num_labels) if len(labels) > 0 else np.empty((0,)) for labels in \
-                                    [self.train_labels[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
+        train_labels, val_labels = self.prepare_labels(trainval_idx)
         # data
         if self.num_train != self.num_train_labels:
             trainval_idx = self.expand_index_to_sequence(trainval_idx)
-        train_data, val_data = [self.process_input(data) if len(data) > 0 else np.empty((0,)) for data in \
+        train_data, val_data = [self.process_input(data) if len(data) > 0 else np.empty((0,)) for data in
                                 [self.train[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
         val_datalabels = (val_data, val_labels) if val_data.size > 0 else None
         # build model
@@ -317,16 +327,15 @@ class DNN:
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
         if val_datalabels is not None:
-            debug("Using validation shapes: {} {}".format(*[v.shape if v is not None else "none" for v in  val_datalabels]))
+            debug("Using validation shapes: {} {}".format(*[v.shape if v is not None else "none" for v in val_datalabels]))
         model.fit(train_data, train_labels,
-                    batch_size=self.batch_size,
-                    epochs=self.epochs,
-                    validation_data=val_datalabels,
-                    verbose=self.verbosity,
-                    callbacks=self.get_callbacks())
+                  batch_size=self.batch_size,
+                  epochs=self.epochs,
+                  validation_data=val_datalabels,
+                  verbose=self.verbosity,
+                  callbacks=self.get_callbacks())
         self.report_early_stopping()
         return model
-
 
     # print performance across folds and compute foldwise aggregations
     def report_results(self):
@@ -344,7 +353,7 @@ class DNN:
                     var_perf = np.var(container["folds"])
                     std_perf = np.std(container["folds"])
                     # print, if it's prefered
-                    if all([ type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
+                    if all([type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
                         info("{:10} {:10} {:10} : {:.3f} {:.3f} {:.3f}".format(type, aggr, measure, mean_perf, var_perf, std_perf))
                     # add fold-aggregating performance information
                     self.performance[type][measure][aggr]["mean"] = mean_perf
@@ -356,7 +365,6 @@ class DNN:
         df.to_csv(join(self.results_folder, "results.txt"))
         with open(join(self.results_folder, "results.pickle"), "wb") as f:
             pickle.dump(df, f)
-
 
     # evaluate a model on the test set
     def do_test(self, model):
@@ -404,9 +412,6 @@ class DNN:
         write_pickled(trainval_serialization_file, splits)
         return splits
 
-
-
-
     # add softmax classification layer
     def add_softmax(self, model, is_first=False):
         if is_first:
@@ -425,24 +430,38 @@ class DNN:
             self.performance["run"]["AP"][av] = ap
             self.performance["run"]["AUC"][av] = auc
 
+        import pdb; pdb.set_trace()
+        # compute single-label baselines
         # add run performance wrt argmax predictions
-        predictions = np.argmax(predictions, axis=1)
+        predictions_amax = np.argmax(predictions, axis=1)
         self.add_performance("run", predictions)
+        # majority classifier
         maxfreq, maxlabel = -1, -1
-        for t in set(self.test_labels):
-            freq = len([1 for x in self.test_labels if x == t])
+        for t in range(self.num_labels):
+            freq = len([1 for x in self.test_labels if t in x])
             if freq > maxfreq:
                 maxfreq = freq
                 maxlabel = t
 
         majpred = np.repeat(maxlabel, len(predictions))
         self.add_performance("majority", majpred)
+        # random classifier
         randpred = np.asarray([random.choice(list(range(self.num_labels))) for _ in self.test_labels], np.int32)
         self.add_performance("random", randpred)
 
-
     # compute scores and append to per-fold lists
     def add_performance(self, type, preds):
+        # loop thresholds, get respective TPs, FPs, etc
+        # evaluate metrics there, and multilabel evals with these.
+        exit(1)
+        # get prec, rec, f1
+        for measure in [x for x in self.measures if x !="accuracy"]:
+            cw, ma, mi, ws = self.get_pre_rec_f1(preds, measure)
+            self.performance[type][measure]["classwise"]["folds"].append(cw)
+            self.performance[type][measure]["macro"]["folds"].append(ma)
+            self.performance[type][measure]["micro"]["folds"].append(mi)
+            self.performance[type][measure]["weighted"]["folds"].append(ws)
+
         # get accuracies
         acc, cw_acc = self.compute_accuracy(preds), self.compute_classwise_accuracy(preds)
         self.performance[type]["accuracy"]["classwise"]["folds"].append(cw_acc)
@@ -450,13 +469,6 @@ class DNN:
         # self.performance[type]["accuracy"]["micro"].append(np.nan)
         # self.performance[type]["accuracy"]["weighted"].append(np.nan)
 
-        # get everything else
-        for measure in [x for x in self.measures if x !="accuracy"]:
-            cw, ma, mi, ws = self.get_pre_rec_f1(preds, measure)
-            self.performance[type][measure]["classwise"]["folds"].append(cw)
-            self.performance[type][measure]["macro"]["folds"].append(ma)
-            self.performance[type][measure]["micro"]["folds"].append(mi)
-            self.performance[type][measure]["weighted"]["folds"].append(ws)
 
     # print performance of the latest run
     def print_performance(self):
@@ -489,14 +501,14 @@ class MLP(DNN):
             error("Embedding training unsupported for {}".format(self.name))
             model = DNN.check_add_embedding_layer(self, model)
             # vectorize
-            model.add(Reshape(target_shape=(-1, self.embedding_dim)))
+            model.add(Reshape(target_shape=(-1, self.representation_dim)))
         return model
 
     def make(self, embeddings, targets, num_labels):
         info("Building dnn: {}".format(self.name))
         DNN.make(self, embeddings, targets, num_labels)
         self.input_shape = (self.input_dim,)
-        aggr = self.config.embedding.aggregation
+        aggr = self.config.representation.aggregation
         aggregation = aggr[0]
         if aggregation not in ["avg"] and not self.do_train_embeddings:
             error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))
@@ -542,7 +554,7 @@ class LSTM(DNN):
         # make sure embedding aggregation is compatible
         # with the sequence-based lstm model
         self.input_shape = (self.sequence_length, self.input_dim)
-        aggr = self.config.embedding.aggregation
+        aggr = self.config.representation.aggregation
         aggregation = aggr[0]
         if aggregation not in ["pad"]:
             error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))

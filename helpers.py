@@ -32,8 +32,8 @@ class Config:
         aggregations = None
         folds = None
         measures = None
-        pass
-    class embedding:
+
+    class representation:
         dimension = None
 
     class semantic:
@@ -174,14 +174,14 @@ class Config:
             if len(lims) == 1:
                 self.dataset.data_limit = [lims[0] if type(lims) == list else lims, None]
             self.dataset.class_limit = self.get_value("class_limit", base=dataset_opts, default=None)
-        # read embedding options
-        need(self.has_value("embedding"), "Need embedding information")
-        embedding_opts = self.conf["embedding"]
-        self.embedding.name = embedding_opts["name"]
-        self.embedding.aggregation = embedding_opts["aggregation"] if type(embedding_opts["aggregation"]) == list else [embedding_opts["aggregation"]]
-        self.embedding.dimension = embedding_opts["dimension"]
-        self.embedding.sequence_length = self.get_value("sequence_length", default=1, base=embedding_opts)
-        self.embedding.missing_words = self.get_value("unknown_words", default="unk", base=embedding_opts)
+        # read representation options
+        need(self.has_value("representation"), "Need representation information")
+        representation_information = self.conf["representation"]
+        self.representation.name = representation_information["name"]
+        self.representation.aggregation = representation_information["aggregation"] if type(representation_information["aggregation"]) == list else [representation_information["aggregation"]]
+        self.representation.dimension = representation_information["dimension"]
+        self.representation.sequence_length = self.get_value("sequence_length", default=1, base=representation_information)
+        self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)
 
         if self.has_value("semantic"):
             semantic_opts = self.conf["semantic"]
@@ -274,8 +274,8 @@ class Config:
     def get_learner(self):
         return self.conf["learner"]
 
-    def get_embedding(self):
-        return self.get_value("embedding")
+    def get_representation(self):
+        return self.get_value("representation")
 
     def get_train_params(self):
         return self.conf["train"]

@@ -8,8 +8,18 @@ class Serializable:
     base_name = None
     serialization_dir = None
     loaded_raw = False
+
+    # flags for data loading
+    loaded_aggregated = False
+    loaded_finalized = False
     loaded_raw_serialized = False
     loaded_preprocessed = False
+
+    # variables for serialization paths
+    serialization_path_aggregated = None
+    serialization_path_preprocessed = None
+    serialization_path = None
+
     # paths from where to load data, in priority order
     data_paths = []
     # corresponding read functions to acquire the data
@@ -25,7 +35,7 @@ class Serializable:
 
     def set_serialization_params(self):
         # setup paths
-        self.set_paths_by_name(self.name, raw_path = self.get_raw_path())
+        self.set_paths_by_name(self.name, raw_path=self.get_raw_path())
         # alias some paths
         self.serialization_path_preprocessed, self.serialization_path = self.data_paths[:2]
         self.read_functions = [read_pickled, read_pickled, self.fetch_raw]
@@ -36,7 +46,7 @@ class Serializable:
         return None
 
     # set paths according to serializable name
-    def set_paths_by_name(self, name = None, raw_path = None):
+    def set_paths_by_name(self, name=None, raw_path=None):
         if name is None:
             name = self.name
         if not exists(self.serialization_dir):
@@ -48,20 +58,24 @@ class Serializable:
         debug("Path setter returning paths wrt name: {}".format(name))
         self.data_paths = [self.serialization_path_preprocessed, self.serialization_path, raw_path]
 
+    # attemp to load resource from specified paths
     def attempt_load(self, index):
-        if self.data_paths[index] is None or (exists(self.data_paths[index]) and isfile(self.data_paths[index])):
-            data = self.read_functions[index](self.data_paths[index])
+        path = self.data_paths[index]
+        # either path is None (resource is acquired without one) or it's a file that will be loaded
+        if path is None or (exists(path) and isfile(path)):
+            debug("Attempting load of {} with {}.".format(path, self.read_functions[index]))
+            data = self.read_functions[index](path)
             if data is None:
-                debug("Failed to load {} from path {}".format(self.name, self.data_paths[index]))
+                debug("Failed to load {} from path {}".format(self.name, path))
                 return False
             self.handler_functions[index](data)
             self.load_flags[index] = True
             return True
         else:
-            debug("Failed to load {} from path {}".format(self.name, self.data_paths[index]))
+            debug("Failed to load {} from path {}".format(self.name, path))
             return False
 
-    def acquire2(self, fatal_error = True, do_preprocess=True):
+    def acquire2(self, fatal_error=True, do_preprocess=True):
         self.load_flags = [False for _ in self.data_paths]
         for index in range(len(self.data_paths)):
             if (self.attempt_load(index)):
