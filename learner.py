@@ -1,7 +1,6 @@
 import pickle
 from os.path import join, dirname, exists, basename
 from os import makedirs
-import random
 from sklearn import metrics
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
@@ -25,6 +24,7 @@ class DNN:
     cw_performance = {}
     run_types = ["random", "majority", "run"]
     measures = ["precision", "recall", "f1-score", "accuracy"]
+    multilabel_measures = ["ap", "roc_auc"]
     classwise_aggregations = ["macro", "micro", "classwise", "weighted"]
     stats = ["mean", "var", "std", "folds"]
     sequence_length = None
@@ -64,41 +64,54 @@ class DNN:
                     for stat in self.stats:
                         self.performance[run_type][measure][aggr][stat] = None
                     self.performance[run_type][measure][aggr]["folds"] = []
+
+            for measure in self.multilabel_measures:
+                self.performance[run_type][measure] = {}
+                self.performance[run_type][measure]["folds"] = []
+
             # remove undefined combos
             for aggr in [x for x in self.classwise_aggregations if x not in ["macro", "classwise"]]:
                 del self.performance[run_type]["accuracy"][aggr]
-        # add AP, AUC by hand
-        for m in ["AUC", "AP"]:
-            self.performance["run"][m] = {}
 
-        # pritn only these, from config
+        # print only these, from config
         self.preferred_types = self.config.print.run_types if self.config.print.run_types else self.run_types
-        self.preferred_measures = self.config.print.measures if self.config.print.measures else self.measures
+        self.preferred_measures = self.config.print.measures if self.config.print.measures else []
         self.preferred_aggregations = self.config.print.aggregations if self.config.print.aggregations else self.classwise_aggregations
         self.preferred_stats = self.stats
 
+        # sanity
+        undefined = [x for x in self.preferred_types if x not in self.run_types]
+        if undefined:
+            error("undefined run type(s) in: {}, availables are: {}".format(undefined, self.run_types))
+        undefined = [x for x in self.preferred_measures if x not in self.measures + self.multilabel_measures]
+        if undefined:
+            error("Undefined measure(s) in: {}, availables are: {}".format(undefined, self.measures + self.multilabel_measures))
+        undefined = [x for x in self.preferred_aggregations if x not in self.classwise_aggregations]
+        if undefined:
+            error("Undefined aggregation(s) in: {}, availables are: {}".format(undefined, self.classwise_aggregations))
+
     # aggregated evaluation measure function shortcuts
-    def get_pre_rec_f1(self, preds, metric, gt=None):
+    def get_pre_rec_f1(self, preds, metric, num_labels, gt=None):
         if gt is None:
             gt = self.test_labels
         cr = pd.DataFrame.from_dict(metrics.classification_report(gt, preds, output_dict=True))
         # classwise, micro, macro, weighted
-        cw = cr.loc[metric].iloc[:-3].as_matrix()
-        mi = cr.loc[metric].iloc[-3]
-        ma = cr.loc[metric].iloc[-2]
-        we = cr.loc[metric].iloc[-1]
+        cw = cr.loc[metric].iloc[:num_labels].as_matrix()
+        mi = cr.loc[metric].iloc[num_labels]
+        ma = cr.loc[metric].iloc[num_labels + 1]
+        we = cr.loc[metric].iloc[num_labels + 2]
         return cw, mi, ma, we
 
-    def get_roc(self, raw_preds, average, gt=None):
-        if gt is None:
-            gt = self.test_labels
-        try:
-            auc_roc = metrics.roc_auc_score(gt, raw_preds, average=average)
-            ap_prc = metrics.average_precision_score(gt, raw_preds, average=average)
-        except:
-            warning("Failed to get AUC/AP scores.")
-            auc_roc, ap_prc = 0, 0
-        return auc_roc, ap_prc
+    # def get_roc(self, raw_preds, average, gt=None):
+    #     if gt is None:
+    #         gt = self.test_labels
+    #     try:
+    #         auc_roc = metrics.roc_auc_score(gt, raw_preds, average=average)
+    #         ap_prc = metrics.average_precision_score(gt, raw_preds, average=average)
+    #     except:
+    #         warning("Failed to get AUC/AP scores.")
+    #         auc_roc, ap_prc = 0, 0
+    #     return auc_roc, ap_prc
 
     # get average accuracy
     def compute_accuracy(self, preds, gt=None):
@@ -183,6 +196,10 @@ class DNN:
         self.train, self.test = embeddings.get_data()
         # self.train_labels, self.test_labels = [np.asarray(x, np.int32) for x in targets]
         self.train_labels, self.test_labels = [x for x in targets]
+        # need at least one sample per class
+        tr_sum = np.sum(targets[0], axis=0)
+        if np.any(tr_sum == 0):
+            error("No training samples for class index {}".format(np.where(tr_sum == 0)))
         self.do_multilabel = any([len(x) > 1 for x in self.train_labels + self.test_labels])
         self.num_labels = num_labels
         self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
@@ -214,6 +231,20 @@ class DNN:
         if self.num_test != self.num_test_labels and (self.num_test != self.sequence_length * self.num_test_labels):
             error("Irreconcilable lengths of test data and labels: {}, {} with learner sequence length of {}.".
                   format(self.num_test, self.num_test_labels, self.sequence_length))
+
+        # default measures if not preferred
+        if not self.preferred_measures:
+            self.preferred_measures = self.measures if not self.do_multilabel else self.multilabel_measures
+        else:
+            # restrict as per labelling and sanity checks
+            matching_measures = set(self.preferred_measures).intersection(self.measures) if not self.do_multilabel \
+                else set(self.preferred_measures).intersection(self.multilabel_measures)
+            if not matching_measures:
+                error("Invalid preferred measures: {} for {} setting.".format(
+                    self.preferred_measures,
+                    "multilabel" if self.do_multilabel else "single-label"))
+            self.preferred_measures = matching_measures
+        
 
     # potentially apply DNN input data tranformations
     def process_input(self, data):
@@ -341,24 +372,41 @@ class DNN:
     def report_results(self):
         info("==============================")
         info("Mean / var / std performance across all {} folds:".format(self.folds))
-        for type in self.run_types:
-            for measure in self.measures:
-                for aggr in self.classwise_aggregations:
-                    if aggr not in self.performance[type][measure] or aggr == "classwise":
-                        continue
-                    container = self.performance[type][measure][aggr]
+        for run_type in self.run_types:
+            if not self.do_multilabel:
+                for measure in self.measures:
+                    for aggr in self.classwise_aggregations:
+                        if aggr not in self.performance[run_type][measure] or aggr == "classwise":
+                            continue
+                        container = self.performance[run_type][measure][aggr]
+                        if not container:
+                            continue
+                        mean_perf = np.mean(container["folds"])
+                        var_perf = np.var(container["folds"])
+                        std_perf = np.std(container["folds"])
+                        # print, if it's prefered
+                        if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
+                            info("{:10} {:10} {:10} : {:.3f} {:.3f} {:.3f}".format(run_type, aggr, measure, mean_perf, var_perf, std_perf))
+                        # add fold-aggregating performance information
+                        self.performance[run_type][measure][aggr]["mean"] = mean_perf
+                        self.performance[run_type][measure][aggr]["var"] = var_perf
+                        self.performance[run_type][measure][aggr]["std"] = std_perf
+            else:
+                for measure in self.multilabel_measures:
+                    container = self.performance[run_type][measure]
                     if not container:
                         continue
                     mean_perf = np.mean(container["folds"])
                     var_perf = np.var(container["folds"])
                     std_perf = np.std(container["folds"])
                     # print, if it's prefered
-                    if all([type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
-                        info("{:10} {:10} {:10} : {:.3f} {:.3f} {:.3f}".format(type, aggr, measure, mean_perf, var_perf, std_perf))
+                    if all([run_type in self.preferred_types, measure in self.preferred_measures]):
+                        info("{:10} {:10} : {:.3f} {:.3f} {:.3f}".format(run_type, measure, mean_perf, var_perf, std_perf))
                     # add fold-aggregating performance information
-                    self.performance[type][measure][aggr]["mean"] = mean_perf
-                    self.performance[type][measure][aggr]["var"] = var_perf
-                    self.performance[type][measure][aggr]["std"] = std_perf
+                    self.performance[run_type][measure]["mean"] = mean_perf
+                    self.performance[run_type][measure]["var"] = var_perf
+                    self.performance[run_type][measure]["std"] = std_perf
+
         # write the results in csv in the results directory
         # entries in a run_type - measure configuration list are the foldwise scores, followed by the mean
         df = pd.DataFrame.from_dict(self.performance)
@@ -424,16 +472,14 @@ class DNN:
 
     # compute classification baselines
     def compute_performance(self, predictions):
-        # get multiclass performance
-        for av in ["macro", "micro"]:
-            auc, ap = self.get_roc(predictions, average=av)
-            self.performance["run"]["AP"][av] = ap
-            self.performance["run"]["AUC"][av] = auc
+        # # get multiclass performance
+        # for av in ["macro", "micro"]:
+        #     auc, ap = self.get_roc(predictions, average=av)
+        #     self.performance["run"]["AP"][av] = ap
+        #     self.performance["run"]["AUC"][av] = auc
 
-        import pdb; pdb.set_trace()
         # compute single-label baselines
         # add run performance wrt argmax predictions
-        predictions_amax = np.argmax(predictions, axis=1)
         self.add_performance("run", predictions)
         # majority classifier
         maxfreq, maxlabel = -1, -1
@@ -443,32 +489,65 @@ class DNN:
                 maxfreq = freq
                 maxlabel = t
 
-        majpred = np.repeat(maxlabel, len(predictions))
+        majpred = np.zeros(predictions.shape, np.float32)
+        majpred[:, maxlabel] = 1.0
         self.add_performance("majority", majpred)
         # random classifier
-        randpred = np.asarray([random.choice(list(range(self.num_labels))) for _ in self.test_labels], np.int32)
+        randpred = np.random.rand(*predictions.shape)
         self.add_performance("random", randpred)
 
+    # applies the threshold to the probabilistic predictions, extracting decision indices
+    def apply_decision_threshold(self, proba, thresh):
+        decisions = []
+        for row in proba:
+            idxs = np.where(row > thresh)
+            decisions.append(idxs)
+        return decisions
+
+    # evaluates one-hot labels per instance wrt a one-hot ground truth
+    def evaluate_predictions(self, predictions, gt):
+        pass
+
+    # produce decisions wrt multiple proba thresholds
+    def generate_multithreshold_predictions(self, proba):
+        res = []
+        # loop thresholds in [0.1, ... 0.9]
+        for thresh in [0.1 * t for t in range(1, 10)]:
+            positives = self.apply_decision_threshold(proba, thresh)
+            res.append((thresh, one_hot(positives, self.num_labels)))
+        return res
+
+
     # compute scores and append to per-fold lists
-    def add_performance(self, type, preds):
-        # loop thresholds, get respective TPs, FPs, etc
+    def add_performance(self, run_type, preds_proba):
+        # loop thresholds & amax, get respective TPs, FPs, etc
         # evaluate metrics there, and multilabel evals with these.
-        exit(1)
+
+        if self.do_multilabel:
+            # onehot_gt = one_hot(self.test_labels, self.num_labels)
+            onehot_gt = one_hot(self.test_labels, 3)
+
+            # average precision
+            ap = metrics.average_precision_score(onehot_gt, preds_proba)
+            rocauc = metrics.roc_auc_score(onehot_gt, preds_proba)
+
+            self.performance[run_type]["ap"]["folds"].append(ap)
+            self.performance[run_type]["roc_auc"]["folds"].append(rocauc)
+            return
+
+        preds_amax = np.argmax(preds_proba, axis=1)
         # get prec, rec, f1
-        for measure in [x for x in self.measures if x !="accuracy"]:
-            cw, ma, mi, ws = self.get_pre_rec_f1(preds, measure)
-            self.performance[type][measure]["classwise"]["folds"].append(cw)
-            self.performance[type][measure]["macro"]["folds"].append(ma)
-            self.performance[type][measure]["micro"]["folds"].append(mi)
-            self.performance[type][measure]["weighted"]["folds"].append(ws)
+        for measure in [x for x in self.measures if x != "accuracy"]:
+            cw, ma, mi, ws = self.get_pre_rec_f1(preds_amax, measure, self.num_labels)
+            self.performance[run_type][measure]["classwise"]["folds"].append(cw)
+            self.performance[run_type][measure]["macro"]["folds"].append(ma)
+            self.performance[run_type][measure]["micro"]["folds"].append(mi)
+            self.performance[run_type][measure]["weighted"]["folds"].append(ws)
 
         # get accuracies
-        acc, cw_acc = self.compute_accuracy(preds), self.compute_classwise_accuracy(preds)
-        self.performance[type]["accuracy"]["classwise"]["folds"].append(cw_acc)
-        self.performance[type]["accuracy"]["macro"]["folds"].append(acc)
-        # self.performance[type]["accuracy"]["micro"].append(np.nan)
-        # self.performance[type]["accuracy"]["weighted"].append(np.nan)
-
+        acc, cw_acc = self.compute_accuracy(preds_amax), self.compute_classwise_accuracy(preds_amax)
+        self.performance[run_type]["accuracy"]["classwise"]["folds"].append(cw_acc)
+        self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
 
     # print performance of the latest run
     def print_performance(self):
@@ -476,25 +555,33 @@ class DNN:
         info("Test results for {}:".format(self.current_run_descr))
         for type in self.preferred_types:
             info("{} performance:".format(type))
-            for measure in self.preferred_measures:
-                for aggr in self.preferred_aggregations:
-                    # don't print classwise results or unedfined aggregations
-                    if aggr not in self.performance[type][measure] or aggr == "classwise":
-                        continue
-                    container = self.performance[type][measure][aggr]
+            if not self.do_multilabel:
+                for measure in self.preferred_measures:
+                    for aggr in self.preferred_aggregations:
+                        # don't print classwise results or unedfined aggregations
+                        if aggr not in self.performance[type][measure] or aggr == "classwise":
+                            continue
+                        container = self.performance[type][measure][aggr]
+                        if not container:
+                            continue
+                        info('{} {}: {:.3f}'.format(aggr, measure, self.performance[type][measure][aggr]["folds"][self.fold_index]))
+            else:
+                for measure in self.multilabel_measures:
+                    container = self.performance[type][measure]
                     if not container:
                         continue
-                    info('{} {}: {:.3f}'.format(aggr, measure, self.performance[type][measure][aggr]["folds"][self.fold_index]))
+                    info('{}: {:.3f}'.format(measure, self.performance[type][measure]["folds"][self.fold_index]))
         info("---------------")
+
 
 class MLP(DNN):
     name = "mlp"
+
     def __init__(self, config):
         self.config = config
         self.hidden = self.config.learner.hidden_dim
         self.layers = self.config.learner.num_layers
         DNN.__init__(self)
-
 
     def check_add_embedding_layer(self, model):
         if self.do_train_embeddings:
@@ -561,8 +648,6 @@ class LSTM(DNN):
         if aggr in ["train"]:
             error("Embedding {} incompatible with {} model.".format(aggregation, self.name))
 
-
-
     # fetch sequence lstm fold data
     def get_fold_data(self, data, labels=None, data_idx=None, label_idx=None):
         # handle indexes by parent's function
@@ -614,4 +699,3 @@ class LSTM(DNN):
             model.summary()
             debug("Outputs: {}".format(model.outputs))
         return model
-

@@ -6,6 +6,9 @@ import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
 
+from bag import TFIDF
+
+
 
 class Representation(Serializable):
     dir_name = "representation"
@@ -15,8 +18,8 @@ class Representation(Serializable):
         name = config.representation.name
         if name == Train.name:
             return Train(config)
-        if name == TFIDF.name:
-            return TFIDF(config)
+        if name == TFIDFRepresentation.name:
+            return TFIDFRepresentation(config)
         return VectorEmbedding(config)
 
     def __init__(self, can_fail_loading=True):
@@ -138,11 +141,10 @@ class Representation(Serializable):
                     self.dataset_vectors[dset_idx] = np.concatenate(
                         [self.dataset_vectors[dset_idx], semantic_data[dset_idx]], axis=1)
 
-
             elif self.config.semantic.enrichment == "replace":
                 self.final_dim = len(semantic_data[0][0])
                 for dset_idx in range(len(semantic_data)):
-                    info("Replacing dataset part {}/{} with semantic info of dimension: {}".format(dset_idx+1, len(semantic_data), self.final_dim))
+                    info("Replacing dataset part {}/{} with semantic info of dimension: {}".format(dset_idx + 1, len(semantic_data), self.final_dim))
                     if self.vectors_per_doc > 1:
                         # tile the vector the needed times to the right, reshape to the correct dim
                         semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.vectors_per_doc)),
@@ -209,7 +211,7 @@ class Representation(Serializable):
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
         self.dataset_vectors, self.words_per_document, self.missing, \
-        self.undefined_word_index, self.present_word_indexes = preprocessed
+            self.undefined_word_index, self.present_word_indexes = preprocessed
         self.loaded_preprocessed = True
         debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
 
@@ -277,7 +279,6 @@ class VectorEmbedding(Embedding):
         self.present_word_indexes = []
         self.vocabulary = dset.vocabulary
 
-
         if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
             warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
             self.embeddings.loc[self.unknown_word_token] = np.zeros(self.representation_dim)
@@ -288,12 +289,12 @@ class VectorEmbedding(Embedding):
             self.dataset_vectors.append([])
             self.words_per_document.append([])
             self.present_word_indexes.append([])
-            with tictoc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles))):
-                info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
+            with tictoc("Embedding mapping for text bundle {}/{}".format(i + 1, len(text_bundles))):
+                info("Mapping text bundle {}/{}: {} texts".format(i + 1, len(text_bundles), len(text_bundles[i])))
                 hist = {w: 0 for w in embedded_words}
                 hist_missing = {}
                 for j, word_list in enumerate(text_bundles[i]):
-                    debug("Text {}/{} with {} words".format(j+1, len(text_bundles[i]), len(word_list)))
+                    debug("Text {}/{} with {} words".format(j + 1, len(text_bundles[i]), len(word_list)))
                     # check present & missing words
                     missing_words, missing_index, present_words, present_index = [], [], [], []
                     for w, word in enumerate(word_list):
@@ -306,7 +307,7 @@ class VectorEmbedding(Embedding):
                         else:
                             present_words.append(word)
                             present_index.append(w)
-                            hist[word] +=1
+                            hist[word] += 1
 
                     # handle missing
                     if not self.map_missing_unks:
@@ -340,9 +341,8 @@ class VectorEmbedding(Embedding):
         num_words_miss, num_miss = len(hist_missing.keys()), sum(hist_missing.values())
         num_total = sum(list(hist.values()) + list(hist_missing.values()))
 
-        debug("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit/num_total*100, num_total, num_words_hit))
-        debug("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss/num_total*100, num_total, num_words_miss))
-
+        debug("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit / num_total * 100, num_total, num_words_hit))
+        debug("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss / num_total * 100, num_total, num_words_miss))
 
     def __init__(self, config):
         self.config = config
@@ -380,13 +380,13 @@ class Train(Representation):
         # loop over input text bundles (e.g. train & test)
         for i in range(len(text_bundles)):
             self.dataset_vectors.append([])
-            with tictoc("Embedding mapping for text bundle {}/{}".format(i+1, len(text_bundles))):
-                info("Mapping text bundle {}/{}: {} texts".format(i+1, len(text_bundles), len(text_bundles[i])))
+            with tictoc("Embedding mapping for text bundle {}/{}".format(i + 1, len(text_bundles))):
+                info("Mapping text bundle {}/{}: {} texts".format(i + 1, len(text_bundles), len(text_bundles[i])))
                 for j in range(len(text_bundles[i])):
                     word_list = text_bundles[i][j]
-                    index_list = [ [dset.word_to_index[w]] if w in dset.vocabulary else [dset.undefined_word_index] for w in word_list]
-                    embedding = pd.DataFrame(index_list, index = word_list)
-                    debug("Text {}/{}".format(j+1, len(text_bundles[i])))
+                    index_list = [[dset.word_to_index[w]] if w in dset.vocabulary else [dset.undefined_word_index] for w in word_list]
+                    embedding = pd.DataFrame(index_list, index=word_list)
+                    debug("Text {}/{}".format(j + 1, len(text_bundles[i])))
                     self.dataset_vectors[-1].append(embedding)
                     # get test words, perhaps
                     if i > 0:
@@ -421,7 +421,7 @@ class Train(Representation):
         writepath = join(write_dir, emb_name)
         # associate with respective words
         index = self.dataset_words[0] + [self.undefined_word_name]
-        data = pd.DataFrame(weights, index = index)
+        data = pd.DataFrame(weights, index=index)
         write_pickled(writepath, data)
 
     def get_words(self):
@@ -440,7 +440,8 @@ class ShallowRepresentation(Representation):
     def get_all_preprocessed(self):
         return [self.dataset_vectors, self.words_per_document, None, None, self.present_word_indexes]
 
-class TFIDF(ShallowRepresentation):
+
+class TFIDFRepresentation(ShallowRepresentation):
     name = "tfidf"
 
     def __init__(self, config):
@@ -455,41 +456,68 @@ class TFIDF(ShallowRepresentation):
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
         info("Mapping {} to {} representation.".format(dset.name, self.name))
+        self.representation_dim = len(dset.vocabulary)
+        self.bag.map_collection(dset.train, dset.vocabulary)
+        self.dataset_words = [dset.vocabulary, None]
+        self.dataset_vectors = self.bag.get_vectors()
+        self.words_per_document = self.bag.get_present_tokens()
+        self.present_word_indexes = self.bag.get_present_token_indexes()
+        self.dataset_vectors = self.bag.get_vectors()
+        # write mapped data
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+
+    def map_text2(self, dset):
+        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
+            return
+        info("Mapping {} to {} representation.".format(dset.name, self.name))
         text_bundles = dset.train, dset.test
         self.representation_dim = len(dset.vocabulary)
+
+
+
         self.dataset_vectors = []
         self.words_per_document = []
         self.present_word_indexes = []
         self.undefined_word_index = dset.undefined_word_index
         self.token_list = dset.vocabulary
+        token2index = {w: n for (w, n) in zip(self.token_list, list(range(len(self.token_list))))}
         self.dataset_freqs = np.zeros((len(self.token_list,)), np.float32)
         # loop over input text bundles (e.g. train & test)
         for i in range(len(text_bundles)):
             self.dataset_vectors.append([])
             self.words_per_document.append([])
             self.present_word_indexes.append([])
+            is_training_set = bool(i == 0)
             with tictoc("Creating representation mapping for text bundle {}/{}".format(i + 1, len(text_bundles))):
                 info("Mapping text bundle {}/{}: {} texts".format(i + 1, len(text_bundles), len(text_bundles[i])))
                 for j in range(len(text_bundles[i])):
-                    debug("Text {}/{}".format(j+1, len(text_bundles[i])))
+                    debug("Text {}/{}".format(j + 1, len(text_bundles[i])))
                     word_list = text_bundles[i][j]
-                    token_freqs = np.zeros((1, len(self.token_list)), np.float32)
+                    token_freqs = {}
                     present_words = [w for w in word_list if w in self.token_list]
-                    for w in present_words:
-                        token_freqs[0, self.token_list.index(w)] += 1
-                        # compute DF for the training set
-                        if i == 0:
-                            self.dataset_freqs[self.token_list.index(w)] += 1
+                    for w in word_list:
+                        if w in present_words:
+                            word_index = token2index[w]
+                            if w not in token_freqs:
+                                token_freqs[word_index] = 1
+                            else:
+                                token_freqs[word_index] += 1
+                            # if it's the training set
+                            if is_training_set:
+                                # accumulate DF
+                                self.dataset_freqs[word_index] += 1
 
-                    self.dataset_vectors[-1].append(pd.DataFrame(token_freqs))
+                    self.dataset_vectors[-1].append(token_freqs)
                     self.present_word_indexes[-1].append([word_list.index(p) for p in present_words])
                     self.words_per_document[-1].append(len(present_words))
 
                 # IDF-normalize
-                if i == 0:
+                if is_training_set:
+                    # prepare for element-wise division
                     self.dataset_freqs[np.where(self.dataset_freqs == 0)] = 1
                 for v in range(len(self.dataset_vectors[-1])):
-                    self.dataset_vectors[-1][v] = np.divide(self.dataset_vectors[-1][v], self.dataset_freqs) 
+                    for key in self.dataset_vectors[-1][v]:
+                        self.dataset_vectors[-1][v][key] = self.dataset_vectors[-1][v][key] / self.dataset_freqs[key]
 
         self.dataset_words = [dset.vocabulary, None]
         # write mapped data

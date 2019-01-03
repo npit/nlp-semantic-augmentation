@@ -13,7 +13,7 @@ def one_hot(labels, num_labels):
             for lbl in annot:
                 binarized[0, lbl] = 1.0
         else:
-            binarized[0, lbl] = 1.0
+            binarized[0, annot] = 1.0
         output = np.append(output, binarized, axis=0)
     return output
 
@@ -75,12 +75,23 @@ def error(msg, condition=True):
     logger = logging.getLogger()
     logger.error(msg)
     raise Exception(msg)
+
+
 def info(msg):
     logger = logging.getLogger()
     logger.info(msg)
+
+
 def debug(msg):
     logger = logging.getLogger()
     logger.debug(msg)
+
+
+def debug2(msg):
+    logger = logging.getLogger()
+    logger.debug(msg)
+
+
 def warning(msg):
     logger = logging.getLogger()
     logger.warning(msg)
@@ -123,4 +134,3 @@ class tictoc:
         # convert to smhd
         elapsed = elapsed_str(self.start)
         self.func("<<< {} took {}.".format(self.msg, elapsed))
-
