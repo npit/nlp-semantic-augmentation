@@ -7,10 +7,6 @@ import utils
 from utils import need, error
 import shutil
 
-# from embeddings import Embedding
-# from datasets import Dataset
-# from semantic import SemanticResource
-
 
 class Config:
     log_dir = "logs"

@@ -1,7 +1,7 @@
 #! /home/nik/work/iit/submissions/NLE-special/venv/bin/python3.6
 import warnings
 from dataset import Dataset
-from embedding import Representation
+from representation import Representation
 from semantic import SemanticResource, GoogleKnowledgeGraph
 from learner import DNN
 from helpers import Config
@@ -18,8 +18,8 @@ def main(config_file):
     config = Config()
     config.initialize(config_file)
 
-    #gkg = GoogleKnowledgeGraph(config)
-    #gkg.lookup("dog")
+    # gkg = GoogleKnowledgeGraph(config)
+    # gkg.lookup("dog")
 
     # datasets loading & preprocessing
     info("===== DATASET =====")
@@ -48,6 +48,7 @@ def main(config_file):
     learner.do_traintest()
 
     info("Logfile is at: {}".format(config.logfile))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

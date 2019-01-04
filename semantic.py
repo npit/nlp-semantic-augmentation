@@ -97,7 +97,6 @@ class SemanticResource(Serializable):
     def get_vectors(self):
         return self.semantic_document_vectors
 
-have to rehaul tfidf to handle features too
 
     def generate_vectors(self):
         if self.loaded_vectorized:

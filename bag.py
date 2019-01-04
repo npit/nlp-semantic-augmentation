@@ -14,7 +14,7 @@ class Bag:
 
     def map_collection(self, text_collection, token_list, calculate_global_frequencies=False):
         # collection-wise information
-        self.output_vectors, self.present_tokens, self.present_token_indexes = [] * 3
+        self.output_vectors, self.present_tokens, self.present_token_indexes = [], [], []
 
         if token_list is not None:
             self.token_list = token_list
@@ -64,7 +64,7 @@ class TFIDF(Bag):
 
     def idf_normalize(self):
         # prepare for element-wise division
-        self.global_freqs[np.where(self.dataset_freqs == 0)] = 1
+        self.global_freqs[np.where(self.global_freqs == 0)] = 1
         # normalize
         for vector_idx in range(len(self.output_vectors)):
             for token_key in self.output_vectors[vector_idx]:
