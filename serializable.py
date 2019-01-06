@@ -2,6 +2,23 @@ from utils import error, read_pickled, write_pickled, info, debug
 from os.path import exists, isfile, join
 from os import makedirs
 
+"""
+Class to represent an object loadable from disk or computable,
+used in the classification pipeline. It can have three successive states:
+- raw: a format that requires specific object-dependent loading
+- serialized: a serialized format with pickle
+- preprocessed: a serialized format with pickle, directly usable in the next pipeline phase
+
+raw formats should yield serialized object versions,
+and applying preprocessing on the serialized object
+should produce an object directly usable to the next
+phase of the pipeline.
+
+The raw, serialized and preprocessed object names (i.e. loadable file names)
+are computed automatically from a base object name.
+
+"""
+
 
 class Serializable:
     name = None
@@ -29,6 +46,13 @@ class Serializable:
     # load flags
     load_flags = []
 
+    # paths to load necessary resources required to compute data from scratch
+    resource_paths = []
+    # corresponding reader and hanlder functions
+    resource_read_functions = []
+    resource_handler_functions = []
+    resource_always_load_flag = []
+
     def __init__(self, dir_name):
         self.serialization_dir = join(self.config.folders.serialization, dir_name)
         self.raw_data_dir = join(self.config.folders.raw_data, dir_name)
@@ -40,10 +64,6 @@ class Serializable:
         self.serialization_path_preprocessed, self.serialization_path = self.data_paths[:2]
         self.read_functions = [read_pickled, read_pickled, self.fetch_raw]
         self.handler_functions = [self.handle_preprocessed, self.handle_raw_serialized, self.handle_raw]
-
-
-    def get_raw_path(self):
-        return None
 
     # set paths according to serializable name
     def set_paths_by_name(self, name=None, raw_path=None):
@@ -75,19 +95,34 @@ class Serializable:
             debug("Failed to load {} from path {}".format(self.name, path))
             return False
 
-    def acquire2(self, fatal_error=True, do_preprocess=True):
+    def acquire_resources(self):
+        # Check if there are any required resources to load
+        if self.resource_paths:
+            for r, res in enumerate(self.resource_paths):
+                info("Loading required resource {}/{}: {}".format(r + 1, len(self.resource_paths), res))
+                read_result = self.resource_read_functions[r](res)
+                self.resource_handler_functions[r](read_result)
+
+    def acquire_data(self, fatal_error=True, do_preprocess=True):
         self.load_flags = [False for _ in self.data_paths]
         for index in range(len(self.data_paths)):
             if (self.attempt_load(index)):
                 return index
-        if fatal_error:
+        # no data was found to load
+        if fatal_error and not self.resource_paths:
             error("Failed to load {}".format(self.name))
         else:
+            self.acquire_resources()
             return False
         if do_preprocess:
             self.preprocess()
         return True
 
+    # configure resources to load
+    def set_resources(self):
+        import pdb;pdb.set_trace()
+        print("SAD")
+        pass
 
     def get_raw_path(self):
         error("Need to override raw path getter for {}".format(self.name))

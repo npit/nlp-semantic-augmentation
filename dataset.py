@@ -23,7 +23,6 @@ class Dataset(Serializable):
     train, test = None, None
     multilabel = False
 
-    pos_tags = []
 
     def create(config):
         name = config.dataset.name
@@ -42,7 +41,7 @@ class Dataset(Serializable):
 
         # check for limited dataset
         self.apply_limit()
-        self.acquire2(fatal_error=False)
+        self.acquire_data(fatal_error=False)
         if any(self.load_flags):
             # downloaded successfully
             self.loaded_index = self.load_flags.index(True)
@@ -55,7 +54,7 @@ class Dataset(Serializable):
             self.read_functions = self.read_functions[1:]
             self.handler_functions = self.handler_functions[1:]
             # get the data but do not preprocess
-            self.acquire2(do_preprocess=False)
+            self.acquire_data(do_preprocess=False)
             self.loaded_index = self.load_flags.index(True)
             # reapply the limit
             self.apply_limit()
@@ -68,7 +67,7 @@ class Dataset(Serializable):
         info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
         self.train, self.train_target, self.train_label_names, \
             self.test, self.test_target, self.test_label_names, \
-            self.vocabulary, self.vocabulary_index, self.undefined_word_index, self.pos_tags = preprocessed
+            self.vocabulary, self.vocabulary_index, self.undefined_word_index = preprocessed
 
         self.num_labels = len(self.train_label_names)
         for index, word in enumerate(self.vocabulary):
@@ -194,40 +193,27 @@ class Dataset(Serializable):
     def process_single_text(self, text, filt, stopwords):
         words = text_to_word_sequence(text, filters=filt, lower=True, split=' ')
         # words = [w.lower() for w in self.nltk_tokenizer.tokenize(text)]
-        pos_tags = nltk.pos_tag(words)
+        words_with_pos = nltk.pos_tag(words)
         # remove stopwords
-        idx = [p for p in range(len(words)) if words[p] not in stopwords]
-        words = [words[p] for p in idx]
-        pos_tags = [pos_tags[p] for p in idx]
-        return words, pos_tags
-
-    # return POS information from the non-missing word indexes, per dataset and document
-    def get_pos(self, present_word_idx):
-        out_pos = []
-        for dset in range(len(self.pos_tags)):
-            out_pos.append([])
-            for doc in range(len(self.pos_tags[dset])):
-                pos = [self.pos_tags[dset][doc][i] for i in present_word_idx[dset][doc]]
-                out_pos[-1].append(pos)
-        return out_pos
+        words_with_pos = [wp for wp in words_with_pos if wp[0] not in stopwords]
+        return words_with_pos
 
     # preprocess single
-    def preprocess_single_chunk(self, document_list, track_vocabulary=False):
+    def preprocess_text_collection(self, document_list, track_vocabulary=False):
         self.setup_nltk_resources()
         filt = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
         stopw = set(stopwords.words(self.language))
-        ret_words, ret_pos, ret_voc = [], [], set()
+        ret_words_pos, ret_voc = [], set()
         num_words = []
         for i in range(len(document_list)):
-            words, pos_tags = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
-            ret_words.append(words)
-            ret_pos.append(pos_tags)
+            text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
+            ret_words_pos.append(text_words_pos)
             if track_vocabulary:
-                ret_voc.update(words)
-            num_words.append(len(words))
+                ret_voc.update([wp[0] for wp in text_words_pos])
+            num_words.append(len(text_words_pos))
         stats = [x(num_words) for x in [np.mean, np.var, np.std]]
         info("Words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
-        return ret_words, ret_pos, ret_voc
+        return ret_words_pos, ret_voc
 
     # preprocess raw texts into word list
     def preprocess(self):
@@ -236,11 +222,9 @@ class Dataset(Serializable):
             return
         with tictoc("Preprocessing {}".format(self.name)):
             info("Mapping training set.")
-            self.train, train_pos, self.vocabulary = self.preprocess_single_chunk(self.train, track_vocabulary=True)
+            self.train, self.vocabulary = self.preprocess_text_collection(self.train, track_vocabulary=True)
             info("Mapping test set.")
-            self.test, test_pos, _ = self.preprocess_single_chunk(self.test)
-            # set pos
-            self.pos_tags = [train_pos, test_pos]
+            self.test, _ = self.preprocess_text_collection(self.test)
             # fix word order and get word indexes
             self.vocabulary = list(self.vocabulary)
             for index, word in enumerate(self.vocabulary):
@@ -256,7 +240,7 @@ class Dataset(Serializable):
         return [self.train, self.train_target, self.train_label_names, self.test, self.test_target, self.test_label_names ]
 
     def get_all_preprocessed(self):
-        return self.get_all_raw() + [self.vocabulary, self.vocabulary_index, self.undefined_word_index, self.pos_tags]
+        return self.get_all_raw() + [self.vocabulary, self.vocabulary_index, self.undefined_word_index]
 
     def get_name(self):
         return self.name

@@ -11,6 +11,7 @@ from nltk.corpus import framenet as fn
 import json
 import urllib
 from scipy import spatial
+from bag import Bag, TFIDF
 
 import defs
 
@@ -46,7 +47,7 @@ class SemanticResource(Serializable):
         if self.do_limit:
             filter_vals.append(defs.semantic.limit.to_string(self.config))
         # any combo of weights, since they're all stored
-        weight_vals = defs.semantic.weights.avail()
+        weight_vals = defs.weights.avail()
         for w in weight_vals:
             for f in filter_vals:
                 semantic_names.append(
@@ -55,14 +56,12 @@ class SemanticResource(Serializable):
 
         return semantic_names
 
-
-
     def __init__(self, config):
         Serializable.__init__(self, self.dir_name)
         self.set_parameters()
         config_names = self.get_appropriate_config_names()
         for s, semantic_name in enumerate(config_names):
-            debug("Attempting to load semantic info from source {}/{}: {}".format(s+1, len(config_names), semantic_name))
+            debug("Attempting to load semantic info from source {}/{}: {}".format(s + 1, len(config_names), semantic_name))
             self.semantic_name = semantic_name
             self.form_name()
             self.set_serialization_params()
@@ -71,7 +70,7 @@ class SemanticResource(Serializable):
             self.data_paths.insert(0, self.serialization_path_vectorized)
             self.read_functions.insert(0, read_pickled)
             self.handler_functions.insert(0, self.handle_vectorized)
-            self.acquire2(fatal_error=False)
+            self.acquire_data(fatal_error=False)
             if any(self.load_flags):
                 info("Loaded by using semantic name: {}".format(semantic_name))
                 break
@@ -79,7 +78,6 @@ class SemanticResource(Serializable):
         self.semantic_name = SemanticResource.get_semantic_name(self.config)
         info("Restored specifid semantic name to : {}".format(self.semantic_name))
         self.form_name()
-
 
     def create(config):
         name = config.semantic.name
@@ -96,7 +94,6 @@ class SemanticResource(Serializable):
 
     def get_vectors(self):
         return self.semantic_document_vectors
-
 
     def generate_vectors(self):
         if self.loaded_vectorized:
@@ -127,7 +124,7 @@ class SemanticResource(Serializable):
 
         elif self.semantic_weights == "embeddings":
             error("Embedding information requires the context_embedding semantic disambiguation. It is {} instead.".format(
-                        self.disambiguation), condition=self.disambiguation!="context_embedding")
+                  self.disambiguation), condition=self.disambiguation != "context_embedding")
             semantic_document_vectors = self.get_semantic_embeddings()
         else:
             error("Unimplemented semantic vector method: {}.".format(self.semantic_weights))
@@ -135,13 +132,10 @@ class SemanticResource(Serializable):
         self.semantic_document_vectors = semantic_document_vectors
         write_pickled(self.serialization_path_vectorized, [self.semantic_document_vectors, concept_order])
 
-
-
-
     # function to get a concept from a word, using the wordnet api
     # and a local word cache. Updates concept frequencies as well.
-    def get_concept(self, word_information, freqs, force_reference_concepts = False):
-        word, _ = word_information
+    def get_concept(self, word, word_metadata, freqs, force_reference_concepts=False):
+        word_information = (word, word_metadata)
         if word_information in self.lookup_cache:
             concept_activations = self.lookup_cache[word_information]
             concept_activations = self.restrict_to_reference(force_reference_concepts, concept_activations)
@@ -158,29 +152,33 @@ class SemanticResource(Serializable):
                 self.assignments[word] = concept_activations
         return concept_activations, freqs
 
+    # overridable name setter
     def get_semantic_name(config, filtering=None, sem_weights=None):
         if not config.has_semantic():
             return None
         if filtering is None:
             filtering = defs.semantic.limit.to_string(config)
         if sem_weights is None:
-            sem_weights = defs.semantic.weights.to_string(config)
+            sem_weights = defs.weights.to_string(config.semantic.weights)
         disambig = "disam{}".format(config.semantic.disambiguation)
-        semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights,filtering, disambig)
+        semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights, filtering, disambig)
         if config.semantic.spreading_activation:
             steps, decay = config.semantic.spreading_activation
             semantic_name += "_spread{}-{}".format(steps, decay)
         return semantic_name
 
+    # vectorized data handler
     def handle_vectorized(self, data):
         self.semantic_document_vectors, self.concept_order = data
         self.loaded_preprocessed = True
         self.loaded_vectorized = True
         debug("Read vectorized concept docs shapes: {}, {} and concept order: {}".format(*shapes_list(self.semantic_document_vectors), len(self.concept_order)))
 
+    # preprocessed data getter
     def get_all_preprocessed(self):
         return [self.assignments, self.concept_freqs, self.dataset_freqs, self.concept_tfidf_freqs, self.reference_concepts]
 
+    # raw path getter (dummy)
     def get_raw_path(self):
         return None
 
@@ -191,7 +189,6 @@ class SemanticResource(Serializable):
 
     def lookup(self, candidate):
         error("Attempted to lookup from the base class")
-
 
     def set_parameters(self):
         if self.config.semantic.limit is not None:
@@ -204,12 +201,11 @@ class SemanticResource(Serializable):
         if self.config.semantic.spreading_activation:
             self.do_spread_activation = True
             self.spread_steps, self.spread_decay = self.config.semantic.spreading_activation[0], \
-                                                   self.config.semantic.spreading_activation[1]
+                self.config.semantic.spreading_activation[1]
 
         self.dataset_name = Dataset.get_limited_name(self.config)
         self.semantic_name = SemanticResource.get_semantic_name(self.config)
         self.form_name()
-
 
     # make name string from components
     def form_name(self):
@@ -220,7 +216,6 @@ class SemanticResource(Serializable):
 
     def assign_representation(self, representation):
         self.representation = representation
-
 
     # prune semantic information units wrt a frequency threshold
     def apply_limiting(self, freq_dict_list, dataset_freqs, force_reference=False):
@@ -237,12 +232,11 @@ class SemanticResource(Serializable):
 
         elif self.limit_type == "first":
             # keep only the specified number of concepts with the highest weight
-            sorted_dset_freqs = sorted(dataset_freqs, reverse=True, key = lambda x : dataset_freqs[x])
+            sorted_dset_freqs = sorted(dataset_freqs, reverse=True, key=lambda x: dataset_freqs[x])
             concepts_to_delete = sorted_dset_freqs[self.limit_number:]
             return self.check_delete_concepts(freq_dict_list, dataset_freqs, force_reference, concepts_to_delete)
         else:
             error("Undefined semantic limiting type: {}".format(self.limit_type))
-
 
     def check_delete_concepts(self, freq_dict_list, dataset_freqs, force_reference, concepts_to_delete):
         # if forcing reference, we can override the freq threshold for these concepts
@@ -251,7 +245,7 @@ class SemanticResource(Serializable):
             concepts_to_delete = [x for x in concepts_to_delete if x not in self.reference_concepts]
             info("Limiting concepts-to-delete from {} to {} due to forcing to reference concept set".format(orig_num, len(concepts_to_delete)))
         if not concepts_to_delete:
-            return  freq_dict_list, dataset_freqs
+            return freq_dict_list, dataset_freqs
         info("Will remove {}/{} concepts due to a limiting config of {}-{}".format(
             len(concepts_to_delete), len(dataset_freqs), self.limit_type, self.limit_number))
         with tictoc("Document-level frequency filtering"):
@@ -262,12 +256,11 @@ class SemanticResource(Serializable):
                     if concept in doc_dict:
                         del doc_dict[concept]
         info("Concept filtering resulted in {} concepts.".format(len(dataset_freqs)))
-        return  freq_dict_list, dataset_freqs
-
+        return freq_dict_list, dataset_freqs
 
     # merge list of document-wise frequency dicts
     # to a single, dataset-wise frequency dict
-    def doc_to_dset_freqs(self, freq_dict_list, force_reference = False):
+    def doc_to_dset_freqs(self, freq_dict_list, force_reference=False):
         dataset_freqs = {}
         for doc_dict in freq_dict_list:
             for concept, freq in doc_dict.items():
@@ -279,11 +272,10 @@ class SemanticResource(Serializable):
             freq_dict_list, dataset_freqs = self.apply_limiting(freq_dict_list, dataset_freqs, force_reference)
 
         # complete document-level freqs with zeros for dataset-level concepts missing in the document level
-        #for d, doc_dict in enumerate(freq_dict_list):
+        # for d, doc_dict in enumerate(freq_dict_list):
         #    for concept in [s for s in dataset_freqs if s not in doc_dict]:
         #        freq_dict_list[d][concept] = 0
         return dataset_freqs, freq_dict_list
-
 
     # tf-idf computation
     def compute_tfidf_weights(self, current_concept_freqs, dataset_freqs, force_reference=False):
@@ -302,7 +294,7 @@ class SemanticResource(Serializable):
             self.concept_tfidf_freqs.append(tfidf_freqs)
 
     # map a single dataset portion
-    def map_dset(self, dset_words_pos, store_reference_concepts = False, force_reference_concepts = False):
+    def map_dset(self, dset_words_pos, store_reference_concepts=False, force_reference_concepts=False):
         if force_reference_concepts:
             # restrict discoverable concepts to a predefined selection
             # used for the test set where not encountered concepts are unusable
@@ -311,21 +303,21 @@ class SemanticResource(Serializable):
         current_synset_freqs = []
         with tictoc("Document-level mapping and frequency computation"):
             for wl, word_info_list in enumerate(dset_words_pos):
-                debug("Semantic processing for document {}/{}, which has {} words".format(wl+1, len(dset_words_pos), len(word_info_list)))
+                debug("Semantic processing for document {}/{}, which has {} words".format(wl + 1, len(dset_words_pos), len(word_info_list)))
                 doc_freqs = {}
                 for w, word_info in enumerate(word_info_list):
                     synset_activations, doc_freqs = self.get_concept(word_info, doc_freqs, force_reference_concepts)
-                    if not synset_activations: continue
+                    if not synset_activations:
+                        continue
                 if not doc_freqs:
-                    warning("No semantic information extracted for document {}/{}".format(wl+1, len(dset_words_pos)))
+                    warning("No semantic information extracted for document {}/{}".format(wl + 1, len(dset_words_pos)))
                 current_synset_freqs.append(doc_freqs)
 
         # merge to dataset-wise synset frequencies
         with tictoc("Dataset-level frequency computation"):
-            dataset_freqs, current_synset_freqs = self.doc_to_dset_freqs(current_synset_freqs, force_reference = force_reference_concepts)
+            dataset_freqs, current_synset_freqs = self.doc_to_dset_freqs(current_synset_freqs, force_reference=force_reference_concepts)
             self.dataset_freqs.append(dataset_freqs)
             self.concept_freqs.append(current_synset_freqs)
-
 
         if store_reference_concepts:
             self.reference_concepts = set((dataset_freqs.keys()))
@@ -333,7 +325,6 @@ class SemanticResource(Serializable):
         # compute tfidf
         if self.semantic_weights == "tfidf":
             self.compute_tfidf_weights(current_synset_freqs, dataset_freqs, force_reference=force_reference_concepts)
-
 
     # apply disambiguation to choose a single semantic unit from a collection of such
     def disambiguate(self, concepts, word_information, override=None):
@@ -388,21 +379,35 @@ class SemanticResource(Serializable):
             info("Skipping mapping text due to enriched data already loaded.")
             return
 
-        # process the data
+        if self.semantic_weights == defs.weights.tfidf:
+            bag_train, bag_test = TFIDF(), TFIDF()
+        else:
+            bag_train, bag_test = Bag(), Bag()
+
+        # get POS tags of the dataset
         dataset_pos = dataset.get_pos(self.representation.get_present_word_indexes())
-        self.concept_freqs = []
-        # read the semantic resource cache, if existing
+
+        # process the dataset
+        info("Extracting {} semantic information from the training dataset")
+        bag_train.set_element_processing_function(self.get_concept)
+        bag_train()
+
+
+        # read the semantic resource input-concept cache , if existing
         self.load_semantic_cache()
 
+        self.concept_freqs = []
+
+        # project each dataset to a collection of semantic vectors
         for d, dset in enumerate(dataset_pos):
-            info("Extracting {} semantic information from dataset {}/{}".format(self.name, d+1, len(dataset_pos)))
+            info("Extracting {} semantic information from dataset {}/{}".format(self.name, d + 1, len(dataset_pos)))
             # process data within a dataset portion
             # should store reference concept in the train portion (d==0), but only if a reference has not
             # been already defined, e.g. via semantic embedding precomputations
-            store_as_reference = (d == 0 and not self.reference_concepts)
+            do_store_as_reference = (d == 0 and not self.reference_concepts)
             # should force mapping to the reference if a reference has been defined
             force_reference = bool(self.reference_concepts)
-            self.map_dset(dset, store_as_reference, force_reference)
+            self.map_dset(dset, do_store_as_reference, force_reference)
 
         # write results: word assignments, raw, dataset-wise and tf-idf weights
         info("Writing semantic assignment results to {}.".format(self.serialization_path))
@@ -417,16 +422,13 @@ class SemanticResource(Serializable):
             frequencies[s] += act
         return frequencies
 
-
-
     def spread_activation(self, synset, steps_to_go, current_decay):
         error("Attempted to call abstract spread activation for semantic resource {}.".format(self.name))
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         self.assignments, self.concept_freqs, self.dataset_freqs, self.concept_tfidf_freqs, self.reference_concepts = preprocessed
-        debug("Read preprocessed concept docs shapes: {}, {}".format(*list(map(len,self.concept_freqs))))
-
+        debug("Read preprocessed concept docs shapes: {}, {}".format(*list(map(len, self.concept_freqs))))
 
 
 class Wordnet(SemanticResource):
@@ -440,13 +442,10 @@ class Wordnet(SemanticResource):
         # map nltk pos maps into meaningful wordnet ones
         self.pos_tag_mapping = {"VB": wn.VERB, "NN": wn.NOUN, "JJ": wn.ADJ, "RB": wn.ADV}
 
-
-
     def fetch_raw(self, dummy_input):
-        if not self.base_name in listdir(nltk.data.find("corpora")):
+        if self.base_name not in listdir(nltk.data.find("corpora")):
             nltk.download("wordnet")
         return None
-
 
     def handle_raw_serialized(self, raw_serialized):
         pass
@@ -454,9 +453,8 @@ class Wordnet(SemanticResource):
     def handle_raw(self, raw_data):
         pass
 
-
     def lookup(self, word_information):
-        word, _  = word_information
+        word, _ = word_information
         synsets = wn.synsets(word)
         if not synsets:
             return {}
@@ -478,7 +476,7 @@ class Wordnet(SemanticResource):
             # get hypernyms of synset
             for hyper in synset.hypernyms():
                 activations[hyper._name] = current_decay
-                hypers = self.spread_activation([hyper], steps_to_go-1, new_decay)
+                hypers = self.spread_activation([hyper], steps_to_go - 1, new_decay)
                 if hypers:
                     activations = {**activations, **hypers}
         return activations
@@ -502,14 +500,12 @@ class ContextEmbedding(SemanticResource):
         if not any([x for x in self.load_flags]):
             error("Failed to load semantic embeddings context.")
 
-
     def form_name(self):
         SemanticResource.form_name(self)
-        thr=""
+        thr = ""
         if self.context_threshold:
             thr += "_thresh{}".format(self.context_threshold)
         self.name += "_ctx{}_emb{}{}".format(basename(splitext(self.context_file)[0]), self.config.representation.name, thr)
-
 
     def get_raw_path(self):
         return self.context_file
@@ -520,10 +516,10 @@ class ContextEmbedding(SemanticResource):
         if self.context_threshold is not None:
             num_original = len(raw_data.items())
             info("Limiting the {} reference context concepts with a word frequency threshold of {}".format(num_original, self.context_threshold))
-            self.semantic_context = {s: wl for (s,wl) in raw_data.items() if len(wl) >= self.context_threshold}
+            self.semantic_context = {s: wl for (s, wl) in raw_data.items() if len(wl) >= self.context_threshold}
             info("Ended up with context information for {} concepts.".format(len(self.semantic_context)))
         else:
-            self.semantic_context = raw_data;
+            self.semantic_context = raw_data
         # set the loaded concepts as the reference concept list
         self.reference_concepts = list(sorted(self.semantic_context.keys()))
         if not self.reference_concepts:
@@ -541,17 +537,12 @@ class ContextEmbedding(SemanticResource):
             data = pickle.load(f)
         return data
 
-
-
     def map_text(self, embedding, dataset):
         self.embedding = embedding
         self.compute_semantic_embeddings()
         # kdtree for fast lookup
         self.kdtree = spatial.KDTree(self.concept_embeddings)
         SemanticResource.map_text(self, embedding, dataset)
-
-
-
 
     def lookup(self, candidate):
         word, _ = candidate
@@ -564,13 +555,12 @@ class ContextEmbedding(SemanticResource):
                 return {}
             concept = self.reference_concepts[int(conc_idx)]
         # no spreading activation defined here.
-        return { concept: 1}
+        return {concept: 1}
 
     def handle_raw_serialized(self, raw_serialized):
         self.loaded_raw_serialized = True
         self.concept_embeddings, self.reference_concepts = raw_serialized
         debug("Read concept embeddings shape: {}".format(self.concept_embeddings.shape))
-
 
     # generate semantic embeddings from words associated with an concept
     def compute_semantic_embeddings(self):
@@ -667,11 +657,10 @@ class GoogleKnowledgeGraph(SemanticResource):
                 if self.do_spread_activation:
                     current_decay = self.spread_decay
                     for h, hyp in enumerate(hyps):
-                        if h+1 > self.spread_steps:
+                        if h + 1 > self.spread_steps:
                             break
                         activations[hyp] = current_decay
                         current_decay *= self.spread_decay
-
         return activations
 
 
@@ -719,7 +708,6 @@ class Framenet(SemanticResource):
             return None
         return self.disambiguate(frames, candidate, override=defs.semantic.disam.first)
 
-
     def get_related_frames(self, frame):
         # get just parents
         return [fr.Parent for fr in frame.frameRelations if fr.type.name == "Inheritance" and fr.Child == frame]
@@ -733,13 +721,15 @@ class Framenet(SemanticResource):
             related_frames = self.get_related_frames(frame)
             for rel in related_frames:
                 activations[rel.name] = current_decay
-                parents = self.spread_activation([rel], steps_to_go-1, current_decay)
+                parents = self.spread_activation([rel], steps_to_go - 1, current_decay)
                 if parents:
                     activations = {**activations, **parents}
         return activations
 
+
 class BabelNet:
     name = "babelnet"
+
     def get_raw_path(self):
         return None
 
@@ -754,6 +744,3 @@ class BabelNet:
     # written into a file, read by the java api
     # results written into a file (json), read from here.
     # run calls the java program
-
-
-

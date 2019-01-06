@@ -5,9 +5,17 @@ from utils import error, tictoc, debug
 class Bag:
     token_list = None
     representation_dim = None
+    element_processing_func = None
+
+    def __init__(self):
+        self.element_processing_func = self.default_element_processing_func
+
+    # override default element processing function
+    def set_element_processing_function(self, func):
+        self.element_processing_func = func
 
     # processes an element of an instance, producing pairs of vector_index and frequency_count
-    def process_element(self, element):
+    def default_element_processing_func(self, element):
         if element in self.token_list:
             return [(self.token2index[element], 1)]
         return []
@@ -28,14 +36,14 @@ class Bag:
         self.global_freqs = np.zeros((self.num_tokens,), np.float32)
 
         with tictoc("Creating bow vectors"):
-            for t, word_list in enumerate(text_collection):
+            for t, word_pos_list in enumerate(text_collection):
                 debug("Text {}/{}".format(t + 1, len(text_collection)))
                 text_token_freqs = {}
-                present_text_words = [w for w in word_list if w in self.token_list]
-                for word in present_text_words:
-                    coords_weights = self.process_element(word)
+                present_text_words = [wp for wp in word_pos_list if wp[0] in self.token_list]
+                for word_pos in present_text_words:
+                    coords_weights = self.element_processing_func(word_pos)
                     for word_index, weight in coords_weights:
-                        if word not in text_token_freqs:
+                        if word_index not in text_token_freqs:
                             text_token_freqs[word_index] = weight
                         else:
                             text_token_freqs[word_index] += weight
@@ -45,18 +53,24 @@ class Bag:
                             self.global_freqs[word_index] += weight
 
                 self.output_vectors.append(text_token_freqs)
-                self.present_token_indexes.append([word_list.index(p) for p in present_text_words])
+                self.present_token_indexes.append([word_pos_list.index(p) for p in present_text_words])
                 self.present_tokens.append(len(present_text_words))
 
     def get_vectors(self):
         return self.output_vectors
+
     def get_present_token_indexes(self):
         return self.present_token_indexes
+
     def get_present_tokens(self):
         return self.present_tokens
 
 
 class TFIDF(Bag):
+
+    def __init__(self):
+        Bag.__init__(self)
+
     def map_collection(self, text_collection, token_list):
         Bag.map_collection(self, text_collection, token_list, calculate_global_frequencies=True)
         # apply IDF
