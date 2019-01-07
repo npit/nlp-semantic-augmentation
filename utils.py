@@ -119,7 +119,7 @@ class tictoc:
     do_print = True
     announce = True
 
-    def __init__(self, msg, printer_func = logging.getLogger().info, do_print=True, announce=True):
+    def __init__(self, msg, printer_func=logging.getLogger().info, do_print=True, announce=True):
         self.msg = msg
         self.func = printer_func
         self.do_print = do_print

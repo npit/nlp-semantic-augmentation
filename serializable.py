@@ -28,6 +28,7 @@ class Serializable:
 
     # flags for data loading
     loaded_aggregated = False
+    loaded_enriched = False
     loaded_finalized = False
     loaded_raw_serialized = False
     loaded_preprocessed = False
@@ -56,6 +57,10 @@ class Serializable:
     def __init__(self, dir_name):
         self.serialization_dir = join(self.config.folders.serialization, dir_name)
         self.raw_data_dir = join(self.config.folders.raw_data, dir_name)
+        self.loaded_raw_serialized = False
+        self.loaded_serialized = False
+        self.loaded_preprocessed = False
+        self.loaded_aggregated = False
 
     def set_serialization_params(self):
         # setup paths
@@ -120,9 +125,10 @@ class Serializable:
 
     # configure resources to load
     def set_resources(self):
-        import pdb;pdb.set_trace()
-        print("SAD")
-        pass
+        self.resource_paths = []
+        self.resource_read_functions = []
+        self.resource_handler_functions = []
+        self.resource_always_load_flag = []
 
     def get_raw_path(self):
         error("Need to override raw path getter for {}".format(self.name))
