@@ -31,6 +31,7 @@ class Config:
 
     class representation:
         dimension = None
+        token_list = None
 
     class semantic:
         name = None
@@ -178,6 +179,7 @@ class Config:
         self.representation.dimension = representation_information["dimension"]
         self.representation.sequence_length = self.get_value("sequence_length", default=1, base=representation_information)
         self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)
+        self.representation.token_list = self.get_value("token_list", base = representation_information)
 
         if self.has_value("semantic"):
             semantic_opts = self.conf["semantic"]
@@ -228,10 +230,8 @@ class Config:
                 for kname, kvalue in self.conf["misc"]['keys'].items():
                     self.misc.keys[kname] = kvalue
 
-
         self.log_level = self.get_value("log_level", default="info")
         print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
-
 
     # configuration entry getters
     def get_serialization_dir(self):

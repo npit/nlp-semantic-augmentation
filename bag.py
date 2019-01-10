@@ -8,7 +8,6 @@ class Bag:
     token_list = None
     global_freqs = None
     output_vectors = None
-    representation_dim = None
     element_processing_func = None
     element_checking_func = None
     use_fixed_token_list = None
@@ -19,7 +18,6 @@ class Bag:
     def __init__(self):
         self.token_list = []
         self.global_freqs = {}
-        self.representation_dim = None
         self.use_fixed_token_list = False
         # non-fized token list as the default
         self.element_processing_func = self.process_element
@@ -71,7 +69,7 @@ class Bag:
         self.global_freqs = {key: 0 for key in self.token_list}
         self.num_tokens = len(self.token_list)
         self.element_checking_func = self.process_element
-        self.element_processing_func = self.check_element
+        self.element_processing_func = self.check_element_in_list
 
     def get_token_list(self):
         return self.token_list
@@ -100,8 +98,8 @@ class Bag:
         self.element_checking_func = func
 
     # checks wether the element is valid to be included in the bag
-    def check_element(self, element):
-        # if a token list has been supply, only use tokens in it
+    def check_element_in_list(self, element):
+        # if a token list has been supplied, only use tokens in it
         return element in self.token_list
 
     # processes an element of an instance, producing pairs of vector_index and frequency_count
@@ -147,7 +145,7 @@ class Bag:
             if not self.use_fixed_token_list:
                 # if we computed the token list, store it
                 self.token_list = list(self.global_freqs.keys())
-        self.representation_dim = len(self.token_list)
+
         # apply filtering, if selected
         self.filter_tokens()
         info("Mapped the collection to frequencies of {} tokens.".format(len(self.token_list)))
@@ -178,7 +176,6 @@ class TFIDF(Bag):
 
     def idf_normalize(self, input_data=None):
         with tictoc("TFIDF normalization"):
-            import pdb; pdb.set_trace()
             if input_data is not None:
                 # just process the input
                 self.output_vectors, self.global_freqs = input_data

@@ -22,6 +22,14 @@ def shapes_list(thelist):
     return [x.shape for x in thelist]
 
 
+def read_lines(path):
+    lines = []
+    with open(path) as f:
+        for line in f:
+            lines.append(line.strip())
+    return lines
+
+
 # converts elements of l to the index they appear in the reference
 # flattens, if necessary
 def align_index(input, reference):

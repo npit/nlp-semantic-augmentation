@@ -1,8 +1,8 @@
-from os.path import join
+from os.path import join, basename
 import pandas as pd
 from pandas.errors import ParserError
 from dataset import Dataset
-from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list
+from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines
 import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
@@ -36,7 +36,6 @@ class Representation(Serializable):
         self.set_resources()
         # fetch the required data
         self.acquire_data(fatal_error=not can_fail_loading)
-
 
     # add exra representations-specific serialization paths
     def set_representation_serialization_sources(self):
@@ -454,11 +453,30 @@ class Train(Representation):
 class BagRepresentation(Representation):
     name = "bag"
     bag_class = TFIDF
-    token_list = []
+    token_list = None
 
     def __init__(self, config):
         self.config = config
+        self.config.representation.dimension = None
         Representation.__init__(self)
+
+    def set_name(self):
+        # disable the dimension
+        Representation.set_name(self)
+        # if external token list, add its length
+        if self.config.representation.token_list is not None:
+            self.name += "_tok_{}".format(basename(self.config.representation.token_list))
+
+    def set_resources(self):
+        if self.config.representation.token_list is not None:
+            self.resource_paths.append(self.config.representation.token_list)
+            self.resource_read_functions.append(read_lines)
+            self.resource_handler_functions.append(self.handle_token_list)
+            self.resource_always_load_flag.append(False)
+
+    def handle_token_list(self, tok_list):
+        info("Using external, {}-length token list.".format(len(tok_list)))
+        self.token_list = tok_list
 
     def get_raw_path(self):
         return None
@@ -484,9 +502,9 @@ class BagRepresentation(Representation):
         write_pickled(self.serialization_path_aggregated, self.get_all_preprocessed())
 
     def map_text(self, dset):
-        self.token_list = dset.vocabulary
-        self.token2index = {t: self.token_list.index(t) for t in dset.vocabulary}
-        self.representation_dim = len(self.token_list)
+        if self.token_list is None:
+            self.token_list = dset.vocabulary
+            self.representation_dim = len(self.token_list)
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
         info("Mapping {} to {} representation.".format(dset.name, self.name))
@@ -498,15 +516,19 @@ class BagRepresentation(Representation):
 
         # train
         self.bag = self.bag_class()
-        self.bag.set_token_list(dset.vocabulary)
+        self.bag.set_token_list(self.token_list)
         self.bag.map_collection(dset.train)
         self.dataset_vectors.append(self.bag.get_weights())
         self.words_per_document.append(self.bag.get_present_tokens())
         self.present_word_indexes.append(self.bag.get_present_token_indexes())
 
+        # set representation dim and update name
+        self.representation_dim = len(self.token_list)
+        self.set_name()
+
         # test
         self.bag = self.bag_class()
-        self.bag.set_token_list(dset.vocabulary)
+        self.bag.set_token_list(self.token_list)
         self.bag.map_collection(dset.test)
         self.dataset_vectors.append(self.bag.get_weights())
         self.words_per_document.append(self.bag.get_present_tokens())
@@ -520,67 +542,9 @@ class TFIDFRepresentation(BagRepresentation):
     name = "tfidf"
     bag_class = TFIDF
 
-
     def __init__(self, config):
         BagRepresentation.__init__(self, config)
 
     # nothing to load, can be computed on the fly
     def fetch_raw(self, path):
         pass
-
-
-    def map_text2(self, dset):
-        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
-            return
-        info("Mapping {} to {} representation.".format(dset.name, self.name))
-        text_bundles = dset.train, dset.test
-        self.representation_dim = len(dset.vocabulary)
-
-
-        self.dataset_vectors = []
-        self.words_per_document = []
-        self.present_word_indexes = []
-        self.undefined_word_index = dset.undefined_word_index
-        self.token_list = dset.vocabulary
-        token2index = {w: n for (w, n) in zip(self.token_list, list(range(len(self.token_list))))}
-        self.dataset_freqs = np.zeros((len(self.token_list,)), np.float32)
-        # loop over input text bundles (e.g. train & test)
-        for i in range(len(text_bundles)):
-            self.dataset_vectors.append([])
-            self.words_per_document.append([])
-            self.present_word_indexes.append([])
-            is_training_set = bool(i == 0)
-            with tictoc("Creating representation mapping for text bundle {}/{}".format(i + 1, len(text_bundles))):
-                info("Mapping text bundle {}/{}: {} texts".format(i + 1, len(text_bundles), len(text_bundles[i])))
-                for j in range(len(text_bundles[i])):
-                    debug("Text {}/{}".format(j + 1, len(text_bundles[i])))
-                    word_list = text_bundles[i][j]
-                    token_freqs = {}
-                    present_words = [w for w in word_list if w in self.token_list]
-                    for w in word_list:
-                        if w in present_words:
-                            word_index = token2index[w]
-                            if w not in token_freqs:
-                                token_freqs[word_index] = 1
-                            else:
-                                token_freqs[word_index] += 1
-                            # if it's the training set
-                            if is_training_set:
-                                # accumulate DF
-                                self.dataset_freqs[word_index] += 1
-
-                    self.dataset_vectors[-1].append(token_freqs)
-                    self.present_word_indexes[-1].append([word_list.index(p) for p in present_words])
-                    self.words_per_document[-1].append(len(present_words))
-
-                # IDF-normalize
-                if is_training_set:
-                    # prepare for element-wise division
-                    self.dataset_freqs[np.where(self.dataset_freqs == 0)] = 1
-                for v in range(len(self.dataset_vectors[-1])):
-                    for key in self.dataset_vectors[-1][v]:
-                        self.dataset_vectors[-1][v][key] = self.dataset_vectors[-1][v][key] / self.dataset_freqs[key]
-
-        self.dataset_words = [dset.vocabulary, None]
-        # write mapped data
-        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
