@@ -30,7 +30,7 @@ class Representation(Serializable):
         Serializable.__init__(self, self.dir_name)
         # check for serialized mapped data
         self.set_serialization_params()
-        # add paths for aggregated and enriched representations:
+        # add paths for aggregated / transformed / enriched representations:
         self.set_representation_serialization_sources()
         # set required resources
         self.set_resources()
@@ -39,12 +39,21 @@ class Representation(Serializable):
 
     # add exra representations-specific serialization paths
     def set_representation_serialization_sources(self):
+        # compute names
         aggr = "".join(list(map(str, self.config.representation.aggregation + [self.sequence_length])))
         self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
+        extras = [self.serialization_path_aggregated, read_pickled]
+
         sem = SemanticResource.get_semantic_name(self.config)
         finalized_id = sem + "_" + self.config.semantic.enrichment if sem else "nosem"
         self.serialization_path_finalized = "{}/{}.aggregated_{}.finalized_{}.pickle".format(
             self.serialization_dir, self.name, aggr, finalized_id)
+        extras = [self.serialization_path_aggregated, read_pickled]
+
+        if self.config.has_transform():
+            pass
+
+        # fill in at the desired order (finalized, transformed, aggregated 
         self.data_paths = [self.serialization_path_finalized, self.serialization_path_aggregated] + self.data_paths
         self.read_functions = [read_pickled] * 2 + self.read_functions
         self.handler_functions = [self.handle_finalized, self.handle_aggregated] + self.handler_functions
@@ -73,55 +82,15 @@ class Representation(Serializable):
     def set_name(self):
         self.name = "{}_{}_dim{}".format(self.base_name, self.dataset_name, self.representation_dim)
 
-    # prepare embedding data to be ready for classification
-    def prepare(self):
-        if self.loaded_aggregated or self.loaded_finalized:
-            return
-        info("Aggregating embeddings via the {} method.".format(self.aggregation))
-        if self.aggregation[0] == "avg":
-            # average all word vectors in the doc
-            for dset_idx in range(len(self.dataset_vectors)):
-                aggregated_doc_vectors = []
-                for doc_dict in self.dataset_vectors[dset_idx]:
-                    aggregated_doc_vectors.append(np.mean(doc_dict.values, axis=0))
-                self.dataset_vectors[dset_idx] = np.concatenate(aggregated_doc_vectors).reshape(
-                    len(aggregated_doc_vectors), self.representation_dim)
-        elif self.aggregation[0] == "pad":
-            num = self.sequence_length
-            filter = self.aggregation[1]
-            info("Aggregation with pad params: {} {}".format(num, filter))
-            zero_pad = self.get_zero_pad_element()
-
-            for dset_idx in range(len(self.dataset_vectors)):
-                cumulative_dataset_vectors = np.ndarray((0, self.representation_dim), np.float32)
-                num_total, num_truncated, num_padded = len(self.dataset_vectors[dset_idx]), 0, 0
-                for doc_idx in range(len(self.dataset_vectors[dset_idx])):
-                    word_vectors = self.dataset_vectors[dset_idx][doc_idx].values
-                    num_words = len(word_vectors)
-                    if num_words > num:
-                        # truncate
-                        word_vectors = word_vectors[:num, :]
-                        num_truncated += 1
-                    elif num_words < num:
-                        # make pad and stack vertically
-                        num_to_pad = num - num_words
-                        pad = np.tile(zero_pad, (num_to_pad, 1), np.float32)
-                        num_padded += 1
-                        word_vectors = np.append(word_vectors, pad, axis=0)
-                    cumulative_dataset_vectors = np.append(cumulative_dataset_vectors, word_vectors, axis=0)
-                self.dataset_vectors[dset_idx] = cumulative_dataset_vectors
-                info("Truncated {:.3f}% and padded {:.3f} % items.".format(
-                    *[x / num_total * 100 for x in [num_truncated, num_padded]]))
-
-        # serialize aggregated
-        write_pickled(self.serialization_path_aggregated, self.get_all_preprocessed())
-
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion
-    def finalize(self, semantic):
+    def finalize(self, semantic, transform):
         if self.loaded_finalized:
             info("Skipping embeddings finalizing, since finalized data was already loaded.")
             return
+
+
+
         finalized_name = self.name
         if self.config.semantic.enrichment is not None:
             if self.config.representation.name == "train":
@@ -189,9 +158,6 @@ class Representation(Serializable):
     def has_word(self, word):
         return word in self.embeddings.index
 
-    def get_words(self):
-        return self.words_per_document
-
     def get_data(self):
         return self.dataset_vectors
 
@@ -211,7 +177,7 @@ class Representation(Serializable):
 
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
-        self.dataset_vectors, self.words_per_document, self.missing, \
+        self.dataset_vectors, self.elements_per_instance, self.missing, \
             self.undefined_word_index, self.present_word_indexes = preprocessed
         self.loaded_preprocessed = True
         debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
@@ -231,6 +197,15 @@ class Representation(Serializable):
 
     def get_present_word_indexes(self):
         return self.present_word_indexes
+
+    def set_transformed(self, transform):
+        """Update representation information as per the input transform"""
+        self.name += transform.get_name()
+        self.dataset_vectors = transform.get_vectors()
+        self.representation_dim = transform.get_dimension()
+
+    def get_vectors(self):
+        return self.dataset_vectors
 
 
 class Embedding(Representation):
@@ -275,10 +250,64 @@ class Embedding(Representation):
         # drop the nans and return
         return word_embeddings
 
-    # for embeddings, it's already full
-    def get_full_instance_vector(self, vector):
+    # for embeddings, vectors are already dense
+    def get_dense_vector(self, vector):
         return vector
- 
+
+    # compute dense elements
+    def compute_dense(self):
+        # instance vectors are already dense - just make dataset-level ndarrays
+        for dset_idx in range(len(self.dataset_vectors)):
+            self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values
+
+    # prepare embedding data to be ready for classification
+    def aggregate_instance_vectors(self):
+        """Method that maps features to a single vector per instance"""
+        if self.loaded_aggregated or self.loaded_finalized:
+            return
+        info("Aggregating embeddings to single-vector-instances via the {} method.".format(self.aggregation))
+        # use words per document for the aggregation, aggregating function as an argument
+        aggregated_dataset_vectors = np.ndarray((0, self.representation_dim), np.float32)
+        # stats
+        aggregation_stats = 0, 0
+
+        for dset_idx in range(len(self.dataset_vectors)):
+            info("Aggregating embedding vectors for {}-sized collection {}/{}".format(
+                len(self.dataset_vectors[dset_idx]), dset_idx + 1, len(self.dataset_vectors)))
+
+            curr_idx = 0
+            for inst_len in self.elements_per_instance[dset_idx]:
+                curr_instance = self.dataset_vectors[dset_idx][curr_idx: curr_idx + inst_len]
+
+                # average aggregation to a single vector
+                if self.aggregation[0] == "avg":
+                    curr_instance = np.mean(curr_instance, axis=0).reshape(1, self.representation_dim)
+                # padding aggregation to specified vectors per instance
+                elif self.aggregation[0] == "pad":
+                    # filt = self.aggregation[1]
+                    num_vectors = len(curr_instance)
+                    if self.sequence_length < num_vectors:
+                        # truncate
+                        curr_instance = curr_instance[:self.sequence_length, :]
+                        aggregation_stats[0] += 1
+                    elif self.sequence_length > num_vectors:
+                        # make pad and stack vertically
+                        pad_size = self.sequence_length - num_vectors
+                        pad = np.tile(self.get_zero_pad_element(), (pad_size, 1), np.float32)
+                        curr_instance = np.append(curr_instance, pad, axis=0)
+                        aggregation_stats[1] += 1
+                else:
+                    error("Undefined aggregation: {}".format(self.aggregation))
+
+                aggregated_dataset_vectors = np.append(aggregated_dataset_vectors, curr_instance, axis=0)
+                curr_idx += inst_len
+            # update the dataset vector collection
+            self.dataset_vectors[dset_idx] = aggregated_dataset_vectors
+            # report stats
+            if self.aggregation[0] == "pad":
+                info("Truncated {:.3f}% and padded {:.3f} % items.".format(*[x / len(self.dataset_vectors[dset_idx]) * 100 for x in aggregation_stats]))
+
+
 
 # generic class to load pickled embedding vectors
 class VectorEmbedding(Embedding):
@@ -296,31 +325,32 @@ class VectorEmbedding(Embedding):
         info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
         text_bundles = dset.train, dset.test
         self.dataset_vectors = []
-        self.words_per_document = []
         self.present_word_indexes = []
         self.vocabulary = dset.vocabulary
+        self.elements_per_instance = []
 
         if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
             warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
             self.embeddings.loc[self.unknown_word_token] = np.zeros(self.representation_dim)
 
         # loop over input text bundles (e.g. train & test)
-        for i in range(len(text_bundles)):
+        for dset_idx in range(len(text_bundles)):
             self.dataset_vectors.append([])
-            self.words_per_document.append([])
             self.present_word_indexes.append([])
-            with tictoc("Embedding mapping for text bundle {}/{}".format(i + 1, len(text_bundles))):
-                info("Mapping text bundle {}/{}: {} texts".format(i + 1, len(text_bundles), len(text_bundles[i])))
+            self.elements_per_instance.append([])
+            with tictoc("Embedding mapping for text bundle {}/{}".format(dset_idx + 1, len(text_bundles))):
+                info("Mapping text bundle {}/{}: {} texts".format(dset_idx + 1, len(text_bundles), len(text_bundles[dset_idx])))
                 hist = {w: 0 for w in self.embeddings.index}
                 hist_missing = {}
-                for j, word_list in enumerate(text_bundles[i]):
+                for j, doc_wp_list in enumerate(text_bundles[dset_idx]):
                     # drop POS
-                    word_list = [wp[0] for wp in text_bundles[i]]
-                    debug("Text {}/{} with {} words".format(j + 1, len(text_bundles[i]), len(word_list)))
+                    word_list = [wp[0] for wp in doc_wp_list]
+                    debug("Text {}/{} with {} words".format(j + 1, len(text_bundles[dset_idx]), len(word_list)))
                     # check present & missing words
                     missing_words, missing_index, present_words, present_index = [], [], [], []
                     for w, word in enumerate(word_list):
                         if word not in self.embeddings.index:
+                            # debug("Word [{}] not in embedding index.".format(word))
                             missing_words.append(word)
                             missing_index.append(w)
                             if word not in hist_missing:
@@ -336,27 +366,29 @@ class VectorEmbedding(Embedding):
                         # ignore & discard missing words
                         word_list = present_words
                     else:
-                        # map missing to UNKs
+                        # replace missing words with UNKs
                         for m in missing_index:
                             word_list[m] = self.unknown_word_token
 
+                    if not present_words and not self.map_missing_unks:
+                        # no words present in the mapping, force
+                        error("No words persent in document.")
+
                     # get embeddings
                     text_embeddings = self.embeddings.loc[word_list]
+                    if len(text_embeddings) == 0:
+                        import pdb; pdb.set_trace()
                     self.dataset_vectors[-1].append(text_embeddings)
 
                     # update present words and their index, per doc
-                    self.words_per_document[-1].append(present_words)
+                    self.elements_per_instance[-1].append(len(text_embeddings))
                     self.present_word_indexes[-1].append(present_index)
 
             self.print_word_stats(hist, hist_missing)
-            self.missing.append(hist_missing)
 
         # write
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
-        # log missing words
-        missing_filename = self.serialization_path_preprocessed + ".missingwords"
-        write_pickled(missing_filename, self.missing)
 
     def print_word_stats(self, hist, hist_missing):
         num_words_hit, num_hit = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
@@ -365,6 +397,8 @@ class VectorEmbedding(Embedding):
 
         debug("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit / num_total * 100, num_total, num_words_hit))
         debug("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss / num_total * 100, num_total, num_words_miss))
+        if num_hit == 0:
+            error("No hits in embedding generation.")
 
     def __init__(self, config):
         self.config = config
@@ -372,7 +406,7 @@ class VectorEmbedding(Embedding):
         Embedding.__init__(self)
 
     def get_all_preprocessed(self):
-        return [self.dataset_vectors, self.words_per_document, self.missing, None, self.present_word_indexes]
+        return [self.dataset_vectors, self.elements_per_instance, self.missing, None, self.present_word_indexes]
 
 
 class Train(Representation):
@@ -482,24 +516,26 @@ class BagRepresentation(Representation):
         return None
 
     def get_all_preprocessed(self):
-        return [self.dataset_vectors, self.words_per_document, None, None, self.present_word_indexes]
+        return [self.dataset_vectors, self.elements_per_instance, None, None, self.present_word_indexes]
 
     # for bags, existing vector is a sparse dict list. Fill with zeros.
-    def get_full_instance_vector(self, doc_dict):
+    def get_dense_vector(self, doc_dict):
         full_vector = np.zeros((self.representation_dim,), np.float32)
         for t in doc_dict:
             full_vector[t] = doc_dict[t]
         return full_vector
 
-    def prepare(self):
-        # bag representations already produce a single vector per text
-        if self.loaded_aggregated or self.loaded_finalized:
-            return
+    # sparse to dense
+    def compute_dense(self):
         for dset_idx in range(len(self.dataset_vectors)):
             for vec_idx in range(len(self.dataset_vectors[dset_idx])):
-                self.dataset_vectors[dset_idx][vec_idx] = self.get_full_instance_vector(self.dataset_vectors[dset_idx][vec_idx])
-        # serialize aggregated
-        write_pickled(self.serialization_path_aggregated, self.get_all_preprocessed())
+                self.dataset_vectors[dset_idx][vec_idx] = self.get_dense_vector(self.dataset_vectors[dset_idx][vec_idx])
+            # to ndarray
+            self.dataset_vectors[dset_idx] = np.array(self.dataset_vectors[dset_idx])
+
+    def aggregate_instance_vectors(self):
+        # bag representations produce ready-to-use vectors
+        pass
 
     def map_text(self, dset):
         if self.token_list is None:
@@ -511,7 +547,6 @@ class BagRepresentation(Representation):
 
         self.dataset_words = [self.token_list, None]
         self.dataset_vectors = []
-        self.words_per_document = []
         self.present_word_indexes = []
 
         # train
@@ -519,7 +554,6 @@ class BagRepresentation(Representation):
         self.bag.set_token_list(self.token_list)
         self.bag.map_collection(dset.train)
         self.dataset_vectors.append(self.bag.get_weights())
-        self.words_per_document.append(self.bag.get_present_tokens())
         self.present_word_indexes.append(self.bag.get_present_token_indexes())
 
         # set representation dim and update name
@@ -531,7 +565,6 @@ class BagRepresentation(Representation):
         self.bag.set_token_list(self.token_list)
         self.bag.map_collection(dset.test)
         self.dataset_vectors.append(self.bag.get_weights())
-        self.words_per_document.append(self.bag.get_present_tokens())
         self.present_word_indexes.append(self.bag.get_present_token_indexes())
 
         # write mapped data

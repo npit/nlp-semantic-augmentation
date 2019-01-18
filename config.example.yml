@@ -23,7 +23,7 @@ representation:
   # -- pad / num: Pad (or prune) to NUM items: pad, <int>
   # -- filter: how to select these NUM items:
   # --- first: just get the first NUM words
-  # --- freq: get the first NUM words that are most frequent in the dataset
+  # --- freq: get the first NUM words that are most frequent in the dataset (TODO)
   #aggregation: [pad, 10, first]
   aggregation: avg
   # what to do with words missing from the embedding: drop / unk
@@ -31,6 +31,11 @@ representation:
   # drop: discard them
   unknown_words: unk
 
+
+transform:
+  # Optional feature transformation method
+  name: LSA
+  dimension: 100
 
 # semantic
 semantic:

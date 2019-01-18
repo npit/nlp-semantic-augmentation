@@ -33,6 +33,10 @@ class Config:
         dimension = None
         token_list = None
 
+    class transform:
+        dimension = None
+        name = None
+
     class semantic:
         name = None
         enrichment = None
@@ -181,6 +185,11 @@ class Config:
         self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)
         self.representation.token_list = self.get_value("token_list", base = representation_information)
 
+        if self.has_value("transform"):
+            transform_opts = self.conf["transform"]
+            self.transform.name = transform_opts["name"]
+            self.transform.dimension = transform_opts["dimension"]
+
         if self.has_value("semantic"):
             semantic_opts = self.conf["semantic"]
             self.semantic.name = semantic_opts["name"]
@@ -233,45 +242,14 @@ class Config:
         self.log_level = self.get_value("log_level", default="info")
         print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
 
-    # configuration entry getters
-    def get_serialization_dir(self):
-        return self.conf["serialization_dir"]
-
-    def get_dataset(self):
-        return self.conf["dataset"]
+    def has_transform(self):
+        return self.transform.name is not None
 
     def has_semantic(self):
         return all([x is not None for x in [self.semantic.enrichment, self.semantic.name]])
 
     def is_debug(self):
         return self.conf["log_level"] == "debug"
-
-    def get_semantic_resource(self):
-        return self.conf["semantic_resource"]
-
-    def get_semantic_disambiguation(self):
-        return self.conf["semantic_disambiguation"]
-
-    def get_semantic_word_context(self):
-        return self.conf["semantic_word_context_file"]
-
-    def get_semantic_word_aggregation(self):
-        return self.conf["semantic_embedding_aggregation"]
-
-    def get_semantic_freq_threshold(self):
-        return self.get_value("semantic_freq_threshold")
-
-    def get_semantic_weights(self):
-        return self.conf["semantic_weights"]
-
-    def get_enrichment(self):
-        return self.get_value("enrichment")
-
-    def get_learner(self):
-        return self.conf["learner"]
-
-    def get_representation(self):
-        return self.get_value("representation")
 
     def get_train_params(self):
         return self.conf["train"]
