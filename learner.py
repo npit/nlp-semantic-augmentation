@@ -436,10 +436,13 @@ class DNN:
         if self.do_folds:
             # check if such data exists
             if exists(trainval_serialization_file):
-                info("Training {} with input data: {} samples, {} labels, on loaded existing {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
+                info("Training {} with input data: {} samples, {} labels, on LOADED existing {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
                 deser = read_pickled(trainval_serialization_file)
                 if not len(deser) == self.folds:
                     error("Mismatch between expected folds ({}) and loaded data of {} splits.".format(self.folds, len(deser)))
+                max_idx = max([np.max(x) for tup in deser for x in tup])
+                if max_idx >= self.num_train:
+                    error("Mismatch between max instances in training data ({}) and loaded max index ({}).".format(self.num_train, max_idx))
                 return deser
             info("Training {} with input data: {} samples, {} labels, on {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
             splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
@@ -447,9 +450,13 @@ class DNN:
         if self.do_validate_portion:
             # check if such data exists
             if exists(trainval_serialization_file):
-                info("Training {} with input data: {} samples, {} labels, on loaded existing {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
+                info("Training {} with input data: {} samples, {} labels, on LOADED existing {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
                 deser = read_pickled(trainval_serialization_file)
                 info("Loaded train/val split of {} / {}.".format(*list(map(len, deser[0]))))
+                # sanity checks
+                max_idx = max([np.max(x) for tup in deser for x in tup])
+                if max_idx >= self.num_train:
+                    error("Mismatch between max instances in training data ({}) and loaded max index ({}).".format(self.num_train, max_idx))
                 return deser
             info("Splitting {} with input data: {} samples, {} labels, on a {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
             splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
@@ -517,15 +524,13 @@ class DNN:
             res.append((thresh, one_hot(positives, self.num_labels)))
         return res
 
-
     # compute scores and append to per-fold lists
     def add_performance(self, run_type, preds_proba):
         # loop thresholds & amax, get respective TPs, FPs, etc
         # evaluate metrics there, and multilabel evals with these.
 
         if self.do_multilabel:
-            # onehot_gt = one_hot(self.test_labels, self.num_labels)
-            onehot_gt = one_hot(self.test_labels, 3)
+            onehot_gt = one_hot(self.test_labels, self.num_labels)
 
             # average precision
             ap = metrics.average_precision_score(onehot_gt, preds_proba)

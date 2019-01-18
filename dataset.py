@@ -2,8 +2,9 @@ import random
 import numpy as np
 from os import listdir
 from nltk.tokenize import RegexpTokenizer
-from utils import error, tictoc, info, write_pickled, align_index, debug
+from utils import error, tictoc, info, write_pickled, align_index, debug, warning
 from sklearn.datasets import fetch_20newsgroups
+from sklearn.model_selection import StratifiedShuffleSplit
 from keras.preprocessing.text import text_to_word_sequence
 from nltk.corpus import stopwords, reuters
 import nltk
@@ -124,15 +125,37 @@ class Dataset(Serializable):
         if ltrain:
             name += "_dlim_tr{}".format(ltrain)
             if self.train:
-                self.train = self.train[:ltrain]
-                self.train_target = self.train_target[:ltrain]
-                info("Limited {} loaded data to {} train items.".format(self.base_name, ltrain))
+                try:
+                    # use stratification
+                    ratio = ltrain / len(self.train)
+                    print(ratio, ltrain, len(self.train))
+                    splitter = StratifiedShuffleSplit(1, test_size=ratio)
+                    splits = list(splitter.split(np.zeros(len(self.train)), self.train_target))
+                    self.train = [self.train[n] for n in splits[0][1]]
+                    self.train_target = [self.train_target[n] for n in splits[0][1]]
+                    info("Limited {} loaded data to {} train items.".format(self.base_name, len(self.train)))
+                    print(len(self.train_target))
+                except ValueError as ve:
+                    warning(ve)
+                    warning("Resorting to non-stratified limiting")
+                    self.train = self.train[:ltrain]
+                    self.train_target = self.train_target[:ltrain]
         if ltest:
             name += "_dlim_te{}".format(ltest)
             if self.test:
-                self.test = self.test[:ltest]
-                self.test_target = self.test_target[:ltest]
-                info("Limited {} loaded data to {} test items.".format(self.base_name, ltest))
+                try:
+                    # use stratification
+                    ratio = ltest / len(self.test)
+                    splitter = StratifiedShuffleSplit(1, test_size=ratio)
+                    splits = list(splitter.split(np.zeros(len(self.test)), self.test_target))
+                    self.test = [self.test[n] for n in splits[0][1]]
+                    self.test_target = [self.test_target[n] for n in splits[0][1]]
+                    info("Limited {} loaded data to {} test items.".format(self.base_name, len(self.test)))
+                except ValueError as ve:
+                    warning(ve)
+                    warning("Resorting to non-stratified limiting")
+                    self.test = self.test[:ltest]
+                    self.test_target = self.test_target[:ltest]
         return name
 
     def restrict_to_classes(self, data, labels, restrict_classes):
@@ -369,7 +392,7 @@ class Reuters(Dataset):
         # dataset is downloadable
         return None
 
-#class MultilingMMS:
+# class MultilingMMS:
 #    name = "multiling-mms"
 #    def get_raw_path():
 #        pass

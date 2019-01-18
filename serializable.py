@@ -83,7 +83,7 @@ class Serializable:
         self.serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
         # preprocessed
         self.serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
-        debug("Path setter returning paths wrt name: {}".format(name))
+        # debug("Path setter returning paths wrt name: {}".format(name))
         self.data_paths = [self.serialization_path_preprocessed, self.serialization_path, raw_path]
 
     # attemp to load resource from specified paths
@@ -91,7 +91,7 @@ class Serializable:
         path = self.data_paths[index]
         # either path is None (resource is acquired without one) or it's a file that will be loaded
         if path is None or (exists(path) and isfile(path)):
-            debug("Attempting load of {} with {}.".format(path, self.read_functions[index]))
+            # debug("Attempting load of {} with {}.".format(path, self.read_functions[index]))
             data = self.read_functions[index](path)
             if data is None:
                 debug("Failed to load {} from path {}".format(self.name, path))

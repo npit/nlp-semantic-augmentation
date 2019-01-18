@@ -3,6 +3,8 @@ import pickle
 import logging
 import numpy as np
 
+num_warnings = 0
+
 
 # function for one-hot encoding, can handle multilabel
 def one_hot(labels, num_labels):

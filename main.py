@@ -7,7 +7,7 @@ from transform import Transform
 from learner import DNN
 from helpers import Config
 import argparse
-from utils import info
+from utils import info, warning, num_warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 print("Imports done.")
 
@@ -31,6 +31,12 @@ def main(config_file):
     transform = None
     if config.has_transform():
         transform = Transform.create(config)
+        if not transform.loaded():
+            # load / acquire necessary data for computation
+            representation.acquire_data()
+        else:
+            # transfer loaded data from the transformed bundle
+            representation.set_transform(transform)
 
     # representation computation
     if not config.has_transform() or not transform.loaded():
@@ -38,9 +44,9 @@ def main(config_file):
         representation.compute_dense()
 
     # transform computation
-    if config.has_transform() and not transform.loaded():
+    if config.has_transform():
         info("===== TRANSFORM =====")
-        transform.compute(representation.get_vectors())
+        transform.compute(representation)
         representation.set_transform(transform)
 
     # aggregation
@@ -62,6 +68,8 @@ def main(config_file):
     learner.make(representation, dataset.get_targets(), dataset.get_num_labels())
     learner.do_traintest()
 
+    if num_warnings > 0:
+        warning("{} warnings occured.".format(num_warnings - 1))
     info("Logfile is at: {}".format(config.logfile))
 
 

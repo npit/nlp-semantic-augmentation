@@ -11,6 +11,7 @@ from bag import Bag, TFIDF
 
 class Representation(Serializable):
     dir_name = "representation"
+    loaded_transformed = False
 
     @staticmethod
     def create(config):
@@ -34,8 +35,11 @@ class Representation(Serializable):
         self.set_representation_serialization_sources()
         # set required resources
         self.set_resources()
+        # if a transform has been defined, suspend potential needless loading for now
+        if self.config.has_transform():
+            return
         # fetch the required data
-        self.acquire_data(fatal_error=not can_fail_loading)
+        self.acquire_data()
 
     # add exra representations-specific serialization paths
     def set_representation_serialization_sources(self):
@@ -174,11 +178,17 @@ class Representation(Serializable):
     def set_transform(self, transform):
         """Update representation information as per the input transform"""
         self.name += transform.get_name()
-        self.dataset_vectors = transform.get_vectors()
         self.representation_dim = transform.get_dimension()
+
+        self.dataset_vectors, self.elements_per_instance, self.missing, self.undefined_word_index, \
+            self.present_word_indexes = transform.get_all_preprocessed()
+        self.loaded_transformed = True
 
     def get_vectors(self):
         return self.dataset_vectors
+
+    def get_elements_per_instance(self):
+        return self.elements_per_instance
 
 
 class Embedding(Representation):
@@ -214,7 +224,7 @@ class Embedding(Representation):
             error(pe.msg)
 
     def __init__(self):
-        Representation.__init__(self, can_fail_loading=False)
+        Representation.__init__(self)
 
     # get vector representations of a list of words
     def get_embeddings(self, words):
@@ -232,6 +242,10 @@ class Embedding(Representation):
         if self.loaded_finalized:
             debug("Will not compute dense, since finalized data were loaded")
             return
+        if self.loaded_transformed:
+            debug("Will not compute dense, since transformed data were loaded")
+            return
+
         info("Embeddings are already dense.")
         # instance vectors are already dense - just make dataset-level ndarrays
         for dset_idx in range(len(self.dataset_vectors)):
@@ -405,7 +419,7 @@ class Train(Representation):
 
     def __init__(self, config):
         self.config = config
-        Representation.__init__(self, can_fail_loading=True)
+        Representation.__init__(self)
 
     # embedding training data (e.g. word indexes) does not depend on embedding dimension
     # so naming is overriden to omit embedding dimension
@@ -520,6 +534,12 @@ class BagRepresentation(Representation):
 
     # sparse to dense
     def compute_dense(self):
+        if self.loaded_finalized:
+            debug("Will not compute dense, since finalized data were loaded")
+            return
+        if self.loaded_transformed:
+            debug("Will not compute dense, since transformed data were loaded")
+            return
         info("Computing dense representation for the bag.")
         for dset_idx in range(len(self.dataset_vectors)):
             for vec_idx in range(len(self.dataset_vectors[dset_idx])):
