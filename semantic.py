@@ -68,7 +68,7 @@ class SemanticResource(Serializable):
             self.handler_functions.insert(0, self.handle_vectorized)
             self.set_resources()
             self.acquire_data(fatal_error=False)
-            if any(self.load_flags):
+            if self.loaded():
                 info("Loaded by using semantic name: {}".format(semantic_name))
                 break
         # restore correct config
@@ -160,10 +160,6 @@ class SemanticResource(Serializable):
     def get_all_preprocessed(self):
         return [self.concept_freqs, self.global_freqs, self.reference_concepts]
 
-    # raw path getter (dummy)
-    def get_raw_path(self):
-        return None
-
     def lookup(self, candidate):
         error("Attempted to lookup from the base class")
 
@@ -187,9 +183,6 @@ class SemanticResource(Serializable):
     # make name string from components
     def form_name(self):
         self.name = "{}_{}".format(self.dataset_name, self.semantic_name)
-
-    def fetch_raw(self, dummy_input):
-        return None
 
     def assign_representation(self, representation):
         self.representation = representation

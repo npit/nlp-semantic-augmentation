@@ -23,29 +23,37 @@ def main(config_file):
     info("===== DATASET =====")
     dataset = Dataset.create(config)
 
-    # embedding
-    info("===== EMBEDDING =====")
+    # check for existing & precomputed transformed representations
+    info("===== REPRESENTATION =====")
+    # compute or load the representation
     representation = Representation.create(config)
-    representation.map_text(dataset)
-    representation.compute_dense()
 
     transform = None
     if config.has_transform():
-        info("===== TRANSFORM =====")
         transform = Transform.create(config)
-        transform.compute(representation.get_vectors())
-        representation.set_transformed(transform)
 
+    # representation computation
+    if not config.has_transform() or not transform.loaded():
+        representation.map_text(dataset)
+        representation.compute_dense()
+
+    # transform computation
+    if config.has_transform() and not transform.loaded():
+        info("===== TRANSFORM =====")
+        transform.compute(representation.get_vectors())
+        representation.set_transform(transform)
+
+    # aggregation
     representation.aggregate_instance_vectors()
-    semantic = None
+
     # semantic enrichment
+    semantic = None
     if config.has_semantic():
         info("===== SEMANTIC =====")
         semantic = SemanticResource.create(config)
         semantic.map_text(representation, dataset)
         semantic.generate_vectors()
-
-    representation.finalize(semantic, transform)
+        representation.set_semantic(semantic)
 
     # learning
     info("===== LEARNING =====")

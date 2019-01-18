@@ -6,7 +6,6 @@ from utils import error, tictoc, info, debug, read_pickled, write_pickled, warni
 import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
-
 from bag import Bag, TFIDF
 
 
@@ -27,6 +26,7 @@ class Representation(Serializable):
 
     def __init__(self, can_fail_loading=True):
         self.set_params()
+        self.set_name()
         Serializable.__init__(self, self.dir_name)
         # check for serialized mapped data
         self.set_serialization_params()
@@ -53,7 +53,7 @@ class Representation(Serializable):
         if self.config.has_transform():
             pass
 
-        # fill in at the desired order (finalized, transformed, aggregated 
+        # fill in at the desired order (finalized, transformed, aggregated
         self.data_paths = [self.serialization_path_finalized, self.serialization_path_aggregated] + self.data_paths
         self.read_functions = [read_pickled] * 2 + self.read_functions
         self.handler_functions = [self.handle_finalized, self.handle_aggregated] + self.handler_functions
@@ -62,21 +62,8 @@ class Representation(Serializable):
     def set_params(self):
         self.representation_dim = self.config.representation.dimension
         self.dataset_name = self.config.dataset.name
-        self.aggregation = self.config.representation.aggregation
         self.base_name = self.name
-        self.sequence_length = self.config.representation.sequence_length
         self.dataset_name = Dataset.get_limited_name(self.config)
-        self.map_missing_unks = self.config.representation.missing_words == "unk"
-        if type(self.aggregation) == list:
-            if self.aggregation[0] == "pad":
-                self.vectors_per_doc = self.sequence_length
-            elif self.aggregation[0] == "avg":
-                self.vectors_per_doc = 1
-            else:
-                error("Undefined aggregation: {}".format(self.aggregation))
-        else:
-            error("Undefined aggregation: {}".format(self.aggregation))
-        self.set_name()
 
     # name setter function, exists for potential overriding
     def set_name(self):
@@ -84,12 +71,10 @@ class Representation(Serializable):
 
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion
-    def finalize(self, semantic, transform):
+    def set_semantic(self, semantic):
         if self.loaded_finalized:
             info("Skipping embeddings finalizing, since finalized data was already loaded.")
             return
-
-
 
         finalized_name = self.name
         if self.config.semantic.enrichment is not None:
@@ -97,7 +82,7 @@ class Representation(Serializable):
                 error("Semantic enrichment undefined for embedding training, for now.")
             info("Enriching {} embeddings with semantic information, former having {} vecs/doc.".format(self.config.representation.name, self.vectors_per_doc))
             semantic_data = semantic.get_vectors()
-            finalized_name += ".{}.enriched".format(SemanticResource.get_semantic_name(self.config))
+            # finalized_name += ".{}.enriched".format(SemanticResource.get_semantic_name(self.config))
 
             if self.config.semantic.enrichment == "concat":
                 semantic_dim = len(semantic_data[0][0])
@@ -122,18 +107,6 @@ class Representation(Serializable):
                     self.dataset_vectors[dset_idx] = semantic_data[dset_idx]
             else:
                 error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
-        else:
-            info("Finalizing embeddings without semantic information.")
-            finalized_name += ".finalized"
-            dim = self.representation_dim if not self.config.representation.name == "train" else 1
-            self.final_dim = dim
-            # concatenating embeddings for each dataset portion into a single dataframe
-            for dset_idx in range(len(self.dataset_vectors)):
-                new_dset_embeddings = np.ndarray((0, dim), np.float32)
-                for doc_idx in range(len(self.dataset_vectors[dset_idx])):
-                    embeddings = self.dataset_vectors[dset_idx][doc_idx]
-                    new_dset_embeddings = np.vstack([new_dset_embeddings, embeddings])
-                self.dataset_vectors[dset_idx] = new_dset_embeddings
 
         # serialize finalized embeddings
         write_pickled(self.serialization_path_finalized, self.get_all_preprocessed())
@@ -198,7 +171,7 @@ class Representation(Serializable):
     def get_present_word_indexes(self):
         return self.present_word_indexes
 
-    def set_transformed(self, transform):
+    def set_transform(self, transform):
         """Update representation information as per the input transform"""
         self.name += transform.get_name()
         self.dataset_vectors = transform.get_vectors()
@@ -256,9 +229,14 @@ class Embedding(Representation):
 
     # compute dense elements
     def compute_dense(self):
+        if self.loaded_finalized:
+            debug("Will not compute dense, since finalized data were loaded")
+            return
+        info("Embeddings are already dense.")
         # instance vectors are already dense - just make dataset-level ndarrays
         for dset_idx in range(len(self.dataset_vectors)):
             self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values
+            info("Computed dense shape for {}-sized dataset {}/{}: {}".format(len(self.dataset_vectors[dset_idx]), dset_idx + 1, len(self.dataset_vectors), self.dataset_vectors[dset_idx].shape))
 
     # prepare embedding data to be ready for classification
     def aggregate_instance_vectors(self):
@@ -267,7 +245,6 @@ class Embedding(Representation):
             return
         info("Aggregating embeddings to single-vector-instances via the {} method.".format(self.aggregation))
         # use words per document for the aggregation, aggregating function as an argument
-        aggregated_dataset_vectors = np.ndarray((0, self.representation_dim), np.float32)
         # stats
         aggregation_stats = 0, 0
 
@@ -275,6 +252,7 @@ class Embedding(Representation):
             info("Aggregating embedding vectors for {}-sized collection {}/{}".format(
                 len(self.dataset_vectors[dset_idx]), dset_idx + 1, len(self.dataset_vectors)))
 
+            aggregated_dataset_vectors = np.ndarray((0, self.representation_dim), np.float32)
             curr_idx = 0
             for inst_len in self.elements_per_instance[dset_idx]:
                 curr_instance = self.dataset_vectors[dset_idx][curr_idx: curr_idx + inst_len]
@@ -307,7 +285,21 @@ class Embedding(Representation):
             if self.aggregation[0] == "pad":
                 info("Truncated {:.3f}% and padded {:.3f} % items.".format(*[x / len(self.dataset_vectors[dset_idx]) * 100 for x in aggregation_stats]))
 
-
+    # shortcut for reading configuration values
+    def set_params(self):
+        self.aggregation = self.config.representation.aggregation
+        self.sequence_length = self.config.representation.sequence_length
+        self.map_missing_unks = self.config.representation.missing_words == "unk"
+        if type(self.aggregation) == list:
+            if self.aggregation[0] == "pad":
+                self.vectors_per_doc = self.sequence_length
+            elif self.aggregation[0] == "avg":
+                self.vectors_per_doc = 1
+            else:
+                error("Undefined aggregation: {}".format(self.aggregation))
+        else:
+            error("Undefined aggregation: {}".format(self.aggregation))
+        Representation.set_params(self)
 
 # generic class to load pickled embedding vectors
 class VectorEmbedding(Embedding):
@@ -376,8 +368,6 @@ class VectorEmbedding(Embedding):
 
                     # get embeddings
                     text_embeddings = self.embeddings.loc[word_list]
-                    if len(text_embeddings) == 0:
-                        import pdb; pdb.set_trace()
                     self.dataset_vectors[-1].append(text_embeddings)
 
                     # update present words and their index, per doc
@@ -486,13 +476,16 @@ class Train(Representation):
 
 class BagRepresentation(Representation):
     name = "bag"
-    bag_class = TFIDF
+    bag_class = Bag
     token_list = None
 
     def __init__(self, config):
         self.config = config
         self.config.representation.dimension = None
         Representation.__init__(self)
+
+    def set_params(self):
+        self.vectors_per_doc = 1
 
     def set_name(self):
         # disable the dimension
@@ -527,11 +520,13 @@ class BagRepresentation(Representation):
 
     # sparse to dense
     def compute_dense(self):
+        info("Computing dense representation for the bag.")
         for dset_idx in range(len(self.dataset_vectors)):
             for vec_idx in range(len(self.dataset_vectors[dset_idx])):
                 self.dataset_vectors[dset_idx][vec_idx] = self.get_dense_vector(self.dataset_vectors[dset_idx][vec_idx])
             # to ndarray
             self.dataset_vectors[dset_idx] = np.array(self.dataset_vectors[dset_idx])
+            info("Computed shape for dataset {}/{}: {}".format(dset_idx + 1, len(self.dataset_vectors), self.dataset_vectors[dset_idx].shape))
 
     def aggregate_instance_vectors(self):
         # bag representations produce ready-to-use vectors

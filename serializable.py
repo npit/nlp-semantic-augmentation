@@ -62,6 +62,9 @@ class Serializable:
         self.loaded_preprocessed = False
         self.loaded_aggregated = False
 
+    def loaded(self):
+        return any(self.load_flags)
+
     def set_serialization_params(self):
         # setup paths
         self.set_paths_by_name(self.name, raw_path=self.get_raw_path())
@@ -131,7 +134,7 @@ class Serializable:
         self.resource_always_load_flag = []
 
     def get_raw_path(self):
-        error("Need to override raw path getter for {}".format(self.name))
+        return None
 
     def handle_preprocessed(self, preprocessed):
         error("Need to override preprocessed handling for {}".format(self.name))
@@ -139,8 +142,8 @@ class Serializable:
     def set_raw_path(self):
         error("Need to override raw path dataset setter for {}".format(self.name))
 
-    def fetch_raw(self):
-        error("Need to override raw data fetcher for {}".format(self.name))
+    def fetch_raw(self, dummy_input):
+        return None
 
     def handle_raw(self, raw_data):
         error("Need to override raw data handler for {}".format(self.name))

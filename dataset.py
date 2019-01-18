@@ -42,7 +42,7 @@ class Dataset(Serializable):
         # check for limited dataset
         self.apply_limit()
         self.acquire_data(fatal_error=False)
-        if any(self.load_flags):
+        if self.loaded():
             # downloaded successfully
             self.loaded_index = self.load_flags.index(True)
         else:
