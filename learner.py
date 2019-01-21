@@ -11,7 +11,9 @@ from keras.models import Sequential, load_model
 from keras.layers import Activation, Dense, Dropout, Embedding, Reshape
 from keras.layers import LSTM as keras_lstm
 from keras import callbacks
-from utils import info, debug, tictoc, error, write_pickled, read_pickled, warning, one_hot
+from utils import info, debug, tictoc, error, write_pickled, read_pickled, one_hot
+# from keras import backend
+# import tensorflow as tf
 
 warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
 
@@ -206,7 +208,7 @@ class DNN:
             list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
         self.input_dim = embeddings.get_final_dim()
 
-        self.forbid_load = self.config.learner.noload
+        self.forbid_load = self.config.learner.no_load
         self.sequence_length = self.config.learner.sequence_length
         self.results_folder = self.config.folders.results
         self.models_folder = join(self.results_folder, "models")
@@ -217,7 +219,17 @@ class DNN:
         self.do_validate_portion = self.validation_portion is not None and self.validation_portion > 0.0
         self.validation_exists = self.do_folds or self.do_validate_portion
         self.early_stopping_patience = self.config.train.early_stopping_patience
+
+        # initialize rng
+        # for 100% determinism, you may need to enforce CPU single-threading
+        # tf.set_random_seed(self.seed)
+        # session_conf = tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
+        # sess = tf.Session(graph=tf.get_default_graph(), config=session_conf)
+        # backend.set_session(sess)
+
         self.seed = self.config.get_seed()
+        np.random.seed(self.seed)
+
         self.batch_size = self.config.train.batch_size
         info("Learner data/labels: train: {} test: {}".format(self.train.shape, self.test.shape))
 
@@ -244,7 +256,6 @@ class DNN:
                     self.preferred_measures,
                     "multilabel" if self.do_multilabel else "single-label"))
             self.preferred_measures = matching_measures
-        
 
     # potentially apply DNN input data tranformations
     def process_input(self, data):
@@ -293,7 +304,7 @@ class DNN:
                         continue
                 # train the model
                 with tictoc("Training run {} on train/val data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
-                    model = self.train_model2(trainval_idx)
+                    model = self.train_model(trainval_idx)
                 # test the model
                 with tictoc("Testing {} on data: {}.".format(self.current_run_descr, self.num_test_labels)):
                     self.do_test(model)
@@ -344,7 +355,7 @@ class DNN:
         return train_labels, val_labels
 
     # train a model on training & validation data portions
-    def train_model2(self, trainval_idx):
+    def train_model(self, trainval_idx):
         # labels
         train_labels, val_labels = self.prepare_labels(trainval_idx)
         # data
@@ -435,7 +446,7 @@ class DNN:
         trainval_serialization_file = join(self.results_folder, basename(self.get_current_model_path()) + ".trainval.pickle")
         if self.do_folds:
             # check if such data exists
-            if exists(trainval_serialization_file):
+            if exists(trainval_serialization_file) and not self.forbid_load:
                 info("Training {} with input data: {} samples, {} labels, on LOADED existing {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
                 deser = read_pickled(trainval_serialization_file)
                 if not len(deser) == self.folds:
@@ -449,7 +460,7 @@ class DNN:
 
         if self.do_validate_portion:
             # check if such data exists
-            if exists(trainval_serialization_file):
+            if exists(trainval_serialization_file) and not self.forbid_load:
                 info("Training {} with input data: {} samples, {} labels, on LOADED existing {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
                 deser = read_pickled(trainval_serialization_file)
                 info("Loaded train/val split of {} / {}.".format(*list(map(len, deser[0]))))

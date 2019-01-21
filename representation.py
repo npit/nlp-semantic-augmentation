@@ -35,8 +35,9 @@ class Representation(Serializable):
         self.set_representation_serialization_sources()
         # set required resources
         self.set_resources()
-        # if a transform has been defined, suspend potential needless loading for now
+        # if a transform has been defined
         if self.config.has_transform():
+            # suspend potential needless loading for now
             return
         # fetch the required data
         self.acquire_data()
@@ -46,16 +47,11 @@ class Representation(Serializable):
         # compute names
         aggr = "".join(list(map(str, self.config.representation.aggregation + [self.sequence_length])))
         self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
-        extras = [self.serialization_path_aggregated, read_pickled]
 
         sem = SemanticResource.get_semantic_name(self.config)
         finalized_id = sem + "_" + self.config.semantic.enrichment if sem else "nosem"
         self.serialization_path_finalized = "{}/{}.aggregated_{}.finalized_{}.pickle".format(
             self.serialization_dir, self.name, aggr, finalized_id)
-        extras = [self.serialization_path_aggregated, read_pickled]
-
-        if self.config.has_transform():
-            pass
 
         # fill in at the desired order (finalized, transformed, aggregated
         self.data_paths = [self.serialization_path_finalized, self.serialization_path_aggregated] + self.data_paths
@@ -64,14 +60,14 @@ class Representation(Serializable):
 
     # shortcut for reading configuration values
     def set_params(self):
-        self.representation_dim = self.config.representation.dimension
+        self.dimension = self.config.representation.dimension
         self.dataset_name = self.config.dataset.name
         self.base_name = self.name
         self.dataset_name = Dataset.get_limited_name(self.config)
 
     # name setter function, exists for potential overriding
     def set_name(self):
-        self.name = "{}_{}_dim{}".format(self.base_name, self.dataset_name, self.representation_dim)
+        self.name = "{}_{}_dim{}".format(self.base_name, self.dataset_name, self.dimension)
 
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion
@@ -80,17 +76,17 @@ class Representation(Serializable):
             info("Skipping embeddings finalizing, since finalized data was already loaded.")
             return
 
-        finalized_name = self.name
         if self.config.semantic.enrichment is not None:
             if self.config.representation.name == "train":
                 error("Semantic enrichment undefined for embedding training, for now.")
-            info("Enriching {} embeddings with semantic information, former having {} vecs/doc.".format(self.config.representation.name, self.vectors_per_doc))
             semantic_data = semantic.get_vectors()
+            info("Enriching {} embeddings with shapes: {} {} and {} vecs/doc with semantic information of shapes {} {}.".
+                 format(self.config.representation.name, *shapes_list(self.dataset_vectors), self.vectors_per_doc, *shapes_list(semantic_data)))
             # finalized_name += ".{}.enriched".format(SemanticResource.get_semantic_name(self.config))
 
             if self.config.semantic.enrichment == "concat":
                 semantic_dim = len(semantic_data[0][0])
-                self.final_dim = self.representation_dim + semantic_dim
+                self.final_dim = self.dimension + semantic_dim
                 for dset_idx in range(len(semantic_data)):
                     info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx + 1, len(semantic_data), self.final_dim))
                     if self.vectors_per_doc > 1:
@@ -127,7 +123,7 @@ class Representation(Serializable):
         debug("Read finalized dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
 
     def get_zero_pad_element(self):
-        return np.zeros((1, self.representation_dim), np.float32)
+        return np.zeros((1, self.dimension), np.float32)
 
     def get_vocabulary_size(self):
         return len(self.dataset_words[0])
@@ -142,7 +138,7 @@ class Representation(Serializable):
         return self.final_dim
 
     def get_dim(self):
-        return self.representation_dim
+        return self.dimension
 
     # mark word-index relations for stat computation, add unk if needed
     def handle_raw_serialized(self, raw_serialized):
@@ -151,13 +147,6 @@ class Representation(Serializable):
         self.embeddings = raw_serialized
         for w in self.embeddings.index.tolist():
             self.words_to_numeric_idx[w] = len(self.words_to_numeric_idx)
-
-    # mark preprocessing
-    def handle_preprocessed(self, preprocessed):
-        self.dataset_vectors, self.elements_per_instance, self.missing, \
-            self.undefined_word_index, self.present_word_indexes = preprocessed
-        self.loaded_preprocessed = True
-        debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
 
     def handle_raw(self, raw_data):
         pass
@@ -175,15 +164,6 @@ class Representation(Serializable):
     def get_present_word_indexes(self):
         return self.present_word_indexes
 
-    def set_transform(self, transform):
-        """Update representation information as per the input transform"""
-        self.name += transform.get_name()
-        self.representation_dim = transform.get_dimension()
-
-        self.dataset_vectors, self.elements_per_instance, self.missing, self.undefined_word_index, \
-            self.present_word_indexes = transform.get_all_preprocessed()
-        self.loaded_transformed = True
-
     def get_vectors(self):
         return self.dataset_vectors
 
@@ -197,8 +177,7 @@ class Embedding(Representation):
     dataset_vectors = None
     embeddings = None
     words_to_numeric_idx = None
-    missing = []
-    representation_dim = None
+    dimension = None
     sequence_length = None
 
     def save_raw_embedding_weights(self, weights):
@@ -266,14 +245,14 @@ class Embedding(Representation):
             info("Aggregating embedding vectors for {}-sized collection {}/{}".format(
                 len(self.dataset_vectors[dset_idx]), dset_idx + 1, len(self.dataset_vectors)))
 
-            aggregated_dataset_vectors = np.ndarray((0, self.representation_dim), np.float32)
+            aggregated_dataset_vectors = np.ndarray((0, self.dimension), np.float32)
             curr_idx = 0
             for inst_len in self.elements_per_instance[dset_idx]:
                 curr_instance = self.dataset_vectors[dset_idx][curr_idx: curr_idx + inst_len]
 
                 # average aggregation to a single vector
                 if self.aggregation[0] == "avg":
-                    curr_instance = np.mean(curr_instance, axis=0).reshape(1, self.representation_dim)
+                    curr_instance = np.mean(curr_instance, axis=0).reshape(1, self.dimension)
                 # padding aggregation to specified vectors per instance
                 elif self.aggregation[0] == "pad":
                     # filt = self.aggregation[1]
@@ -315,6 +294,22 @@ class Embedding(Representation):
             error("Undefined aggregation: {}".format(self.aggregation))
         Representation.set_params(self)
 
+    # mark preprocessing
+    def handle_preprocessed(self, preprocessed):
+        self.loaded_preprocessed = True
+        self.dataset_vectors, self.elements_per_instance, self.undefined_word_index, self.present_word_indexes = preprocessed
+        debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
+
+    def set_transform(self, transform):
+        """Update representation information as per the input transform"""
+        self.name += transform.get_name()
+        self.dimension = transform.get_dimension()
+
+        self.dataset_vectors, self.elements_per_instance, self.undefined_word_index, \
+            self.present_word_indexes = transform.get_all_preprocessed()
+        self.loaded_transformed = True
+
+
 # generic class to load pickled embedding vectors
 class VectorEmbedding(Embedding):
     name = "vector"
@@ -322,7 +317,7 @@ class VectorEmbedding(Embedding):
 
     # expected raw data path
     def get_raw_path(self):
-        return "{}/{}_dim{}.pickle".format(self.raw_data_dir, self.base_name, self.representation_dim)
+        return "{}/{}_dim{}.pickle".format(self.raw_data_dir, self.base_name, self.dimension)
 
     # transform input texts to embeddings
     def map_text(self, dset):
@@ -337,7 +332,7 @@ class VectorEmbedding(Embedding):
 
         if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
             warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
-            self.embeddings.loc[self.unknown_word_token] = np.zeros(self.representation_dim)
+            self.embeddings.loc[self.unknown_word_token] = np.zeros(self.dimension)
 
         # loop over input text bundles (e.g. train & test)
         for dset_idx in range(len(text_bundles)):
@@ -410,7 +405,7 @@ class VectorEmbedding(Embedding):
         Embedding.__init__(self)
 
     def get_all_preprocessed(self):
-        return [self.dataset_vectors, self.elements_per_instance, self.missing, None, self.present_word_indexes]
+        return [self.dataset_vectors, self.elements_per_instance, None, self.present_word_indexes]
 
 
 class Train(Representation):
@@ -458,7 +453,8 @@ class Train(Representation):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_preprocessed(self):
-        return [self.dataset_vectors, self.dataset_words, None, self.undefined_word_index, None]
+        # instead of undefined word index, plug in the token list
+        return [self.dataset_vectors, self.dataset_words, self.undefined_word_index, None]
 
     def get_zero_pad_element(self):
         return self.undefined_word_index
@@ -471,13 +467,13 @@ class Train(Representation):
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.dataset_vectors, self.dataset_words, self.missing, self.undefined_word_index, _ = preprocessed
+        self.dataset_vectors, self.dataset_words, self.undefined_word_index, _ = preprocessed
+        debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
 
     def save_raw_embedding_weights(self, weights, write_dir):
         # rename to generic vectorembedding
         emb_name = ("raw_" + self.name + "_dim{}.pickle".
-                    format(self.config.representation.dimension)).\
-            replace(Train.name, VectorEmbedding.name)
+                    format(self.config.representation.dimension)).replace(Train.name, VectorEmbedding.name)
         writepath = join(write_dir, emb_name)
         # associate with respective words
         index = self.dataset_words[0] + [self.undefined_word_name]
@@ -495,16 +491,18 @@ class BagRepresentation(Representation):
 
     def __init__(self, config):
         self.config = config
-        self.config.representation.dimension = None
+        # check if a dimension meta file exists, to read dimension
         Representation.__init__(self)
 
     def set_params(self):
         self.vectors_per_doc = 1
+        self.sequence_length = 1
+        Representation.set_params(self)
 
     def set_name(self):
         # disable the dimension
         Representation.set_name(self)
-        # if external token list, add its length
+        # if external token list, add its length to the name
         if self.config.representation.token_list is not None:
             self.name += "_tok_{}".format(basename(self.config.representation.token_list))
 
@@ -523,11 +521,11 @@ class BagRepresentation(Representation):
         return None
 
     def get_all_preprocessed(self):
-        return [self.dataset_vectors, self.elements_per_instance, None, None, self.present_word_indexes]
+        return [self.dataset_vectors, self.elements_per_instance, self.token_list, self.present_word_indexes]
 
     # for bags, existing vector is a sparse dict list. Fill with zeros.
     def get_dense_vector(self, doc_dict):
-        full_vector = np.zeros((self.representation_dim,), np.float32)
+        full_vector = np.zeros((self.dimension,), np.float32)
         for t in doc_dict:
             full_vector[t] = doc_dict[t]
         return full_vector
@@ -552,10 +550,29 @@ class BagRepresentation(Representation):
         # bag representations produce ready-to-use vectors
         pass
 
+    def handle_preprocessed(self, preprocessed):
+        self.loaded_preprocessed = True
+        # intead of undefined word index, get the token list
+        self.dataset_vectors, self.dataset_words, self.token_list, _ = preprocessed
+        # peek vector dimension
+        data_dim = self.dataset_vectors[0]
+        if self.dimension is not None:
+            if self.dimension != data_dim:
+                error("Configuration for {} set to dimension {} but read {} from data.".format(self.name, self.dimension, data_dim))
+        self.dimension = data_dim
+
+    def set_transform(self, transform):
+        """Update representation information as per the input transform"""
+        self.name += transform.get_name()
+        self.dimension = transform.get_dimension()
+
+        self.dataset_vectors, self.elements_per_instance, self.token_list, self.present_word_indexes = transform.get_all_preprocessed()
+        self.loaded_transformed = True
+
     def map_text(self, dset):
         if self.token_list is None:
             self.token_list = dset.vocabulary
-            self.representation_dim = len(self.token_list)
+            self.dimension = len(self.token_list)
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
         info("Mapping {} to {} representation.".format(dset.name, self.name))
@@ -572,8 +589,11 @@ class BagRepresentation(Representation):
         self.present_word_indexes.append(self.bag.get_present_token_indexes())
 
         # set representation dim and update name
-        self.representation_dim = len(self.token_list)
+        self.dimension = len(self.token_list)
         self.set_name()
+        self.set_serialization_params()
+        self.set_representation_serialization_sources()
+        info("Renamed representation after bag computation to: {}".format(self.name))
 
         # test
         self.bag = self.bag_class()
@@ -582,8 +602,16 @@ class BagRepresentation(Representation):
         self.dataset_vectors.append(self.bag.get_weights())
         self.present_word_indexes.append(self.bag.get_present_token_indexes())
 
+        # set misc required variables
+        self.elements_per_instance = [[1 for _ in ds] for ds in self.dataset_vectors]
+
         # write mapped data
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+
+        # if the representation length is not preset, write a small file with the dimension
+        if self.config.representation.token_list is not None:
+            with open(self.serialization_path_preprocessed + ".meta", "w") as f:
+                f.write(str(self.dimension))
 
 
 class TFIDFRepresentation(BagRepresentation):

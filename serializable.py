@@ -1,4 +1,4 @@
-from utils import error, read_pickled, write_pickled, info, debug
+from utils import error, read_pickled, info, debug
 from os.path import exists, isfile, join
 from os import makedirs
 
@@ -94,13 +94,13 @@ class Serializable:
             # debug("Attempting load of {} with {}.".format(path, self.read_functions[index]))
             data = self.read_functions[index](path)
             if data is None:
-                debug("Failed to load {} from path {}".format(self.name, path))
+                # debug("Failed to load {} from path {}".format(self.name, path))
                 return False
             self.handler_functions[index](data)
             self.load_flags[index] = True
             return True
         else:
-            debug("Failed to load {} from path {}".format(self.name, path))
+            # debug("Failed to load {} from path {}".format(self.name, path))
             return False
 
     def acquire_resources(self):
@@ -111,15 +111,14 @@ class Serializable:
                 read_result = self.resource_read_functions[r](res)
                 self.resource_handler_functions[r](read_result)
 
-    def acquire_data(self, fatal_error=True, do_preprocess=True):
+    def acquire_data(self, do_preprocess=True):
         self.load_flags = [False for _ in self.data_paths]
         for index in range(len(self.data_paths)):
             if (self.attempt_load(index)):
                 return index
         # no data was found to load
-        if fatal_error and not self.resource_paths:
-            error("Failed to load {}".format(self.name))
-        else:
+        if not self.loaded():
+            info("Failed to load {}".format(self.name))
             self.acquire_resources()
             return False
         if do_preprocess:

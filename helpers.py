@@ -7,7 +7,6 @@ import utils
 from utils import need, error
 import shutil
 
-
 class Config:
     log_dir = "logs"
     seed_file = "seed.txt"
@@ -30,6 +29,7 @@ class Config:
         measures = None
 
     class representation:
+        name = None
         dimension = None
         token_list = None
 
@@ -210,7 +210,7 @@ class Config:
         self.learner.hidden_dim = learner_opts["hidden_dim"]
         self.learner.num_layers = learner_opts["layers"]
         self.learner.sequence_length = self.get_value("sequence_length", default=1, base=learner_opts)
-        self.learner.noload = self.get_value("noload", default=False, base=learner_opts)
+        self.learner.no_load = self.get_value("no_load", default=False, base=learner_opts)
 
         need(self.has_value("train"), "Need training information")
         training_opts = self.conf["train"]

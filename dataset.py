@@ -1,4 +1,5 @@
 import random
+import tqdm
 import numpy as np
 from os import listdir
 from nltk.tokenize import RegexpTokenizer
@@ -24,7 +25,6 @@ class Dataset(Serializable):
     train, test = None, None
     multilabel = False
 
-
     def create(config):
         name = config.dataset.name
         if name == TwentyNewsGroups.name:
@@ -42,7 +42,7 @@ class Dataset(Serializable):
 
         # check for limited dataset
         self.apply_limit()
-        self.acquire_data(fatal_error=False)
+        self.acquire_data()
         if self.loaded():
             # downloaded successfully
             self.loaded_index = self.load_flags.index(True)
@@ -108,6 +108,7 @@ class Dataset(Serializable):
         return self.num_labels
 
     # static method for external name computation
+    @staticmethod
     def get_limited_name(config):
         name = config.dataset.name
         if config.has_class_limit():
@@ -128,13 +129,11 @@ class Dataset(Serializable):
                 try:
                     # use stratification
                     ratio = ltrain / len(self.train)
-                    print(ratio, ltrain, len(self.train))
                     splitter = StratifiedShuffleSplit(1, test_size=ratio)
                     splits = list(splitter.split(np.zeros(len(self.train)), self.train_target))
                     self.train = [self.train[n] for n in splits[0][1]]
                     self.train_target = [self.train_target[n] for n in splits[0][1]]
                     info("Limited {} loaded data to {} train items.".format(self.base_name, len(self.train)))
-                    print(len(self.train_target))
                 except ValueError as ve:
                     warning(ve)
                     warning("Resorting to non-stratified limiting")
@@ -186,7 +185,7 @@ class Dataset(Serializable):
                 # fix the label names
                 self.train_label_names = [self.train_label_names[rc] for rc in retained_classes]
                 self.test_label_names = [self.test_label_names[rc] for rc in retained_classes]
-                info("Limited {} dataset to {} classes: {} - i.e. {} - resulting in {} train and {} test data."\
+                info("Limited {} dataset to {} classes: {} - i.e. {} - resulting in {} train and {} test data."
                      .format(self.base_name, self.num_labels, retained_classes,
                              self.train_label_names, len(self.train), len(self.test)))
                 debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_target)), max(map(len, self.test_target))))
@@ -228,12 +227,15 @@ class Dataset(Serializable):
         stopw = set(stopwords.words(self.language))
         ret_words_pos, ret_voc = [], set()
         num_words = []
-        for i in range(len(document_list)):
-            text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
-            ret_words_pos.append(text_words_pos)
-            if track_vocabulary:
-                ret_voc.update([wp[0] for wp in text_words_pos])
-            num_words.append(len(text_words_pos))
+        with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True) as pbar:
+            for i in range(len(document_list)):
+                pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
+                pbar.update()
+                text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
+                ret_words_pos.append(text_words_pos)
+                if track_vocabulary:
+                    ret_voc.update([wp[0] for wp in text_words_pos])
+                num_words.append(len(text_words_pos))
         stats = [x(num_words) for x in [np.mean, np.var, np.std]]
         info("Words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
         return ret_words_pos, ret_voc
@@ -260,7 +262,7 @@ class Dataset(Serializable):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        return [self.train, self.train_target, self.train_label_names, self.test, self.test_target, self.test_label_names ]
+        return [self.train, self.train_target, self.train_label_names, self.test, self.test_target, self.test_label_names]
 
     def get_all_preprocessed(self):
         return self.get_all_raw() + [self.vocabulary, self.vocabulary_index, self.undefined_word_index]
@@ -279,9 +281,8 @@ class TwentyNewsGroups(Dataset):
             return None
         info("Downloading {} via sklearn".format(self.name))
 
-        seed = self.config.get_seed()
-        train = fetch_20newsgroups(subset='train', shuffle=True, random_state=seed)
-        test = fetch_20newsgroups(subset='test', shuffle=True, random_state=seed)
+        train = fetch_20newsgroups(subset='train', shuffle=True, random_state=self.config.get_seed())
+        test = fetch_20newsgroups(subset='test', shuffle=True, random_state=self.config.get_seed())
         return [train, test]
 
     def handle_raw(self, raw_data):
@@ -299,7 +300,6 @@ class TwentyNewsGroups(Dataset):
         write_pickled(self.serialization_path, self.get_all_raw())
         self.loaded_raw = True
 
-
     def __init__(self, config):
         self.config = config
         self.base_name = self.name
@@ -313,6 +313,7 @@ class TwentyNewsGroups(Dataset):
 
 class Brown:
     pass
+
 
 class Reuters(Dataset):
     name = "reuters"
@@ -362,7 +363,7 @@ class Reuters(Dataset):
                     self.test.append(content)
                     if cat_index not in cat_idx2label_test:
                         cat_idx2label_test[cat_index] = cat
-        
+
         # list out labels
         for doc in train_docs:
             self.train.append(doc)

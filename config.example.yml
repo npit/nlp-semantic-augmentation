@@ -85,7 +85,7 @@ learner:
   layers: 2
   sequence_length: 10
   # forbid loading existing predictions
-  noload: False
+  no_load: False
 
 
 

@@ -1,7 +1,7 @@
 import numpy as np
 from utils import error, tictoc, debug, info
 import defs
-from copy import copy
+import tqdm
 
 
 class Bag:
@@ -53,6 +53,8 @@ class Bag:
             self.delete_tokens(tokens_to_retain)
         else:
             error("Undefined limiting type: {}".format(self.filter_type))
+        # limit the token list itself
+        self.token_list = [tok for tok in self.token_list if tok in self.global_freqs]
 
     # remove tokens from the accumulated collections
     def delete_tokens(self, tokens_to_retain):
@@ -118,9 +120,11 @@ class Bag:
         self.output_vectors, self.present_tokens, self.present_token_indexes = [], [], []
 
         # global token-wise frequencies
-        with tictoc("Creating bow vectors"):
+        # with tqdm.tqdm(total=len(text_collection)"Creating bow vectors") as pbar:
+        with tqdm.tqdm(desc="Creating bow vectors", total=len(text_collection), ascii=True) as pbar:
             for t, word_pos_list in enumerate(text_collection):
-                debug("Text {}/{}".format(t + 1, len(text_collection)))
+                pbar.set_description("Text {}/{}".format(t + 1, len(text_collection)))
+                pbar.update()
                 text_token_freqs = {}
                 present_words = []
                 # for each word information chunk in the text

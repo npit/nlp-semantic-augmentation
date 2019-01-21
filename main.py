@@ -25,12 +25,12 @@ def main(config_file):
 
     # check for existing & precomputed transformed representations
     info("===== REPRESENTATION =====")
-    # compute or load the representation
+    # setup the representation
     representation = Representation.create(config)
 
     transform = None
     if config.has_transform():
-        transform = Transform.create(config)
+        transform = Transform.create(representation)
         if not transform.loaded():
             # load / acquire necessary data for computation
             representation.acquire_data()
@@ -47,7 +47,6 @@ def main(config_file):
     if config.has_transform():
         info("===== TRANSFORM =====")
         transform.compute(representation)
-        representation.set_transform(transform)
 
     # aggregation
     representation.aggregate_instance_vectors()

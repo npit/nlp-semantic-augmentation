@@ -2,6 +2,7 @@ import time
 import pickle
 import logging
 import numpy as np
+import tqdm
 
 num_warnings = 0
 

@@ -57,7 +57,7 @@ class SemanticResource(Serializable):
         self.set_parameters()
         config_names = self.get_appropriate_config_names()
         for s, semantic_name in enumerate(config_names):
-            debug("Attempting to load semantic info from source {}/{}: {}".format(s + 1, len(config_names), semantic_name))
+            # debug("Attempting to load semantic info from source {}/{}: {}".format(s + 1, len(config_names), semantic_name))
             self.semantic_name = semantic_name
             self.form_name()
             self.set_serialization_params()
@@ -67,9 +67,9 @@ class SemanticResource(Serializable):
             self.read_functions.insert(0, read_pickled)
             self.handler_functions.insert(0, self.handle_vectorized)
             self.set_resources()
-            self.acquire_data(fatal_error=False)
+            self.acquire_data()
             if self.loaded():
-                info("Loaded by using semantic name: {}".format(semantic_name))
+                info("Loaded semantic info by using name: {}".format(semantic_name))
                 break
         # restore correct config
         self.semantic_name = SemanticResource.get_semantic_name(self.config)
@@ -265,7 +265,7 @@ class SemanticResource(Serializable):
 
         # process the dataset
         # train
-        info("Extracting {} semantic information from the training dataset")
+        info("Extracting {} semantic information from the training dataset".format(self.name))
         bag_train.set_element_processing_function(self.get_concept)
         if self.do_limit:
             bag_train.set_token_filtering(self.limit_type, self.limit_number)
