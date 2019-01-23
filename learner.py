@@ -3,7 +3,7 @@ from os.path import join, dirname, exists, basename
 from os import makedirs
 from sklearn import metrics
 from sklearn.exceptions import UndefinedMetricWarning
-from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
+from sklearn.model_selection import KFold, StratifiedKFold, StratifiedShuffleSplit
 import warnings
 import numpy as np
 import pandas as pd
@@ -79,7 +79,7 @@ class DNN:
         self.preferred_types = self.config.print.run_types if self.config.print.run_types else self.run_types
         self.preferred_measures = self.config.print.measures if self.config.print.measures else []
         self.preferred_aggregations = self.config.print.aggregations if self.config.print.aggregations else self.classwise_aggregations
-        self.preferred_stats = self.stats
+        self.preferred_stats = self.config.print.stats if self.config.print.stats else self.stats
 
         # sanity
         undefined = [x for x in self.preferred_types if x not in self.run_types]
@@ -379,10 +379,20 @@ class DNN:
         self.report_early_stopping()
         return model
 
+    def get_score_stats(self, container):
+        scores_str = []
+        for stat in self.preferred_stats:
+            value = container[stat]
+            if type(value) == list:
+                scores_str.append(" ".join(list(map(str, value))))
+            else:
+                scores_str.append("{:.3f}".format(value))
+        return " ".join(scores_str)
+
     # print performance across folds and compute foldwise aggregations
     def report_results(self):
         info("==============================")
-        info("Mean / var / std performance across all {} folds:".format(self.folds))
+        info("{} performance {} across all [{}] folds:".format("/".join(self.preferred_types), "/".join(self.preferred_stats), self.folds))
         for run_type in self.run_types:
             if not self.do_multilabel:
                 for measure in self.measures:
@@ -392,31 +402,28 @@ class DNN:
                         container = self.performance[run_type][measure][aggr]
                         if not container:
                             continue
-                        mean_perf = np.mean(container["folds"])
-                        var_perf = np.var(container["folds"])
-                        std_perf = np.std(container["folds"])
-                        # print, if it's prefered
-                        if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
-                            info("{:10} {:10} {:10} : {:.3f} {:.3f} {:.3f}".format(run_type, aggr, measure, mean_perf, var_perf, std_perf))
                         # add fold-aggregating performance information
-                        self.performance[run_type][measure][aggr]["mean"] = mean_perf
-                        self.performance[run_type][measure][aggr]["var"] = var_perf
-                        self.performance[run_type][measure][aggr]["std"] = std_perf
+                        self.performance[run_type][measure][aggr]["mean"] = np.mean(container["folds"])
+                        self.performance[run_type][measure][aggr]["var"] = np.var(container["folds"])
+                        self.performance[run_type][measure][aggr]["std"] = np.std(container["folds"])
+
+                        # print the combination, if it's in the prefered stuff to print
+                        if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
+                            scores_str = self.get_score_stats(container)
+                            info("{:10} {:10} {:10} : {}".format(run_type, aggr, measure, scores_str))
             else:
                 for measure in self.multilabel_measures:
                     container = self.performance[run_type][measure]
                     if not container:
                         continue
-                    mean_perf = np.mean(container["folds"])
-                    var_perf = np.var(container["folds"])
-                    std_perf = np.std(container["folds"])
+                    # add fold-aggregating performance information
+                    self.performance[run_type][measure]["mean"] = np.mean(container["folds"])
+                    self.performance[run_type][measure]["var"] = np.var(container["folds"])
+                    self.performance[run_type][measure]["std"] = np.std(container["folds"])
                     # print, if it's prefered
                     if all([run_type in self.preferred_types, measure in self.preferred_measures]):
-                        info("{:10} {:10} : {:.3f} {:.3f} {:.3f}".format(run_type, measure, mean_perf, var_perf, std_perf))
-                    # add fold-aggregating performance information
-                    self.performance[run_type][measure]["mean"] = mean_perf
-                    self.performance[run_type][measure]["var"] = var_perf
-                    self.performance[run_type][measure]["std"] = std_perf
+                        scores_str = self.get_score_stats(container)
+                        info("{:10} {:10} : {}".format(run_type, measure, scores_str))
 
         # write the results in csv in the results directory
         # entries in a run_type - measure configuration list are the foldwise scores, followed by the mean
@@ -456,7 +463,9 @@ class DNN:
                     error("Mismatch between max instances in training data ({}) and loaded max index ({}).".format(self.num_train, max_idx))
                 return deser
             info("Training {} with input data: {} samples, {} labels, on {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
-            splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
+            # for multilabel K-fold, stratification is not available
+            FoldClass = KFold if self.do_multilabel and self.do_folds else StratifiedKFold
+            splitter = FoldClass(self.folds, shuffle=True, random_state=self.seed)
 
         if self.do_validate_portion:
             # check if such data exists
@@ -472,8 +481,9 @@ class DNN:
             info("Splitting {} with input data: {} samples, {} labels, on a {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
             splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
 
-        # save and return the splitter splits
+        # generate. for multilabel K-fold, stratification is not usable
         splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
+        # save and return the splitter splits
         makedirs(dirname(trainval_serialization_file), exist_ok=True)
         write_pickled(trainval_serialization_file, splits)
         return splits
