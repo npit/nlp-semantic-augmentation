@@ -7,6 +7,7 @@ import utils
 from utils import need, error
 import shutil
 
+
 class Config:
     log_dir = "logs"
     seed_file = "seed.txt"
@@ -15,6 +16,8 @@ class Config:
     seed = None
     conf = {}
     run_id = None
+
+    name_value_entries = {}
 
     class dataset:
         name = None
@@ -31,7 +34,7 @@ class Config:
     class representation:
         name = None
         dimension = None
-        token_list = None
+        term_list = None
 
     class transform:
         dimension = None
@@ -48,6 +51,7 @@ class Config:
         num_layers = None
         sequence_length = None
         noload = False
+
         def to_str():
             return "{} {} {} {}".format(Config.learner.name, Config.learner.hidden_dim, Config.learner.num_layers, Config.learner.sequence_length)
 
@@ -63,6 +67,7 @@ class Config:
         early_stopping_patience = None
         validation_portion = None
         batch_size = None
+
     class misc:
         keys = {}
 
@@ -169,7 +174,7 @@ class Config:
         self.dataset.name = dataset_opts["name"]
         lims = self.get_value("data_limit", base=dataset_opts, default=None)
         if lims is not None:
-            if not(all([type(x) == int and x > 0 for x in lims]) and len(lims) in [1,2]):
+            if not(all([type(x) == int and x > 0 for x in lims]) and len(lims) in [1, 2]):
                 error("Invalid data limits: {}".format(lims))
             self.dataset.data_limit = lims
             if len(lims) == 1:
@@ -183,7 +188,7 @@ class Config:
         self.representation.dimension = representation_information["dimension"]
         self.representation.sequence_length = self.get_value("sequence_length", default=1, base=representation_information)
         self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)
-        self.representation.token_list = self.get_value("token_list", base = representation_information)
+        self.representation.term_list = self.get_value("term_list", base=representation_information)
 
         if self.has_value("transform"):
             transform_opts = self.conf["transform"]
@@ -240,6 +245,7 @@ class Config:
                     self.misc.keys[kname] = kvalue
 
         self.log_level = self.get_value("log_level", default="info")
+
         print("Read configuration for run {} from {}".format(self.run_id, yaml_file))
 
     def has_transform(self):
@@ -260,11 +266,11 @@ class Config:
     def get_value(self, name, default=None, base=None, expected_type=None):
         if base is None:
             base = self.conf
-        value =  base[name] if name in base else default
+        value = base[name] if name in base else default
         if expected_type is not None and value is not None:
             if type(value) != expected_type:
                 error("Argument {} got value {} which is of type {}, but {} is required."
-                                        .format(name, value, type(value), expected_type))
+                      .format(name, value, type(value), expected_type))
         return value
 
     def has_value(self, name, base=None):

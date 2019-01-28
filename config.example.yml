@@ -11,8 +11,8 @@ representation:
   # Which representation will be used: <pretrained_embedding_name> / train / bag / tfidf
   # Pretrained embeddings should be python pickles
   name: glove
-  # for token-based representation, path to the token list to be used
-  token_list:
+  # for term-based representation, path to the term list to be used
+  term_list:
   # representation dimension: <int>
   dimension: 100
   # Sequence length, for embedding training: <int>

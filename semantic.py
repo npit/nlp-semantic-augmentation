@@ -12,6 +12,8 @@ import json
 import urllib
 from scipy import spatial
 from bag import Bag, TFIDF
+import spotlight
+import yaml
 
 import defs
 
@@ -36,6 +38,8 @@ class SemanticResource(Serializable):
     pos_tag_mapping = {}
     representation = None
 
+    do_cache = True
+
     def get_appropriate_config_names(self):
         semantic_names = []
         # + no filtering, if filtered is specified
@@ -52,7 +56,8 @@ class SemanticResource(Serializable):
 
         return semantic_names
 
-    def __init__(self, config):
+    def __init__(self):
+        self.base_name = self.name
         Serializable.__init__(self, self.dir_name)
         self.set_parameters()
         config_names = self.get_appropriate_config_names()
@@ -86,6 +91,10 @@ class SemanticResource(Serializable):
             return ContextEmbedding(config)
         if name == Framenet.name:
             return Framenet(config)
+        if name == BabelNet.name:
+            return BabelNet(config)
+        if name == DBPedia.name:
+            return DBPedia(config)
         error("Undefined semantic resource: {}".format(name))
     pass
 
@@ -123,15 +132,16 @@ class SemanticResource(Serializable):
     # function to get a concept from a word, using the wordnet api
     # and a local word cache. Updates concept frequencies as well.
     def get_concept(self, word_information):
-        if word_information in self.lookup_cache:
+        if self.do_cache and word_information in self.lookup_cache:
             concept_activations = self.lookup_cache[word_information]
             # debug("Cache hit! for {}".format(word_information))
         else:
             concept_activations = self.lookup(word_information)
             if not concept_activations:
                 return []
-            # populate cache
-            self.lookup_cache[word_information] = concept_activations
+            if self.do_cache:
+                # populate cache
+                self.lookup_cache[word_information] = concept_activations
         return concept_activations
 
     # overridable name setter
@@ -215,6 +225,8 @@ class SemanticResource(Serializable):
 
     # read existing resource-wise serialized semantic cache from previous runs to speedup resolving
     def load_semantic_cache(self):
+        if not self.do_cache:
+            return None
         cache_path = self.get_cache_path()
         if exists(cache_path):
             self.lookup_cache = read_pickled(cache_path)
@@ -224,6 +236,8 @@ class SemanticResource(Serializable):
 
     # write the semantic cache after resolution of the current dataset
     def write_semantic_cache(self):
+        if not self.do_cache:
+            return
         cache_path = self.get_cache_path()
         if not exists(dirname(cache_path)):
             makedirs(dirname(cache_path), exist_ok=True)
@@ -266,15 +280,17 @@ class SemanticResource(Serializable):
         # process the dataset
         # train
         info("Extracting {} semantic information from the training dataset".format(self.name))
-        bag_train.set_element_processing_function(self.get_concept)
+        bag_train.set_term_weighting_function(self.get_concept)
+        bag_train.set_term_delineation_function(self.get_term_delineation)
         if self.do_limit:
-            bag_train.set_token_filtering(self.limit_type, self.limit_number)
+            bag_train.set_term_filtering(self.limit_type, self.limit_number)
         bag_train.map_collection(dataset.train)
-        self.reference_concepts = bag_train.get_token_list()
+        self.reference_concepts = bag_train.get_term_list()
 
         # test - since we restrict to the training set concepts, no need to filter
-        bag_test.set_token_list(self.reference_concepts)
-        bag_test.set_element_processing_function(self.get_concept)
+        bag_test.set_term_list(self.reference_concepts)
+        bag_test.set_term_weighting_function(self.get_concept)
+        bag_test.set_term_delineation_function(self.get_term_delineation)
         bag_test.map_collection(dataset.test)
 
         # collect vectors
@@ -297,14 +313,18 @@ class SemanticResource(Serializable):
         self.concept_freqs, self.global_freqs, self.reference_concepts = preprocessed
         debug("Read preprocessed concept docs shapes: {}, {}".format(*list(map(len, self.concept_freqs))))
 
+    def get_term_delineation(self, document_text):
+        """ Function to produce a list of terms of interest, from which to extract concepts """
+        # default: words from text
+        return [word_info for word_info in document_text]
+
 
 class Wordnet(SemanticResource):
     name = "wordnet"
 
     def __init__(self, config):
         self.config = config
-        self.base_name = self.name
-        SemanticResource.__init__(self, config)
+        SemanticResource.__init__(self)
 
         # map nltk pos maps into meaningful wordnet ones
         self.pos_tag_mapping = {"VB": wn.VERB, "NN": wn.NOUN, "JJ": wn.ADJ, "RB": wn.ADV}
@@ -363,7 +383,7 @@ class ContextEmbedding(SemanticResource):
         self.context_threshold = self.config.semantic.context_threshold
         self.context_file = self.config.semantic.context_file
         # calculate the synset embeddings path
-        SemanticResource.__init__(self, config)
+        SemanticResource.__init__(self)
         if not any([x for x in self.load_flags]):
             error("Failed to load semantic embeddings context.")
 
@@ -413,7 +433,7 @@ class ContextEmbedding(SemanticResource):
 
     def lookup(self, candidate):
         word, _ = candidate
-        if word in self.word_concept_embedding_cache:
+        if self.do_cache and word in self.word_concept_embedding_cache:
             concept = self.word_concept_embedding_cache[word]
         else:
             word_embedding = self.embedding.get_embeddings([word])
@@ -495,7 +515,7 @@ class GoogleKnowledgeGraph(SemanticResource):
             'indent': True,
             'key': self.key,
         }
-        SemanticResource.__init__(self, config)
+        SemanticResource.__init__(self)
 
     def lookup(self, candidate):
         word, pos_info = candidate
@@ -537,8 +557,7 @@ class Framenet(SemanticResource):
 
     def __init__(self, config):
         self.config = config
-        self.base_name = self.name
-        SemanticResource.__init__(self, config)
+        SemanticResource.__init__(self)
         # map nltk pos maps into meaningful framenet ones
         self.pos_tag_mapping = {"VB": "V", "NN": "N", "JJ": "A", "RB": "ADV"}
 
@@ -602,8 +621,7 @@ class BabelNet:
 
     def __init__(self, config):
         self.config = config
-        self.base_name = self.name
-        SemanticResource.__init__(self, config)
+        SemanticResource.__init__(self)
         # map nltk pos maps into meaningful framenet ones
         self.pos_tag_mapping = {"VB": "V", "NN": "N", "JJ": "A", "RB": "ADV"}
 
@@ -611,3 +629,57 @@ class BabelNet:
     # written into a file, read by the java api
     # results written into a file (json), read from here.
     # run calls the java program
+
+
+class DBPedia(SemanticResource):
+    """Semantic extractor from a dbpedia local docker container
+
+    Provide a dbpedia-docker.yml with the following entries:
+    # the host:port of the docker container
+    rest_url: localhost:port
+    # the confidence level of the semantic extraction
+    confidence: <num>
+    """
+
+    dbpedia_config = "dbpedia-docker.yml"
+    name = "dbpedia"
+
+    def lookup(self, candidate):
+        concepts = {}
+        try:
+            # ret example:
+            # {'URI': 'http://dbpedia.org/resource/Dog', 'similarityScore': 0.9997269051125752, 'offset': 10, 'percentageOfSecondRank': 0.0002642731468138545, 'support': 12528, 'types': '', 'surfaceForm': 'dog'}
+            # {'URI': 'http://dbpedia.org/resource/Cat', 'similarityScore': 0.9972015232913088, 'offset': 14, 'percentageOfSecondRank': 0.002500864314071041, 'support': 7471, 'types': '', 'surfaceForm': 'cat'}]
+            res = spotlight.annotate(self.rest_url, candidate, confidence=self.confidence)
+            for element in res:
+                name, score = element["URI"], element["similarityScore"]
+                if name in concepts and concepts[name] <= score:
+                    continue
+                concepts[name] = score
+                debug("Got URI {} | score: {}".format(name, score))
+        except spotlight.SpotlightException as se:
+            warning(se)
+        return concepts
+
+    def get_term_delineation(self, document_text):
+        """ Function to produce a list of terms of interest, from which to extract concepts """
+        # DBPedia extracts concepts directly from the full text
+        return [" ".join([x[0] for x in document_text])]
+
+    def __init__(self, config):
+        self.do_cache = False
+        self.config = config
+
+        # dbpedia conf
+        if not exists(self.dbpedia_config):
+            error("Need a dbpedia semantic extractor configuration file: {}".format(self.dbpedia_config))
+        with open(self.dbpedia_config) as f:
+            dbpedia_conf = yaml.load(f)
+        self.rest_url = dbpedia_conf["rest_url"]
+        self.confidence = dbpedia_conf["confidence"]
+        SemanticResource.__init__(self)
+
+    # use pyspotlight package
+    # get url of docker rest api from the config
+    # however this class processed document text as a whole, not word for word
+    # need to rework

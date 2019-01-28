@@ -453,7 +453,7 @@ class Train(Representation):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_preprocessed(self):
-        # instead of undefined word index, plug in the token list
+        # instead of undefined word index, plug in the term list
         return [self.dataset_vectors, self.dataset_words, self.undefined_word_index, None]
 
     def get_zero_pad_element(self):
@@ -487,7 +487,7 @@ class Train(Representation):
 class BagRepresentation(Representation):
     name = "bag"
     bag_class = Bag
-    token_list = None
+    term_list = None
 
     def __init__(self, config):
         self.config = config
@@ -502,26 +502,26 @@ class BagRepresentation(Representation):
     def set_name(self):
         # disable the dimension
         Representation.set_name(self)
-        # if external token list, add its length to the name
-        if self.config.representation.token_list is not None:
-            self.name += "_tok_{}".format(basename(self.config.representation.token_list))
+        # if external term list, add its length to the name
+        if self.config.representation.term_list is not None:
+            self.name += "_tok_{}".format(basename(self.config.representation.term_list))
 
     def set_resources(self):
-        if self.config.representation.token_list is not None:
-            self.resource_paths.append(self.config.representation.token_list)
+        if self.config.representation.term_list is not None:
+            self.resource_paths.append(self.config.representation.term_list)
             self.resource_read_functions.append(read_lines)
-            self.resource_handler_functions.append(self.handle_token_list)
+            self.resource_handler_functions.append(self.handle_term_list)
             self.resource_always_load_flag.append(False)
 
-    def handle_token_list(self, tok_list):
-        info("Using external, {}-length token list.".format(len(tok_list)))
-        self.token_list = tok_list
+    def handle_term_list(self, tok_list):
+        info("Using external, {}-length term list.".format(len(tok_list)))
+        self.term_list = tok_list
 
     def get_raw_path(self):
         return None
 
     def get_all_preprocessed(self):
-        return [self.dataset_vectors, self.elements_per_instance, self.token_list, self.present_word_indexes]
+        return [self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_word_indexes]
 
     # for bags, existing vector is a sparse dict list. Fill with zeros.
     def get_dense_vector(self, doc_dict):
@@ -552,8 +552,8 @@ class BagRepresentation(Representation):
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        # intead of undefined word index, get the token list
-        self.dataset_vectors, self.dataset_words, self.token_list, _ = preprocessed
+        # intead of undefined word index, get the term list
+        self.dataset_vectors, self.dataset_words, self.term_list, _ = preprocessed
         # peek vector dimension
         data_dim = self.dataset_vectors[0]
         if self.dimension is not None:
@@ -566,30 +566,30 @@ class BagRepresentation(Representation):
         self.name += transform.get_name()
         self.dimension = transform.get_dimension()
 
-        self.dataset_vectors, self.elements_per_instance, self.token_list, self.present_word_indexes = transform.get_all_preprocessed()
+        self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_word_indexes = transform.get_all_preprocessed()
         self.loaded_transformed = True
 
     def map_text(self, dset):
-        if self.token_list is None:
-            self.token_list = dset.vocabulary
-            self.dimension = len(self.token_list)
+        if self.term_list is None:
+            self.term_list = dset.vocabulary
+            self.dimension = len(self.term_list)
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
         info("Mapping {} to {} representation.".format(dset.name, self.name))
 
-        self.dataset_words = [self.token_list, None]
+        self.dataset_words = [self.term_list, None]
         self.dataset_vectors = []
         self.present_word_indexes = []
 
         # train
         self.bag = self.bag_class()
-        self.bag.set_token_list(self.token_list)
+        self.bag.set_term_list(self.term_list)
         self.bag.map_collection(dset.train)
         self.dataset_vectors.append(self.bag.get_weights())
-        self.present_word_indexes.append(self.bag.get_present_token_indexes())
+        self.present_word_indexes.append(self.bag.get_present_term_indexes())
 
         # set representation dim and update name
-        self.dimension = len(self.token_list)
+        self.dimension = len(self.term_list)
         self.set_name()
         self.set_serialization_params()
         self.set_representation_serialization_sources()
@@ -597,10 +597,10 @@ class BagRepresentation(Representation):
 
         # test
         self.bag = self.bag_class()
-        self.bag.set_token_list(self.token_list)
+        self.bag.set_term_list(self.term_list)
         self.bag.map_collection(dset.test)
         self.dataset_vectors.append(self.bag.get_weights())
-        self.present_word_indexes.append(self.bag.get_present_token_indexes())
+        self.present_word_indexes.append(self.bag.get_present_term_indexes())
 
         # set misc required variables
         self.elements_per_instance = [[1 for _ in ds] for ds in self.dataset_vectors]
@@ -609,7 +609,7 @@ class BagRepresentation(Representation):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
         # if the representation length is not preset, write a small file with the dimension
-        if self.config.representation.token_list is not None:
+        if self.config.representation.term_list is not None:
             with open(self.serialization_path_preprocessed + ".meta", "w") as f:
                 f.write(str(self.dimension))
 
