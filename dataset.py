@@ -227,7 +227,7 @@ class Dataset(Serializable):
         stopw = set(stopwords.words(self.language))
         ret_words_pos, ret_voc = [], set()
         num_words = []
-        with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True) as pbar:
+        with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100, unit="collection") as pbar:
             for i in range(len(document_list)):
                 pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
                 pbar.update()
@@ -246,9 +246,9 @@ class Dataset(Serializable):
             info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
             return
         with tictoc("Preprocessing {}".format(self.name)):
-            info("Mapping training set.")
+            info("Mapping training set to word collections.")
             self.train, self.vocabulary = self.preprocess_text_collection(self.train, track_vocabulary=True)
-            info("Mapping test set.")
+            info("Mapping test set to word collections.")
             self.test, _ = self.preprocess_text_collection(self.test)
             # fix word order and get word indexes
             self.vocabulary = list(self.vocabulary)

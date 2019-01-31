@@ -179,20 +179,20 @@ class DNN:
 
     # to preliminary work
     def make(self, embeddings, targets, num_labels):
-        if embeddings.base_name == "train":
-            self.do_train_embeddings = True
-            self.embedding_name = embeddings.name
-            self.representation_dim = embeddings.get_dim()
-            info("Will train {}-dimensional embeddings.".format(self.representation_dim))
-            self.final_dim = embeddings.get_final_dim()
-            self.vocabulary_size = embeddings.get_vocabulary_size()
-            emb_seqlen = embeddings.sequence_length
-            self.sequence_length = self.config.learner.sequence_length
-            if self.sequence_length is not None:
-                if emb_seqlen != self.sequence_length:
-                    error("Specified embedding sequence of length {}, but learner sequence is of length {}".format(emb_seqlen, self.sequence_length))
-            self.sequence_length = emb_seqlen
-            self.embeddings = embeddings
+        # if embeddings.base_name == "train":
+        #     self.do_train_embeddings = True
+        #     self.embedding_name = embeddings.name
+        #     self.representation_dim = embeddings.get_dimension()
+        #     info("Will train {}-dimensional embeddings.".format(self.representation_dim))
+        #     self.final_dim = embeddings.get_final_dim()
+        #     self.vocabulary_size = embeddings.get_vocabulary_size()
+        #     emb_seqlen = embeddings.sequence_length
+        #     self.sequence_length = self.config.learner.sequence_length
+        #     if self.sequence_length is not None:
+        #         if emb_seqlen != self.sequence_length:
+        #             error("Specified embedding sequence of length {}, but learner sequence is of length {}".format(emb_seqlen, self.sequence_length))
+        #     self.sequence_length = emb_seqlen
+        #     self.embeddings = embeddings
 
         self.verbosity = 1 if self.config.log_level == "debug" else 0
         self.train, self.test = embeddings.get_data()
@@ -206,7 +206,7 @@ class DNN:
         self.num_labels = num_labels
         self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
             list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
-        self.input_dim = embeddings.get_final_dim()
+        self.input_dim = embeddings.get_dimension()
 
         self.forbid_load = self.config.learner.no_load
         self.sequence_length = self.config.learner.sequence_length
@@ -384,7 +384,8 @@ class DNN:
         for stat in self.preferred_stats:
             value = container[stat]
             if type(value) == list:
-                scores_str.append(" ".join(list(map(str, value))))
+                # folds
+                scores_str.append("{" + " ".join(list(map(lambda x: "{:.3f}".format(x), value))) + "}")
             else:
                 scores_str.append("{:.3f}".format(value))
         return " ".join(scores_str)

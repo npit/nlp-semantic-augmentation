@@ -14,7 +14,14 @@ class Bag:
     filter_quantity = None
     calculate_global = None
     term_delineation_func = None
-    do_track_present_words = None
+
+    @staticmethod
+    def delineate_words(collection):
+        return [word_info for word_info in collection]
+
+    @staticmethod
+    def extract_word(word_info):
+        return word_info[0]
 
     def __init__(self):
         self.term_list = []
@@ -24,13 +31,13 @@ class Bag:
         self.term_weighting_func = self.unit_term_weighting
         self.term_greenlight_func = lambda x: True
         # words from a text, as default term delineation
-        self.term_delineation_func = lambda x: [i for i in x]
+        self.term_delineation_func = Bag.delineate_words
+        # extract the useful parts from a term -- default is word from word info tuple
+        self.term_extraction_func = Bag.extract_word
 
         self.filter_type = None
         self.filter_quantity = None
         self.calculate_global = False
-
-        self.do_track_present_words = True
 
     # term filtering
     # #####################
@@ -80,14 +87,12 @@ class Bag:
         self.term_list = list(term_list)
         self.global_freqs = {key: 0 for key in self.term_list}
         self.num_terms = len(self.term_list)
-        self.term_greenlight_func = self.unit_term_weighting
-        self.term_weighting_func = self.check_term_in_list
+        self.term_weighting_func = self.unit_term_weighting
+        self.term_greenlight_func = self.check_term_in_list
 
     # override term delineation function
     def set_term_delineation_function(self, func):
         self.term_delineation_func = func
-        # present word tracking only available for the default (word-wise) delineation
-        self.do_track_present_words = False
 
     # override default term processing function
     def set_term_weighting_function(self, func):
@@ -129,38 +134,41 @@ class Bag:
         if self.use_fixed_term_list and self.filter_type is not None:
             error("Specified term limiting but the term list is fixed.")
 
+        # present word tracking only available for the default (word-wise) delineation
+        do_track_present_words = False if self.term_delineation_func != Bag.delineate_words else True
+
         # collection-wise information
         self.output_vectors, self.present_terms, self.present_term_indexes = [], [], []
 
         # global term-wise frequencies
-        # with tqdm.tqdm(total=len(text_collection)"Creating bow vectors") as pbar:
-        with tqdm.tqdm(desc="Creating bow vectors", total=len(text_collection), ascii=True) as pbar:
-            for t, word_pos_list in enumerate(text_collection):
+        with tqdm.tqdm(desc="Creating bow vectors", total=len(text_collection), ascii=True, ncols=100, unit="collection") as pbar:
+            for t, word_info_list in enumerate(text_collection):
                 pbar.set_description("Text {}/{}".format(t + 1, len(text_collection)))
                 pbar.update()
                 text_term_freqs = {}
                 present_words = []
-                # generate terms of interest
-                # for each term-of-interest-chunk in the text
-                for term_info in self.term_delineation_func(word_pos_list):
-                    # process term and produce weight information of the processed result
-                    term_weights = self.term_weighting_func(term_info)
+                # delineate and extract terms of interest
+                term_list = [self.term_extraction_func(x) for x in self.term_delineation_func(word_info_list)]
+                # iterate
+                for term in term_list:
+                    # process term, and produce weight information of the processed result
+                    term_weights = self.term_weighting_func(term)
                     # if the word produced weights, add it to the present words
                     if not term_weights:
                         continue
                     # add the term as a valid / present one
-                    if self.do_track_present_words:
-                        present_words.append(term_info)
+                    if do_track_present_words:
+                        present_words.append(term)
                     # accumulate the term-weight results
                     for item, weight in term_weights.items():
+                        # use item index as the key
                         text_term_freqs = self.update_term_frequency(item, weight, text_term_freqs)
 
                 # completed document parsing
                 # add required results
                 self.output_vectors.append(text_term_freqs)
-                if self.do_track_present_words:
-                    word_list = [wp[0] for wp in word_pos_list]
-                    self.present_term_indexes.append([word_list.index(p) for p in present_words])
+                if do_track_present_words:
+                    self.present_term_indexes.append([term_list.index(p) for p in present_words])
                     self.present_terms.append(len(present_words))
             # completed collection parsing - wrap up
             if not self.use_fixed_term_list:

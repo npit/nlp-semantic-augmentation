@@ -86,9 +86,9 @@ class Representation(Serializable):
 
             if self.config.semantic.enrichment == "concat":
                 semantic_dim = len(semantic_data[0][0])
-                self.final_dim = self.dimension + semantic_dim
+                final_dim = self.dimension + semantic_dim
                 for dset_idx in range(len(semantic_data)):
-                    info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx + 1, len(semantic_data), self.final_dim))
+                    info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx + 1, len(semantic_data), final_dim))
                     if self.vectors_per_doc > 1:
                         # tile the vector the needed times to the right, reshape to the correct dim
                         semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.vectors_per_doc)),
@@ -97,19 +97,20 @@ class Representation(Serializable):
                         [self.dataset_vectors[dset_idx], semantic_data[dset_idx]], axis=1)
 
             elif self.config.semantic.enrichment == "replace":
-                self.final_dim = len(semantic_data[0][0])
+                final_dim = len(semantic_data[0][0])
                 for dset_idx in range(len(semantic_data)):
-                    info("Replacing dataset part {}/{} with semantic info of dimension: {}".format(dset_idx + 1, len(semantic_data), self.final_dim))
+                    info("Replacing dataset part {}/{} with semantic info of dimension: {}".format(dset_idx + 1, len(semantic_data), final_dim))
                     if self.vectors_per_doc > 1:
                         # tile the vector the needed times to the right, reshape to the correct dim
                         semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.vectors_per_doc)),
-                                                             (-1, self.final_dim))
+                                                             (-1, final_dim))
                     self.dataset_vectors[dset_idx] = semantic_data[dset_idx]
             else:
                 error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
 
-        # serialize finalized embeddings
-        write_pickled(self.serialization_path_finalized, self.get_all_preprocessed())
+            # serialize finalized embeddings
+            self.dimension = final_dim
+            write_pickled(self.serialization_path_finalized, self.get_all_preprocessed())
 
     def handle_aggregated(self, data):
         self.handle_preprocessed(data)
@@ -119,7 +120,7 @@ class Representation(Serializable):
     def handle_finalized(self, data):
         self.handle_preprocessed(data)
         self.loaded_finalized = True
-        self.final_dim = data[0][0].shape[-1]
+        self.dimension = data[0][0].shape[-1]
         debug("Read finalized dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
 
     def get_zero_pad_element(self):
@@ -134,10 +135,7 @@ class Representation(Serializable):
     def get_data(self):
         return self.dataset_vectors
 
-    def get_final_dim(self):
-        return self.final_dim
-
-    def get_dim(self):
+    def get_dimension(self):
         return self.dimension
 
     # mark word-index relations for stat computation, add unk if needed
@@ -272,7 +270,7 @@ class Embedding(Representation):
 
                 aggregated_dataset_vectors = np.append(aggregated_dataset_vectors, curr_instance, axis=0)
                 curr_idx += inst_len
-            # update the dataset vector collection
+            # update the dataset vector collection and dimension
             self.dataset_vectors[dset_idx] = aggregated_dataset_vectors
             # report stats
             if self.aggregation[0] == "pad":
@@ -527,7 +525,7 @@ class BagRepresentation(Representation):
     def get_dense_vector(self, doc_dict):
         full_vector = np.zeros((self.dimension,), np.float32)
         for t in doc_dict:
-            full_vector[t] = doc_dict[t]
+            full_vector[self.term_index[t]] = doc_dict[t]
         return full_vector
 
     # sparse to dense
@@ -569,10 +567,20 @@ class BagRepresentation(Representation):
         self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_word_indexes = transform.get_all_preprocessed()
         self.loaded_transformed = True
 
+    def accomodate_dimension_change(self):
+        self.set_name()
+        self.set_serialization_params()
+        self.set_representation_serialization_sources()
+
     def map_text(self, dset):
         if self.term_list is None:
+            # no supplied token list -- use vocabulary of the training dataset
             self.term_list = dset.vocabulary
-            self.dimension = len(self.term_list)
+        self.dimension = len(self.term_list)
+        self.accomodate_dimension_change()
+        info("Renamed representation after bag computation to: {}".format(self.name))
+        # calc term index mapping
+        self.term_index = {term: self.term_list.index(term) for term in self.term_list}
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
         info("Mapping {} to {} representation.".format(dset.name, self.name))
@@ -588,12 +596,9 @@ class BagRepresentation(Representation):
         self.dataset_vectors.append(self.bag.get_weights())
         self.present_word_indexes.append(self.bag.get_present_term_indexes())
 
-        # set representation dim and update name
-        self.dimension = len(self.term_list)
-        self.set_name()
-        self.set_serialization_params()
-        self.set_representation_serialization_sources()
-        info("Renamed representation after bag computation to: {}".format(self.name))
+        # # set representation dim and update name
+        # self.dimension = len(self.term_list)
+        # self.accomodate_dimension_change()
 
         # test
         self.bag = self.bag_class()
