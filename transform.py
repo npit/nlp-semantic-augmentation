@@ -1,6 +1,7 @@
 from utils import error, info, shapes_list, write_pickled, debug
 from sklearn.decomposition import TruncatedSVD
 from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans
 from serializable import Serializable
 
 """Module for feature transformation methods
@@ -16,6 +17,10 @@ class Transform(Serializable):
     name = None
     dimension = None
     dir_name = "transform"
+    do_reinitialize = None
+    transformer = None
+    process_func_train = None
+    process_func_test = None
 
     @staticmethod
     def create(representation):
@@ -23,8 +28,10 @@ class Transform(Serializable):
         name = config.transform.name
         if name == LSA.base_name:
             return LSA(representation)
-        if name == Clustering.base_name:
-            return Clustering(representation)
+        if name == KMeansClustering.base_name:
+            return KMeansClustering(representation)
+        if name == GMMClustering.base_name:
+            return GMMClustering(representation)
         # any unknown name is assumed to be pretrained embeddings
         error("Undefined feature transformation: {}".format(name))
 
@@ -87,53 +94,61 @@ class Transform(Serializable):
     def handle_preprocessed(self, data):
         self.repr_data = data
 
+    def apply_transform(self, repres):
+        num_chunks = len(repres.dataset_vectors)
+        info("Applying {} transform on the raw representation.".format(self.base_name))
+        for dset_idx, dset in enumerate(repres.dataset_vectors):
+            info("Data chunk {}/{}".format(dset_idx + 1, num_chunks))
+            # replace non-reduced vectors, to save memory
+            if dset_idx == 0:
+                info("Transforming training input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
+                repres.dataset_vectors[dset_idx] = self.process_func_train(dset)
+            else:
+                info("Transforming test input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
+                repres.dataset_vectors[dset_idx] = self.process_func_test(dset)
+        return repres
+
 
 class LSA(Transform):
     """Latent Semantic Analysis decomposition.
 
     Based on the truncated SVD implementation of sklearn.
     """
-    base_name = "LSA"
-    do_reinitialize = None
+    base_name = "lsa"
 
     def __init__(self, representation):
         """LSA constructor"""
         Transform.__init__(self, representation)
-
-    def apply_transform(self, repres):
-        self.tsvd = TruncatedSVD(self.dimension)
-        num_chunks = len(repres.dataset_vectors)
-        info("{} computation".format(self.name))
-        for dset_idx, dset in enumerate(repres.dataset_vectors):
-            info("Data chunk {}/{}".format(dset_idx + 1, num_chunks))
-            # replace non-reduced vectors, to save memory
-            if dset_idx == 0:
-                info("Computing {} transform on input data shape {}/{}: {}".format(self.name, dset_idx + 1, num_chunks, dset.shape))
-                repres.dataset_vectors[dset_idx] = self.tsvd.fit_transform(dset)
-            else:
-                info("Applying {} transform on input data shape {}/{}: {}".format(self.name, dset_idx + 1, num_chunks, dset.shape))
-                repres.dataset_vectors[dset_idx] = self.tsvd.transform(dset)
-        return repres
+        self.transformer = TruncatedSVD(self.dimension)
+        self.process_func_train = self.transformer.fit_transform
+        self.process_func_test = self.transformer.transform
 
 
-class Clustering(Transform):
+class GMMClustering(Transform):
     """Clustering.
 
     Uses the Gaussian mixture implementation of sklearn.
     """
-    base_name = "clustering"
+    base_name = "gmm"
 
-    def apply_transform(self, repres):
-        self.gmm = GaussianMixture(self.dimension)
-        num_chunks = len(repres.dataset_vectors)
-        info("{} computation".format(self.name))
-        for dset_idx, dset in enumerate(repres.dataset_vectors):
-            info("Data chunk {}/{}".format(dset_idx + 1, num_chunks))
-            # replace non-reduced vectors, to save memory
-            if dset_idx == 0:
-                info("Computing {} transform on input data shape {}/{}: {}".format(self.name, dset_idx + 1, num_chunks, dset.shape))
-                repres.dataset_vectors[dset_idx] = self.gmm.fit_predict(dset)
-            else:
-                info("Applying {} transform on input data shape {}/{}: {}".format(self.name, dset_idx + 1, num_chunks, dset.shape))
-                repres.dataset_vectors[dset_idx] = self.gmm.predict(dset)
-        return repres
+    def __init__(self, representation):
+        """GMM-clustering constructor"""
+        Transform.__init__(self, representation)
+        self.transformer = GaussianMixture(self.dimension)
+        self.process_func_train = self.transformer.fit_transform
+        self.process_func_test = self.transformer.transform
+
+
+class KMeansClustering(Transform):
+    """Clustering.
+
+    Uses the KMeans implementation of sklearn.
+    """
+    base_name = "kmeans"
+
+    def __init__(self, representation):
+        """Kmeans-clustering constructor"""
+        Transform.__init__(self, representation)
+        self.transformer = KMeans(self.dimension)
+        self.process_func_train = self.transformer.fit_transform
+        self.process_func_test = self.transformer.transform
