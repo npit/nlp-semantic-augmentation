@@ -1,7 +1,8 @@
 from utils import error, info, shapes_list, write_pickled, debug
-from sklearn.decomposition import TruncatedSVD
+from sklearn.decomposition import TruncatedSVD, LatentDirichletAllocation
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from serializable import Serializable
 
 """Module for feature transformation methods
@@ -21,6 +22,7 @@ class Transform(Serializable):
     transformer = None
     process_func_train = None
     process_func_test = None
+    is_supervised = None
 
     @staticmethod
     def create(representation):
@@ -32,12 +34,17 @@ class Transform(Serializable):
             return KMeansClustering(representation)
         if name == GMMClustering.base_name:
             return GMMClustering(representation)
+        if name == LiDA.base_name:
+            return LiDA(representation)
+        if name == LDA.base_name:
+            return LDA(representation)
         # any unknown name is assumed to be pretrained embeddings
         error("Undefined feature transformation: {}".format(name))
 
     def __init__(self, representation):
         config = representation.config
         self.do_reinitialize = False
+        self.is_supervised = False
         self.config = config
         self.dimension = config.transform.dimension
         if representation.dimension is not None:
@@ -63,7 +70,10 @@ class Transform(Serializable):
         """Composite name getter"""
         return "{}_{}".format(self.name, self.dimension)
 
-    def compute(self, repres):
+    def check_compatibility(self, multilabel):
+        return True
+
+    def compute(self, repres, dataset):
         """Apply transform on input features"""
         if self.loaded():
             debug("Skipping {} computation due to data already loaded.".format(self.name))
@@ -76,14 +86,30 @@ class Transform(Serializable):
                 info("Loaded existing transformed data after reinitializion, exiting.")
                 return
 
-        repres = self.apply_transform(repres)
+        # sanity checks
+        self.check_compatibility(dataset)
+
+        # compute
+        num_chunks = len(repres.dataset_vectors)
+        info("Applying {} {}-dimensional transform on the raw representation.".format(self.base_name, self.dimension))
+        for dset_idx, dset in enumerate(repres.dataset_vectors):
+            # replace non-reduced vectors, to save memory
+            if dset_idx == 0:
+                info("Transforming training input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
+                if self.is_supervised:
+                    ground_truth = dataset.get_targets()[dset_idx]
+                    ground_truth = repres.match_targets_to_instances(dset_idx, ground_truth)
+                    repres.dataset_vectors[dset_idx] = self.process_func_train(dset, ground_truth)
+                else:
+                    repres.dataset_vectors[dset_idx] = self.process_func_train(dset)
+            else:
+                info("Transforming test input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
+                repres.dataset_vectors[dset_idx] = self.process_func_test(dset)
+
         repres.dimension = self.dimension
         info("Output shapes (train/test): {}, {}".format(*shapes_list(repres.dataset_vectors)))
         write_pickled(self.serialization_path_preprocessed, repres.get_all_preprocessed())
         pass
-
-    def apply_transform(self, repres):
-        error("Attempted to invoke apply_transform from abstract transform object, using a {} derived object.".format(self.name))
 
     def get_raw_path(self):
         return None
@@ -93,20 +119,6 @@ class Transform(Serializable):
 
     def handle_preprocessed(self, data):
         self.repr_data = data
-
-    def apply_transform(self, repres):
-        num_chunks = len(repres.dataset_vectors)
-        info("Applying {} transform on the raw representation.".format(self.base_name))
-        for dset_idx, dset in enumerate(repres.dataset_vectors):
-            info("Data chunk {}/{}".format(dset_idx + 1, num_chunks))
-            # replace non-reduced vectors, to save memory
-            if dset_idx == 0:
-                info("Transforming training input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
-                repres.dataset_vectors[dset_idx] = self.process_func_train(dset)
-            else:
-                info("Transforming test input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
-                repres.dataset_vectors[dset_idx] = self.process_func_test(dset)
-        return repres
 
 
 class LSA(Transform):
@@ -125,7 +137,7 @@ class LSA(Transform):
 
 
 class GMMClustering(Transform):
-    """Clustering.
+    """Gausian Mixture Model clustering
 
     Uses the Gaussian mixture implementation of sklearn.
     """
@@ -140,7 +152,7 @@ class GMMClustering(Transform):
 
 
 class KMeansClustering(Transform):
-    """Clustering.
+    """KMeans clustering
 
     Uses the KMeans implementation of sklearn.
     """
@@ -150,5 +162,42 @@ class KMeansClustering(Transform):
         """Kmeans-clustering constructor"""
         Transform.__init__(self, representation)
         self.transformer = KMeans(self.dimension)
+        self.process_func_train = self.transformer.fit_transform
+        self.process_func_test = self.transformer.transform
+
+
+class LiDA(Transform):
+    """Linear Discriminant Analysis transformation
+
+    Uses the LiDA implementation of sklearn.
+    """
+    base_name = "lida"
+
+    def __init__(self, representation):
+        """LiDA constructor"""
+        Transform.__init__(self, representation)
+        self.transformer = LinearDiscriminantAnalysis(n_components=self.dimension)
+        self.is_supervised = True
+        self.process_func_train = self.transformer.fit_transform
+        self.process_func_test = self.transformer.transform
+
+    def check_compatibility(self, dataset):
+        if dataset.is_multilabel():
+            error("{} transform is not compatible with multi-label data.".format(self.base_name))
+        if self.dimension >= dataset.get_num_labels():
+            error("The {} projection dimension ({}) needs to be less than the dataset classes ({})".format(self.base_name, self.dimension, dataset.get_num_labels()))
+
+
+class LDA(Transform):
+    """Latent Dirichlet Allocation transformation
+
+    Uses the LDA implementation of sklearn.
+    """
+    base_name = "lda"
+
+    def __init__(self, config):
+        self.config = config
+        Transform.__init__(self, config)
+        self.transformer = LatentDirichletAllocation(n_components=self.dimension, random_state=self.config.get_seed())
         self.process_func_train = self.transformer.fit_transform
         self.process_func_test = self.transformer.transform

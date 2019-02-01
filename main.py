@@ -46,7 +46,7 @@ def main(config_file):
     # transform computation
     if config.has_transform():
         info("===== TRANSFORM =====")
-        transform.compute(representation)
+        transform.compute(representation, dataset)
 
     # aggregation
     representation.aggregate_instance_vectors()
@@ -64,7 +64,7 @@ def main(config_file):
     info("===== LEARNING =====")
     # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
     learner = DNN.create(config)
-    learner.make(representation, dataset.get_targets(), dataset.get_num_labels())
+    learner.make(representation, dataset)
     learner.do_traintest()
 
     if num_warnings > 0:

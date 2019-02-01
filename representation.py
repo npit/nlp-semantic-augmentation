@@ -2,7 +2,7 @@ from os.path import join, basename
 import pandas as pd
 from pandas.errors import ParserError
 from dataset import Dataset
-from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines
+from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot
 import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
@@ -37,7 +37,7 @@ class Representation(Serializable):
         self.set_resources()
         # if a transform has been defined
         if self.config.has_transform():
-            # suspend potential needless loading for now
+            # suspend potential needless repr. loading for now
             return
         # fetch the required data
         self.acquire_data()
@@ -167,6 +167,24 @@ class Representation(Serializable):
 
     def get_elements_per_instance(self):
         return self.elements_per_instance
+
+    def match_targets_to_instances(self, dset_idx, gt, binarize_num_labels=None):
+        """Expand, if needed, ground truth samples for multi-vector instances
+        """
+        epi = self.elements_per_instance[dset_idx]
+        multi_vector_instances = [i for i in range(len(epi)) if epi[i] > 1]
+        if not multi_vector_instances:
+            if binarize_num_labels is not None:
+                return one_hot(gt, num_labels=binarize_num_labels)
+            return gt
+        res = []
+        for i in range(len(gt)):
+            if i in multi_vector_instances:
+                times = epi[i]
+                res.append([gt[i] for _ in range(times)])
+        if binarize_num_labels is not None:
+            return one_hot(res, num_labels=binarize_num_labels)
+        return res
 
 
 class Embedding(Representation):
@@ -551,9 +569,15 @@ class BagRepresentation(Representation):
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         # intead of undefined word index, get the term list
-        self.dataset_vectors, self.dataset_words, self.term_list, _ = preprocessed
+        self.dataset_vectors, self.dataset_words, self.term_list, self.present_word_indexes = preprocessed
+        # set misc required variables
+        self.elements_per_instance = [[1 for _ in ds] for ds in self.dataset_vectors]
+
+    def handle_aggregated(self, data):
+        self.handle_preprocessed()
+        self.loaded_aggregated = True
         # peek vector dimension
-        data_dim = self.dataset_vectors[0]
+        data_dim = len(self.dataset_vectors[0][0])
         if self.dimension is not None:
             if self.dimension != data_dim:
                 error("Configuration for {} set to dimension {} but read {} from data.".format(self.name, self.dimension, data_dim))
@@ -576,6 +600,10 @@ class BagRepresentation(Representation):
         if self.term_list is None:
             # no supplied token list -- use vocabulary of the training dataset
             self.term_list = dset.vocabulary
+            info("Setting bag dimension to {} from dataset vocabulary.".format(len(self.term_list)))
+        if self.dimension is not None and self.dimension != len(self.term_list):
+            error("Specified an explicit bag dimension of {} but term list contains {} elements (delete it?).".format(self.dimension, len(self.term_list)))
+
         self.dimension = len(self.term_list)
         self.accomodate_dimension_change()
         info("Renamed representation after bag computation to: {}".format(self.name))

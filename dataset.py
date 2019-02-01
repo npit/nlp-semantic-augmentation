@@ -160,7 +160,12 @@ class Dataset(Serializable):
     def restrict_to_classes(self, data, labels, restrict_classes):
         new_data, new_labels = [], []
         for d, l in zip(data, labels):
-            rl = list(set(l).intersection(restrict_classes))
+            if self.multilabel:
+                rl = list(set(l).intersection(restrict_classes))
+                if not rl:
+                    continue
+            else:
+                rl = l if l in restrict_classes else None
             if not rl:
                 continue
             new_data.append(d)
@@ -174,8 +179,9 @@ class Dataset(Serializable):
             if self.train:
                 # data have been loaded -- apply limit
                 retained_classes = random.sample(list(range(self.num_labels)), c_lim)
-                info("Limiting to classes: {}".format(retained_classes))
-                debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_target)), max(map(len, self.test_target))))
+                info("Limiting to the {} classes: {}".format(c_lim, retained_classes))
+                if self.multilabel:
+                    debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_target)), max(map(len, self.test_target))))
                 self.train, self.train_target = self.restrict_to_classes(self.train, self.train_target, retained_classes)
                 self.test, self.test_target = self.restrict_to_classes(self.test, self.test_target, retained_classes)
                 self.num_labels = len(retained_classes)
@@ -188,7 +194,8 @@ class Dataset(Serializable):
                 info("Limited {} dataset to {} classes: {} - i.e. {} - resulting in {} train and {} test data."
                      .format(self.base_name, self.num_labels, retained_classes,
                              self.train_label_names, len(self.train), len(self.test)))
-                debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_target)), max(map(len, self.test_target))))
+                if self.multilabel:
+                    debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_target)), max(map(len, self.test_target))))
         return name
 
     def apply_limit(self):
@@ -304,6 +311,7 @@ class TwentyNewsGroups(Dataset):
         self.config = config
         self.base_name = self.name
         Dataset.__init__(self)
+        self.multilabel = False
 
     # raw path setter
     def get_raw_path(self):

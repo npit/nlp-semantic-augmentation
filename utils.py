@@ -2,7 +2,6 @@ import time
 import pickle
 import logging
 import numpy as np
-import tqdm
 
 num_warnings = 0
 
@@ -35,15 +34,30 @@ def read_lines(path):
 
 # converts elements of l to the index they appear in the reference
 # flattens, if necessary
-def align_index(input, reference):
+def align_index(input_list, reference):
     output = []
-    for l in input:
+    for l in input_list:
         if type(l) == list:
             res = align_index(l, reference)
             output.append(res)
         else:
             output.append(reference.index(l))
     return output
+
+
+def get_majority_label(inp, num_labels, is_multilabel):
+    """Gets majority (in terms of frequency) label in (potentially multilabel) input
+    """
+    maxfreq, maxlabel = -1, -1
+    for t in range(num_labels):
+        if is_multilabel:
+            freq = len([1 for x in inp if t in x])
+        else:
+            freq = len([1 for x in inp if x == t])
+        if freq > maxfreq:
+            maxfreq = freq
+            maxlabel = t
+    return maxlabel
 
 
 # split lists into sublists

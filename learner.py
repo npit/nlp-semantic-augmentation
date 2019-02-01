@@ -11,7 +11,7 @@ from keras.models import Sequential, load_model
 from keras.layers import Activation, Dense, Dropout, Embedding, Reshape
 from keras.layers import LSTM as keras_lstm
 from keras import callbacks
-from utils import info, debug, tictoc, error, write_pickled, read_pickled, one_hot
+from utils import info, debug, tictoc, error, write_pickled, read_pickled, one_hot, get_majority_label
 # from keras import backend
 # import tensorflow as tf
 
@@ -178,7 +178,7 @@ class DNN:
         return self.callbacks
 
     # to preliminary work
-    def make(self, embeddings, targets, num_labels):
+    def make(self, representation, dataset):
         # if embeddings.base_name == "train":
         #     self.do_train_embeddings = True
         #     self.embedding_name = embeddings.name
@@ -195,18 +195,18 @@ class DNN:
         #     self.embeddings = embeddings
 
         self.verbosity = 1 if self.config.log_level == "debug" else 0
-        self.train, self.test = embeddings.get_data()
+        self.train, self.test = representation.get_data()
         # self.train_labels, self.test_labels = [np.asarray(x, np.int32) for x in targets]
-        self.train_labels, self.test_labels = [x for x in targets]
+        self.train_labels, self.test_labels = [x for x in dataset.get_targets()]
         # need at least one sample per class
-        tr_sum = np.sum(targets[0], axis=0)
+        tr_sum = np.sum(self.train_labels, axis=0)
         if np.any(tr_sum == 0):
             error("No training samples for class index {}".format(np.where(tr_sum == 0)))
-        self.do_multilabel = any([len(x) > 1 for x in self.train_labels + self.test_labels])
-        self.num_labels = num_labels
+        self.do_multilabel = dataset.is_multilabel()
+        self.num_labels = dataset.get_num_labels()
         self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
             list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
-        self.input_dim = embeddings.get_dimension()
+        self.input_dim = representation.get_dimension()
 
         self.forbid_load = self.config.learner.no_load
         self.sequence_length = self.config.learner.sequence_length
@@ -455,7 +455,8 @@ class DNN:
         if self.do_folds:
             # check if such data exists
             if exists(trainval_serialization_file) and not self.forbid_load:
-                info("Training {} with input data: {} samples, {} labels, on LOADED existing {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
+                info("Training {} with input data: {} samples, {} labels, on LOADED existing {} stratified folds".format(
+                    self.name, self.num_train, self.num_train_labels, self.folds))
                 deser = read_pickled(trainval_serialization_file)
                 if not len(deser) == self.folds:
                     error("Mismatch between expected folds ({}) and loaded data of {} splits.".format(self.folds, len(deser)))
@@ -463,7 +464,8 @@ class DNN:
                 if max_idx >= self.num_train:
                     error("Mismatch between max instances in training data ({}) and loaded max index ({}).".format(self.num_train, max_idx))
                 return deser
-            info("Training {} with input data: {} samples, {} labels, on {} stratified folds".format(self.name, self.num_train, self.num_train_labels, self.folds))
+            info("Training {} with input data: {} samples, {} labels, on {} stratified folds".format(
+                self.name, self.num_train, self.num_train_labels, self.folds))
             # for multilabel K-fold, stratification is not available
             FoldClass = KFold if self.do_multilabel and self.do_folds else StratifiedKFold
             splitter = FoldClass(self.folds, shuffle=True, random_state=self.seed)
@@ -511,13 +513,7 @@ class DNN:
         # add run performance wrt argmax predictions
         self.add_performance("run", predictions)
         # majority classifier
-        maxfreq, maxlabel = -1, -1
-        for t in range(self.num_labels):
-            freq = len([1 for x in self.test_labels if t in x])
-            if freq > maxfreq:
-                maxfreq = freq
-                maxlabel = t
-
+        maxlabel = get_majority_label(self.test_labels, self.num_labels, self.do_multilabel)
         majpred = np.zeros(predictions.shape, np.float32)
         majpred[:, maxlabel] = 1.0
         self.add_performance("majority", majpred)
@@ -580,24 +576,23 @@ class DNN:
     def print_performance(self):
         info("---------------")
         info("Test results for {}:".format(self.current_run_descr))
-        for type in self.preferred_types:
-            info("{} performance:".format(type))
+        for rtype in self.preferred_types:
             if not self.do_multilabel:
                 for measure in self.preferred_measures:
                     for aggr in self.preferred_aggregations:
                         # don't print classwise results or unedfined aggregations
-                        if aggr not in self.performance[type][measure] or aggr == "classwise":
+                        if aggr not in self.performance[rtype][measure] or aggr == "classwise":
                             continue
-                        container = self.performance[type][measure][aggr]
+                        container = self.performance[rtype][measure][aggr]
                         if not container:
                             continue
-                        info('{} {}: {:.3f}'.format(aggr, measure, self.performance[type][measure][aggr]["folds"][self.fold_index]))
+                        info('{}| {} {}: {:.3f}'.format(rtype, aggr, measure, self.performance[rtype][measure][aggr]["folds"][self.fold_index]))
             else:
                 for measure in self.multilabel_measures:
-                    container = self.performance[type][measure]
+                    container = self.performance[rtype][measure]
                     if not container:
                         continue
-                    info('{}: {:.3f}'.format(measure, self.performance[type][measure]["folds"][self.fold_index]))
+                    info('{}| {}: {:.3f}'.format(rtype, measure, self.performance[rtype][measure]["folds"][self.fold_index]))
         info("---------------")
 
 
@@ -618,15 +613,15 @@ class MLP(DNN):
             model.add(Reshape(target_shape=(-1, self.representation_dim)))
         return model
 
-    def make(self, embeddings, targets, num_labels):
+    def make(self, representation, dataset):
         info("Building dnn: {}".format(self.name))
-        DNN.make(self, embeddings, targets, num_labels)
+        DNN.make(self, representation, dataset)
         self.input_shape = (self.input_dim,)
         aggr = self.config.representation.aggregation
         aggregation = aggr[0]
         if aggregation not in ["avg"] and not self.do_train_embeddings:
             error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))
-        if embeddings.name == "train":
+        if representation.name == "train":
             error("{} cannot be used to train embeddings.".format(self.name))
 
     # build MLP model
@@ -662,9 +657,9 @@ class LSTM(DNN):
         DNN.__init__(self)
 
     # make network
-    def make(self, embeddings, targets, num_labels):
+    def make(self, representation, dataset):
         info("Building dnn: {}".format(self.name))
-        DNN.make(self, embeddings, targets, num_labels)
+        DNN.make(self, representation, dataset)
         # make sure embedding aggregation is compatible
         # with the sequence-based lstm model
         self.input_shape = (self.sequence_length, self.input_dim)
