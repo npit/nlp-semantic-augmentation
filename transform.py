@@ -76,7 +76,7 @@ class Transform(Serializable):
     def compute(self, repres, dataset):
         """Apply transform on input features"""
         if self.loaded():
-            debug("Skipping {} computation due to data already loaded.".format(self.name))
+            info("Skipping {} computation due to data already loaded.".format(self.name))
             return
         if self.do_reinitialize:
             info("Reinitializing transform parameters from the loaded representation config.")

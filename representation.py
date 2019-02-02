@@ -1,12 +1,13 @@
 from os.path import join, basename
 import pandas as pd
 from pandas.errors import ParserError
-from dataset import Dataset
 from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot
 import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
 from bag import Bag, TFIDF
+import defs
+import copy
 
 
 class Representation(Serializable):
@@ -32,7 +33,6 @@ class Representation(Serializable):
         # check for serialized mapped data
         self.set_serialization_params()
         # add paths for aggregated / transformed / enriched representations:
-        self.set_representation_serialization_sources()
         # set required resources
         self.set_resources()
         # if a transform has been defined
@@ -43,12 +43,12 @@ class Representation(Serializable):
         self.acquire_data()
 
     # add exra representations-specific serialization paths
-    def set_representation_serialization_sources(self):
+    def set_additional_serialization_sources(self):
         # compute names
         aggr = "".join(list(map(str, self.config.representation.aggregation + [self.sequence_length])))
         self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
 
-        sem = SemanticResource.get_semantic_name(self.config)
+        sem = SemanticResource.generate_name(self.config)
         finalized_id = sem + "_" + self.config.semantic.enrichment if sem else "nosem"
         self.serialization_path_finalized = "{}/{}.aggregated_{}.finalized_{}.pickle".format(
             self.serialization_dir, self.name, aggr, finalized_id)
@@ -63,11 +63,15 @@ class Representation(Serializable):
         self.dimension = self.config.representation.dimension
         self.dataset_name = self.config.dataset.name
         self.base_name = self.name
-        self.dataset_name = Dataset.get_limited_name(self.config)
+
+    @staticmethod
+    def generate_name(config):
+        return "{}_{}_dim{}".format(config.representation.name, config.dataset.full_name, config.representation.dimension)
 
     # name setter function, exists for potential overriding
     def set_name(self):
-        self.name = "{}_{}_dim{}".format(self.base_name, self.dataset_name, self.dimension)
+        self.name = Representation.generate_name(self.config)
+        self.config.representation.full_name = self.name
 
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion
@@ -80,9 +84,8 @@ class Representation(Serializable):
             if self.config.representation.name == "train":
                 error("Semantic enrichment undefined for embedding training, for now.")
             semantic_data = semantic.get_vectors()
-            info("Enriching {} embeddings with shapes: {} {} and {} vecs/doc with semantic information of shapes {} {}.".
-                 format(self.config.representation.name, *shapes_list(self.dataset_vectors), self.vectors_per_doc, *shapes_list(semantic_data)))
-            # finalized_name += ".{}.enriched".format(SemanticResource.get_semantic_name(self.config))
+            info("Enriching [{}] embeddings with shapes: {} {} and {} vecs/doc with [{}] semantic information of shapes {} {}.".
+                 format(self.config.representation.name, *shapes_list(self.dataset_vectors), self.vectors_per_doc, self.config.semantic.name, *shapes_list(semantic_data)))
 
             if self.config.semantic.enrichment == "concat":
                 semantic_dim = len(semantic_data[0][0])
@@ -251,6 +254,7 @@ class Embedding(Representation):
     def aggregate_instance_vectors(self):
         """Method that maps features to a single vector per instance"""
         if self.loaded_aggregated or self.loaded_finalized:
+            debug("Skipping representation aggregation.")
             return
         info("Aggregating embeddings to single-vector-instances via the {} method.".format(self.aggregation))
         # use words per document for the aggregation, aggregating function as an argument
@@ -504,6 +508,7 @@ class BagRepresentation(Representation):
     name = "bag"
     bag_class = Bag
     term_list = None
+    do_limit = None
 
     def __init__(self, config):
         self.config = config
@@ -513,7 +518,39 @@ class BagRepresentation(Representation):
     def set_params(self):
         self.vectors_per_doc = 1
         self.sequence_length = 1
+        self.do_limit = False
+        if self.config.representation.limit is not defs.limit.none:
+            self.do_limit = True
+            self.limit_type, self.limit_number = self.config.representation.limit
+
         Representation.set_params(self)
+
+    @staticmethod
+    def generate_name(config):
+        name = Representation.generate_name(config)
+        name_components = []
+        if config.representation.limit is not defs.limit.none:
+            name_components.append(defs.limit.to_string(config.representation.limit))
+        return name + "_".join(name_components)
+
+
+    def set_multiple_config_names(self):
+        names = []
+        # + no filtering, if filtered is specified
+        filter_vals = [defs.limit.none]
+        if self.do_limit:
+            filter_vals.append(defs.limit.to_string(self.config.representation.limit))
+        # any combo of weights, since they're all stored
+        weight_vals = defs.weights.avail()
+        for w in weight_vals:
+            for f in filter_vals:
+                conf = copy.copy(self.config)
+                conf.representation.name = w
+                conf.representation.limit = f
+                candidate_name = self.generate_name(conf)
+                names.append(candidate_name)
+                debug("Bag config candidate: {}".format(candidate_name))
+        self.multiple_config_names = names
 
     def set_name(self):
         # disable the dimension
@@ -521,6 +558,7 @@ class BagRepresentation(Representation):
         # if external term list, add its length to the name
         if self.config.representation.term_list is not None:
             self.name += "_tok_{}".format(basename(self.config.representation.term_list))
+        self.name += defs.limit.to_string(self.config.representation.limit)
 
     def set_resources(self):
         if self.config.representation.term_list is not None:
@@ -539,13 +577,6 @@ class BagRepresentation(Representation):
     def get_all_preprocessed(self):
         return [self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_word_indexes]
 
-    # for bags, existing vector is a sparse dict list. Fill with zeros.
-    def get_dense_vector(self, doc_dict):
-        full_vector = np.zeros((self.dimension,), np.float32)
-        for t in doc_dict:
-            full_vector[self.term_index[t]] = doc_dict[t]
-        return full_vector
-
     # sparse to dense
     def compute_dense(self):
         if self.loaded_finalized:
@@ -555,12 +586,8 @@ class BagRepresentation(Representation):
             debug("Will not compute dense, since transformed data were loaded")
             return
         info("Computing dense representation for the bag.")
-        for dset_idx in range(len(self.dataset_vectors)):
-            for vec_idx in range(len(self.dataset_vectors[dset_idx])):
-                self.dataset_vectors[dset_idx][vec_idx] = self.get_dense_vector(self.dataset_vectors[dset_idx][vec_idx])
-            # to ndarray
-            self.dataset_vectors[dset_idx] = np.array(self.dataset_vectors[dset_idx])
-            info("Computed shape for dataset {}/{}: {}".format(dset_idx + 1, len(self.dataset_vectors), self.dataset_vectors[dset_idx].shape))
+        self.dataset_vectors = Bag.generate_dense(self.dataset_vectors, self.term_list)
+        info("Computed dense dataset shapes: {} {}".format(*shapes_list(self.dataset_vectors)))
 
     def aggregate_instance_vectors(self):
         # bag representations produce ready-to-use vectors
@@ -594,22 +621,29 @@ class BagRepresentation(Representation):
     def accomodate_dimension_change(self):
         self.set_name()
         self.set_serialization_params()
-        self.set_representation_serialization_sources()
+        self.set_additional_serialization_sources()
 
     def map_text(self, dset):
+        if self.loaded_finalized or self.loaded_aggregated:
+            debug("Skippping {} mapping due to preloading".format(self.base_name))
+            return
+        # need to calc term numeric index for aggregation
         if self.term_list is None:
             # no supplied token list -- use vocabulary of the training dataset
             self.term_list = dset.vocabulary
             info("Setting bag dimension to {} from dataset vocabulary.".format(len(self.term_list)))
-        if self.dimension is not None and self.dimension != len(self.term_list):
-            error("Specified an explicit bag dimension of {} but term list contains {} elements (delete it?).".format(self.dimension, len(self.term_list)))
-
         self.dimension = len(self.term_list)
         self.accomodate_dimension_change()
         info("Renamed representation after bag computation to: {}".format(self.name))
+
         # calc term index mapping
         self.term_index = {term: self.term_list.index(term) for term in self.term_list}
-        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
+
+        if self.dimension is not None and self.dimension != len(self.term_list):
+            error("Specified an explicit bag dimension of {} but term list contains {} elements (delete it?).".format(self.dimension, len(self.term_list)))
+
+        if self.loaded_preprocessed:
+            debug("Skippping {} mapping due to preloading".format(self.base_name))
             return
         info("Mapping {} to {} representation.".format(dset.name, self.name))
 
@@ -620,9 +654,14 @@ class BagRepresentation(Representation):
         # train
         self.bag = self.bag_class()
         self.bag.set_term_list(self.term_list)
+        if self.do_limit:
+            self.bag.set_term_filtering(self.limit_type, self.limit_number)
         self.bag.map_collection(dset.train)
         self.dataset_vectors.append(self.bag.get_weights())
         self.present_word_indexes.append(self.bag.get_present_term_indexes())
+        if self.do_limit:
+            self.term_list = self.bag.get_term_list()
+            self.term_index = {k: v for (k, v) in self.term_index.items() if k in self.term_list}
 
         # # set representation dim and update name
         # self.dimension = len(self.term_list)

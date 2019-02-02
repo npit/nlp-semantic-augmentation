@@ -124,6 +124,8 @@ def warning(msg):
 
 # read pickled data
 def read_pickled(path):
+    """Pickle deserializer function
+    """
     info("Reading serialized from {}".format(path))
     with open(path, "rb") as f:
         return pickle.load(f)
@@ -131,6 +133,8 @@ def read_pickled(path):
 
 # write pickled data
 def write_pickled(path, data):
+    """Pickle serializer function
+    """
     info("Serializing to {}".format(path))
     with open(path, "wb") as f:
         pickle.dump(data, f)
@@ -138,11 +142,14 @@ def write_pickled(path, data):
 
 # object to store times for tic-tocs
 class tictoc:
+    """Compound statement class to time a block of code
+    """
     start = None
     func = None
     msg = None
     do_print = True
     announce = True
+    history = []
 
     def __init__(self, msg, printer_func=logging.getLogger().info, do_print=True, announce=True):
         self.msg = msg
@@ -158,4 +165,14 @@ class tictoc:
     def __exit__(self, exc_type, exc_val, exc_tb):
         # convert to smhd
         elapsed = elapsed_str(self.start)
-        self.func("<<< {} took {}.".format(self.msg, elapsed))
+        msg = "<<< {} took {}.".format(self.msg, elapsed)
+        self.func(msg)
+        self.history.append(msg)
+
+    @staticmethod
+    def log(outfile):
+        """Writing all recorded times to a file
+        """
+        with open(outfile, "w") as f:
+            f.write("\n".join(tictoc.history))
+        info("Timings logged in {}".format(outfile))

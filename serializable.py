@@ -61,9 +61,28 @@ class Serializable:
         self.loaded_serialized = False
         self.loaded_preprocessed = False
         self.loaded_aggregated = False
+        self.multiple_config_names = None
+        self.set_multiple_config_names()
 
     def loaded(self):
         return any(self.load_flags)
+
+    def set_multiple_config_names(self):
+        pass
+
+    def load_any_of(self, path_names):
+        for s, name in enumerate(path_names):
+            # debug("Attempting to load semantic info from source {}/{}: {}".format(s + 1, len(config_names), semantic_name))
+            self.name = name
+            self.set_serialization_params()
+            # add extras
+            self.set_additional_serialization_sources()
+            self.set_resources()
+            self.load_single_config_data()
+            if self.loaded():
+                info("Loaded {} info by using name: {}".format(self.name, name))
+                return True
+            return False
 
     def set_serialization_params(self):
         # setup paths
@@ -72,6 +91,11 @@ class Serializable:
         self.serialization_path_preprocessed, self.serialization_path = self.data_paths[:2]
         self.read_functions = [read_pickled, read_pickled, self.fetch_raw]
         self.handler_functions = [self.handle_preprocessed, self.handle_raw_serialized, self.handle_raw]
+
+        self.set_additional_serialization_sources()
+
+    def set_additional_serialization_sources(self):
+        pass
 
     # set paths according to serializable name
     def set_paths_by_name(self, name=None, raw_path=None):
@@ -111,7 +135,12 @@ class Serializable:
                 read_result = self.resource_read_functions[r](res)
                 self.resource_handler_functions[r](read_result)
 
-    def acquire_data(self, do_preprocess=True):
+    def acquire_data(self):
+        if self.multiple_config_names is not None:
+            return self.load_any_of(self.multiple_config_names)
+        return self.load_single_config_data()
+
+    def load_single_config_data(self):
         self.load_flags = [False for _ in self.data_paths]
         for index in range(len(self.data_paths)):
             if (self.attempt_load(index)):
@@ -121,8 +150,6 @@ class Serializable:
             info("Failed to load {}".format(self.name))
             self.acquire_resources()
             return False
-        if do_preprocess:
-            self.preprocess()
         return True
 
     # configure resources to load

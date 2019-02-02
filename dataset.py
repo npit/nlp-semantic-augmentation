@@ -12,6 +12,8 @@ import nltk
 
 from serializable import Serializable
 
+# remote keras prepro, do with nltk
+# add lemmatization
 
 class Dataset(Serializable):
     name = ""
@@ -55,11 +57,12 @@ class Dataset(Serializable):
             self.read_functions = self.read_functions[1:]
             self.handler_functions = self.handler_functions[1:]
             # get the data but do not preprocess
-            self.acquire_data(do_preprocess=False)
+            self.acquire_data()
             self.loaded_index = self.load_flags.index(True)
             # reapply the limit
             self.apply_limit()
 
+        self.config.dataset.full_name = self.name
         # if no preprocessed data was loaded, apply it now
         if not self.loaded_preprocessed:
             self.preprocess()

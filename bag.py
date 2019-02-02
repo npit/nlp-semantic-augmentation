@@ -1,18 +1,19 @@
 from utils import error, tictoc, debug, info
 import defs
 import tqdm
+import numpy as np
 
 
 class Bag:
     term_list = None
-    global_freqs = None
-    output_vectors = None
+    global_weights = None
+    weights = None
     term_weighting_func = None
     term_greenlight_func = None
     use_fixed_term_list = None
+    do_filter = None
     filter_type = None
     filter_quantity = None
-    calculate_global = None
     term_delineation_func = None
 
     @staticmethod
@@ -25,7 +26,7 @@ class Bag:
 
     def __init__(self):
         self.term_list = []
-        self.global_freqs = {}
+        self.global_weights = {}
         self.use_fixed_term_list = False
         # non-fixed term list as the default
         self.term_weighting_func = self.unit_term_weighting
@@ -37,7 +38,7 @@ class Bag:
 
         self.filter_type = None
         self.filter_quantity = None
-        self.calculate_global = False
+        self.do_filter = False
 
     # term filtering
     # #####################
@@ -50,34 +51,36 @@ class Bag:
             # discard terms with less frequency than the threshold.
             # make a single pass to mark the terms to keep
             terms_to_retain = set()
-            for doc_dict in self.output_vectors:
+            for doc_dict in self.weights:
                 for term, freq in doc_dict.items():
                     if freq >= self.filter_quantity:
                         terms_to_retain.add(term)
             self.delete_terms(terms_to_retain)
 
         elif self.filter_type == defs.limit.top:
+            if len(self.term_list) == self.filter_quantity:
+                return
             # sort w.r.t. collection-wise frequency, keep <threshold> first
-            sorted_global_freqs = sorted(self.global_freqs, reverse=True, key=lambda tok: self.global_freqs[tok])
+            sorted_global_freqs = sorted(self.global_weights, reverse=True, key=lambda tok: self.global_weights[tok])
             terms_to_retain = sorted_global_freqs[:self.filter_quantity]
             self.delete_terms(terms_to_retain)
         else:
             error("Undefined limiting type: {}".format(self.filter_type))
-        # limit the term list itself
-        self.term_list = [tok for tok in self.term_list if tok in self.global_freqs]
 
     # remove terms from the accumulated collections
     def delete_terms(self, terms_to_retain):
         # do not delete terms if handling a fixed list
-        for i, doc_dict in enumerate(self.output_vectors):
-            self.output_vectors[i] = {tok: doc_dict[tok] for tok in doc_dict if tok in terms_to_retain}
-        if self.calculate_global:
-            self.global_freqs = {term: self.global_freqs[term] for term in terms_to_retain}
+        for i, doc_dict in enumerate(self.weights):
+            self.weights[i] = {tok: doc_dict[tok] for tok in doc_dict if tok in terms_to_retain}
+        self.global_weights = {term: self.global_weights[term] for term in terms_to_retain}
+        # limit the term list itself
+        self.term_list = [t for t in self.term_list if t in terms_to_retain]
 
     # setters
     # #####################
     # enable term filtering
     def set_term_filtering(self, filter_type, filter_quantity):
+        self.do_filter = True
         self.filter_type = filter_type
         self.filter_quantity = filter_quantity
 
@@ -85,10 +88,14 @@ class Bag:
     def set_term_list(self, term_list):
         self.use_fixed_term_list = True
         self.term_list = list(term_list)
-        self.global_freqs = {key: 0 for key in self.term_list}
+        self.global_weights = {key: 0 for key in self.term_list}
         self.num_terms = len(self.term_list)
         self.term_weighting_func = self.unit_term_weighting
         self.term_greenlight_func = self.check_term_in_list
+
+    # override term extraction function
+    def set_term_extraction_function(self, func):
+        self.term_extraction_func = func
 
     # override term delineation function
     def set_term_delineation_function(self, func):
@@ -102,15 +109,19 @@ class Bag:
     def set_term_greenlight_function(self, func):
         self.term_greenlight_func = func
 
+    def populate_all_data(self, weights, global_weights, term_list):
+        self.global_weights = global_weights
+        self.term_list = term_list
+        self.weights = weights
+
     # frequency updater function
     def update_term_frequency(self, item, weight, weights_dict):
-        # do collection-wise frequencies, if specified
-        if self.calculate_global:
-            # accumulate DF
-            if item not in self.global_freqs:
-                self.global_freqs[item] = weight
-            else:
-                self.global_freqs[item] += weight
+        # accumulate DF
+        if item not in self.global_weights:
+            self.global_weights[item] = weight
+        else:
+            self.global_weights[item] += weight
+        # accumulate TF
         if item not in weights_dict:
             weights_dict[item] = weight
         else:
@@ -130,15 +141,11 @@ class Bag:
         return {}
 
     def map_collection(self, text_collection):
-        # some sanity checks
-        if self.use_fixed_term_list and self.filter_type is not None:
-            error("Specified term limiting but the term list is fixed.")
-
         # present word tracking only available for the default (word-wise) delineation
         do_track_present_words = False if self.term_delineation_func != Bag.delineate_words else True
 
         # collection-wise information
-        self.output_vectors, self.present_terms, self.present_term_indexes = [], [], []
+        self.weights, self.present_terms, self.present_term_indexes = [], [], []
 
         # global term-wise frequencies
         with tqdm.tqdm(desc="Creating bow vectors", total=len(text_collection), ascii=True, ncols=100, unit="collection") as pbar:
@@ -166,14 +173,14 @@ class Bag:
 
                 # completed document parsing
                 # add required results
-                self.output_vectors.append(text_term_freqs)
+                self.weights.append(text_term_freqs)
                 if do_track_present_words:
                     self.present_term_indexes.append([term_list.index(p) for p in present_words])
                     self.present_terms.append(len(present_words))
             # completed collection parsing - wrap up
             if not self.use_fixed_term_list:
                 # if we computed the term list, store it
-                self.term_list = list(self.global_freqs.keys())
+                self.term_list = list(self.global_weights.keys())
 
         # apply filtering, if selected
         self.filter_terms()
@@ -182,10 +189,10 @@ class Bag:
     # getters
     # #####################
     def get_weights(self):
-        return self.output_vectors
+        return self.weights
 
     def get_global_weights(self):
-        return self.global_freqs
+        return self.global_weights
 
     def get_present_term_indexes(self):
         return self.present_term_indexes
@@ -196,12 +203,20 @@ class Bag:
     def get_term_list(self):
         return self.term_list
 
+    @staticmethod
+    def generate_dense(weights, term_list):
+        for dset_idx in range(len(weights)):
+            container = np.zeros((0, len(term_list)), np.float32)
+            for doc_idx, doc_dict in enumerate(weights[dset_idx]):
+                container = np.append(container, np.asarray([[doc_dict[s] if s in doc_dict else 0 for s in term_list]], np.float32), axis=0)
+            weights[dset_idx] = container
+        return weights
+
 
 class TFIDF(Bag):
 
     def __init__(self):
         Bag.__init__(self)
-        self.calculate_global = True
 
     def map_collection(self, text_collection):
         Bag.map_collection(self, text_collection)
@@ -212,9 +227,9 @@ class TFIDF(Bag):
         with tictoc("TFIDF normalization"):
             if input_data is not None:
                 # just process the input
-                self.output_vectors, self.global_freqs = input_data
+                self.weights, self.global_weights = input_data
             # normalize
-            for vector_idx in range(len(self.output_vectors)):
-                for term_key in self.output_vectors[vector_idx]:
-                    self.output_vectors[vector_idx][term_key] = \
-                        self.output_vectors[vector_idx][term_key] / self.global_freqs[term_key]
+            for vector_idx in range(len(self.weights)):
+                for term_key in self.weights[vector_idx]:
+                    self.weights[vector_idx][term_key] = \
+                        self.weights[vector_idx][term_key] / self.global_weights[term_key]

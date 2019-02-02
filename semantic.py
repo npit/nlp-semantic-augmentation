@@ -1,6 +1,5 @@
 from os.path import join, exists, splitext, basename, dirname
 from os import listdir, makedirs
-from dataset import Dataset
 import pickle
 import nltk
 from utils import tictoc, error, info, debug, warning, write_pickled, read_pickled, shapes_list
@@ -14,8 +13,11 @@ from scipy import spatial
 from bag import Bag, TFIDF
 import spotlight
 import yaml
+import requests
 
+from dataset import Dataset
 import defs
+import copy
 
 
 class SemanticResource(Serializable):
@@ -40,46 +42,40 @@ class SemanticResource(Serializable):
 
     do_cache = True
 
-    def get_appropriate_config_names(self):
+    def set_additional_serialization_sources(self):
+            self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
+            self.data_paths.insert(0, self.serialization_path_vectorized)
+            self.read_functions.insert(0, read_pickled)
+            self.handler_functions.insert(0, self.handle_vectorized)
+
+    def set_multiple_config_names(self):
         semantic_names = []
         # + no filtering, if filtered is specified
         filter_vals = [defs.limit.none]
         if self.do_limit:
             filter_vals.append(defs.limit.to_string(self.config.semantic.limit))
-        # any combo of weights, since they're all stored
+        # any combo of weights, since local and global freqs are stored
         weight_vals = defs.weights.avail()
+
         for w in weight_vals:
             for f in filter_vals:
-                semantic_names.append(
-                    SemanticResource.get_semantic_name(self.config, filtering=f, sem_weights=w))
-                debug("Semantic config candidate: {}".format(semantic_names[-1]))
+                conf = copy.copy(self.config)
+                conf.semantic.weights = w
+                conf.semantic.limit = f
+                candidate_name = self.generate_name(conf)
+                debug("Semantic config candidate: {}".format(candidate_name))
+                semantic_names.append(candidate_name)
 
-        return semantic_names
+        self.multiple_config_names = semantic_names
 
     def __init__(self):
         self.base_name = self.name
         Serializable.__init__(self, self.dir_name)
         self.set_parameters()
-        config_names = self.get_appropriate_config_names()
-        for s, semantic_name in enumerate(config_names):
-            # debug("Attempting to load semantic info from source {}/{}: {}".format(s + 1, len(config_names), semantic_name))
-            self.semantic_name = semantic_name
-            self.form_name()
-            self.set_serialization_params()
-            # add extras
-            self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
-            self.data_paths.insert(0, self.serialization_path_vectorized)
-            self.read_functions.insert(0, read_pickled)
-            self.handler_functions.insert(0, self.handle_vectorized)
-            self.set_resources()
-            self.acquire_data()
-            if self.loaded():
-                info("Loaded semantic info by using name: {}".format(semantic_name))
-                break
+        self.acquire_data()
         # restore correct config
-        self.semantic_name = SemanticResource.get_semantic_name(self.config)
-        info("Restored specifid semantic name to : {}".format(self.semantic_name))
-        self.form_name()
+        self.set_name()
+        info("Restored semantic name to : {}".format(self.name))
 
     def create(config):
         name = config.semantic.name
@@ -112,7 +108,6 @@ class SemanticResource(Serializable):
         with tictoc("Generation of [{}] semantic vectors".format(self.semantic_weights)):
             self.concept_order = sorted(self.reference_concepts)
             self.dimension = len(self.concept_order)
-            self.semantic_document_vectors = [np.ndarray((0, self.dimension), np.float32) for _ in range(len(self.concept_freqs))]
 
             if self.semantic_weights == "embeddings":
                 error("Embedding information requires the context_embedding semantic disambiguation. It is {} instead.".format(
@@ -120,10 +115,7 @@ class SemanticResource(Serializable):
                 self.semantic_document_vectors = self.get_semantic_embeddings()
             elif self.semantic_weights in [defs.weights.frequencies, defs.weights.tfidf]:
                 # get concept-wise frequencies
-                for dset_idx in range(len(self.concept_freqs)):
-                    for doc_dict in self.concept_freqs[dset_idx]:
-                        sem_doc_vector = np.asarray([[doc_dict[s] if s in doc_dict else 0 for s in self.concept_order]], np.float32)
-                        self.semantic_document_vectors[dset_idx] = np.append(self.semantic_document_vectors[dset_idx], sem_doc_vector, axis=0)
+                self.semantic_document_vectors = Bag.generate_dense(self.concept_freqs, self.reference_concepts)
             else:
                 error("Unimplemented semantic vector method: {}.".format(self.semantic_weights))
 
@@ -144,21 +136,6 @@ class SemanticResource(Serializable):
                 self.lookup_cache[word_information] = concept_activations
         return concept_activations
 
-    # overridable name setter
-    def get_semantic_name(config, filtering=None, sem_weights=None):
-        if not config.has_semantic():
-            return None
-        if filtering is None:
-            filtering = defs.limit.to_string(config.semantic.limit)
-        if sem_weights is None:
-            sem_weights = defs.weights.to_string(config.semantic.weights)
-        disambig = "disam{}".format(config.semantic.disambiguation)
-        semantic_name = "{}_{}_{}_{}".format(config.semantic.name, sem_weights, filtering, disambig)
-        if config.semantic.spreading_activation:
-            steps, decay = config.semantic.spreading_activation
-            semantic_name += "_spread{}-{}".format(steps, decay)
-        return semantic_name
-
     # vectorized data handler
     def handle_vectorized(self, data):
         self.semantic_document_vectors, self.concept_order = data
@@ -174,35 +151,56 @@ class SemanticResource(Serializable):
         error("Attempted to lookup from the base class")
 
     def set_parameters(self):
-        if self.config.semantic.limit is not None:
+        if self.config.semantic.limit is not defs.limit.none:
             self.do_limit = True
             self.limit_type, self.limit_number = self.config.semantic.limit
 
         self.semantic_weights = self.config.semantic.weights
-        self.semantic_unit = self.config.semantic.unit
+        # self.semantic_unit = self.config.semantic.unit
+
         self.disambiguation = self.config.semantic.disambiguation.lower()
+
         if self.config.semantic.spreading_activation:
             self.do_spread_activation = True
-            self.spread_steps, self.spread_decay = self.config.semantic.spreading_activation[0], \
-                self.config.semantic.spreading_activation[1]
+            self.spread_steps, self.spread_decay = self.config.semantic.spreading_activation
 
-        self.dataset_name = Dataset.get_limited_name(self.config)
-        self.semantic_name = SemanticResource.get_semantic_name(self.config)
-        self.form_name()
+        self.set_name()
+
+    @staticmethod
+    def generate_name(config):
+        if not config.has_semantic():
+            return None
+        name_components = [config.dataset.full_name, config.semantic.name,
+                           defs.weights.to_string(config.semantic.weights),
+                           defs.limit.to_string(config.semantic.limit),
+                           "disam{}".format(config.semantic.disambiguation),
+                           "_spread{}-{}".format(*config.semantic.spreading_activation)
+                           ]
+        return "_".join(name_components)
+
+    # def generate_name(self, limit=None, weights=None):
+    #     limit = self.config.semantic.limit if limit is None else limit
+    #     weights = self.semantic_weights if weights is None else weights
+    #     name_components = [self.config.dataset.full_name, self.config.representation.full_name]
+    #     if limit is not None:
+    #         name_components.append(defs.limit.to_string(limit))
+    #     name_components.append(weights)
+    #     name_components.append("disam{}".format(self.config.semantic.disambiguation))
+    #     if self.config.semantic.spreading_activation:
+    #         name_components.append("_spread{}-{}".format(self.spread_steps, self.spread_decay))
+    #     return "_".join(name_components)
 
     # make name string from components
-    def form_name(self):
-        self.name = "{}_{}".format(self.dataset_name, self.semantic_name)
-
-    def assign_representation(self, representation):
-        self.representation = representation
+    def set_name(self):
+        self.name = self.generate_name(self.config)
+        self.config.semantic.full_name = self.name
 
     # apply disambiguation to choose a single semantic unit from a collection of such
     def disambiguate(self, concepts, word_information, override=None):
         disam = self.disambiguation if not override else override
-        if disam == "first":
+        if disam == defs.semantic.disam.first:
             return [concepts[0]]
-        elif disam == 'pos':
+        elif disam == defs.semantic.disam.pos:
             # take part-of-speech tags into account
             word, word_pos = word_information
             word_pos = word_pos[:2]
@@ -257,8 +255,20 @@ class SemanticResource(Serializable):
             if self.semantic_weights == defs.weights.frequencies:
                 info("Skipping mapping text due to preprocessed data already loaded.")
                 return
+            # if loaded non-filtered data and limiting is applied
+            if self.do_limit:
+                if self.limit_type == defs.limit.top and len(self.reference_concepts) < self.limit_number:
+                    # apply filtering with the bag object
+                    bag = Bag()
+                    bag.populate_all_data(self.concept_freqs, self.global_freqs, self.reference_concepts)
+                    bag.set_term_filtering(self.limit_type, self.limit_number)
+                    bag.filter_terms()
+                    self.concept_freqs = bag.get_weights()
+                    self.global_freqs = bag.get_global_weights()
+                    self.reference_concepts = bag.get_term_list()
+
             if self.semantic_weights == defs.weights.tfidf:
-                # compute TFIDF
+                # loaded concept-wise and global-wise frequencies; compute TFIDF
                 info("Computing TFIDF from the loaded preprocessed raw frequencies.")
                 # train
                 bag = TFIDF()
@@ -279,11 +289,12 @@ class SemanticResource(Serializable):
 
         # process the dataset
         # train
-        info("Extracting {} semantic information from the training dataset".format(self.name))
+        info("Extracting {}-{} semantic information from the training dataset".format(self.name, self.semantic_weights))
         bag_train.set_term_weighting_function(self.get_concept)
         bag_train.set_term_delineation_function(self.get_term_delineation)
         if self.do_limit:
             bag_train.set_term_filtering(self.limit_type, self.limit_number)
+        bag_train.set_term_extraction_function(lambda x: x)
         bag_train.map_collection(dataset.train)
         self.reference_concepts = bag_train.get_term_list()
 
@@ -291,6 +302,7 @@ class SemanticResource(Serializable):
         bag_test.set_term_list(self.reference_concepts)
         bag_test.set_term_weighting_function(self.get_concept)
         bag_test.set_term_delineation_function(self.get_term_delineation)
+        bag_test.set_term_extraction_function(lambda x: x)
         bag_test.map_collection(dataset.test)
 
         # collect vectors
@@ -315,7 +327,7 @@ class SemanticResource(Serializable):
 
     def get_term_delineation(self, document_text):
         """ Function to produce a list of terms of interest, from which to extract concepts """
-        # default: words from text
+        # default: word information
         return [word_info for word_info in document_text]
 
 
@@ -387,8 +399,8 @@ class ContextEmbedding(SemanticResource):
         if not any([x for x in self.load_flags]):
             error("Failed to load semantic embeddings context.")
 
-    def form_name(self):
-        SemanticResource.form_name(self)
+    def set_name(self):
+        SemanticResource.set_name(self)
         thr = ""
         if self.context_threshold:
             thr += "_thresh{}".format(self.context_threshold)
@@ -645,7 +657,7 @@ class DBPedia(SemanticResource):
     name = "dbpedia"
 
     def lookup(self, candidate):
-        concepts = {}
+        concepts_scores = {}
         try:
             # ret example:
             # {'URI': 'http://dbpedia.org/resource/Dog', 'similarityScore': 0.9997269051125752, 'offset': 10, 'percentageOfSecondRank': 0.0002642731468138545, 'support': 12528, 'types': '', 'surfaceForm': 'dog'}
@@ -653,13 +665,16 @@ class DBPedia(SemanticResource):
             res = spotlight.annotate(self.rest_url, candidate, confidence=self.confidence)
             for element in res:
                 name, score = element["URI"], element["similarityScore"]
-                if name in concepts and concepts[name] <= score:
+                # only update if a better similarity score is detected
+                if name in concepts_scores and concepts_scores[name] <= score:
                     continue
-                concepts[name] = score
-                debug("Got URI {} | score: {}".format(name, score))
+                concepts_scores[name] = score
+                # debug("Got URI {} | score: {}".format(name, score))
         except spotlight.SpotlightException as se:
-            warning(se)
-        return concepts
+            debug(se)
+        except requests.exceptions.HTTPError as ex:
+            debug(ex)
+        return concepts_scores
 
     def get_term_delineation(self, document_text):
         """ Function to produce a list of terms of interest, from which to extract concepts """

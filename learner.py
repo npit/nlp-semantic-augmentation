@@ -11,7 +11,7 @@ from keras.models import Sequential, load_model
 from keras.layers import Activation, Dense, Dropout, Embedding, Reshape
 from keras.layers import LSTM as keras_lstm
 from keras import callbacks
-from utils import info, debug, tictoc, error, write_pickled, read_pickled, one_hot, get_majority_label
+from utils import info, debug, tictoc, warning, error, write_pickled, read_pickled, one_hot, get_majority_label
 # from keras import backend
 # import tensorflow as tf
 
@@ -39,6 +39,7 @@ class DNN:
     early_stopping = None
 
     model_paths = []
+    print_precision = "{:.03f}"
 
     @staticmethod
     def create(config):
@@ -97,11 +98,20 @@ class DNN:
         if gt is None:
             gt = self.test_labels
         cr = pd.DataFrame.from_dict(metrics.classification_report(gt, preds, output_dict=True))
-        # classwise, micro, macro, weighted
-        cw = cr.loc[metric].iloc[:num_labels].as_matrix()
-        mi = cr.loc[metric].iloc[num_labels]
-        ma = cr.loc[metric].iloc[num_labels + 1]
-        we = cr.loc[metric].iloc[num_labels + 2]
+        # get classwise, micro, macro, weighted
+        keys = cr.keys()
+        if len(keys) != num_labels + 3:
+            existing_classes = [int(x) for x in keys[:-3]]
+            warning("No predicted samples for classes: {}".format([x for x in range(num_labels) if x not in existing_classes]))
+            existing_scores = cr.loc[metric].iloc[:-3].as_matrix()
+            cw = np.zeros(num_labels, np.float32)
+            for score_idx, class_number in enumerate(existing_classes):
+                cw[class_number] = existing_scores[score_idx]
+        else:
+            cw = cr.loc[metric].iloc[:num_labels].as_matrix()
+        mi = cr.loc[metric].iloc[-3]
+        ma = cr.loc[metric].iloc[-2]
+        we = cr.loc[metric].iloc[-1]
         return cw, mi, ma, we
 
     # def get_roc(self, raw_preds, average, gt=None):
@@ -160,7 +170,7 @@ class DNN:
         if self.early_stopping_patience and self.validation_exists:
             self.early_stopping = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=self.early_stopping_patience, verbose=0,
                                                           mode='auto', baseline=None, restore_best_weights=False)
-        self.callbacks.append(self.early_stopping)
+            self.callbacks.append(self.early_stopping)
 
         # stop on NaN
         self.nan_terminator = callbacks.TerminateOnNaN()
@@ -194,7 +204,7 @@ class DNN:
         #     self.sequence_length = emb_seqlen
         #     self.embeddings = embeddings
 
-        self.verbosity = 1 if self.config.log_level == "debug" else 0
+        self.verbosity = 1 if self.config.print.training_progress else 0
         self.train, self.test = representation.get_data()
         # self.train_labels, self.test_labels = [np.asarray(x, np.int32) for x in targets]
         self.train_labels, self.test_labels = [x for x in dataset.get_targets()]
@@ -236,13 +246,6 @@ class DNN:
         # sanity checks
         if self.do_folds and self.do_validate_portion:
             error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
-        # data / label matching
-        if self.num_train != self.num_train_labels and (self.num_train != self.sequence_length * self.num_train_labels):
-            error("Irreconcilable lengths of training data and labels: {}, {} with learner sequence length of {}.".
-                  format(self.num_train, self.num_train_labels, self.sequence_length))
-        if self.num_test != self.num_test_labels and (self.num_test != self.sequence_length * self.num_test_labels):
-            error("Irreconcilable lengths of test data and labels: {}, {} with learner sequence length of {}.".
-                  format(self.num_test, self.num_test_labels, self.sequence_length))
 
         # default measures if not preferred
         if not self.preferred_measures:
@@ -385,9 +388,9 @@ class DNN:
             value = container[stat]
             if type(value) == list:
                 # folds
-                scores_str.append("{" + " ".join(list(map(lambda x: "{:.3f}".format(x), value))) + "}")
+                scores_str.append("{" + " ".join(list(map(lambda x: self.print_precision.format(x), value))) + "}")
             else:
-                scores_str.append("{:.3f}".format(value))
+                scores_str.append(self.print_precision.format(value))
         return " ".join(scores_str)
 
     # print performance across folds and compute foldwise aggregations
@@ -586,13 +589,13 @@ class DNN:
                         container = self.performance[rtype][measure][aggr]
                         if not container:
                             continue
-                        info('{}| {} {}: {:.3f}'.format(rtype, aggr, measure, self.performance[rtype][measure][aggr]["folds"][self.fold_index]))
+                        info(("{}| {} {}: " + self.print_precision).format(rtype, aggr, measure, self.performance[rtype][measure][aggr]["folds"][self.fold_index]))
             else:
                 for measure in self.multilabel_measures:
                     container = self.performance[rtype][measure]
                     if not container:
                         continue
-                    info('{}| {}: {:.3f}'.format(rtype, measure, self.performance[rtype][measure]["folds"][self.fold_index]))
+                    info(("{}| {}:" + self.print_precision).format(rtype, measure, self.performance[rtype][measure]["folds"][self.fold_index]))
         info("---------------")
 
 
@@ -669,6 +672,13 @@ class LSTM(DNN):
             error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))
         if aggr in ["train"]:
             error("Embedding {} incompatible with {} model.".format(aggregation, self.name))
+        # sequence length data / label matching
+        if self.num_train != self.num_train_labels and (self.num_train != self.sequence_length * self.num_train_labels):
+            error("Irreconcilable lengths of training data and labels: {}, {} with learner sequence length of {}.".
+                  format(self.num_train, self.num_train_labels, self.sequence_length))
+        if self.num_test != self.num_test_labels and (self.num_test != self.sequence_length * self.num_test_labels):
+            error("Irreconcilable lengths of test data and labels: {}, {} with learner sequence length of {}.".
+                  format(self.num_test, self.num_test_labels, self.sequence_length))
 
     # fetch sequence lstm fold data
     def get_fold_data(self, data, labels=None, data_idx=None, label_idx=None):
