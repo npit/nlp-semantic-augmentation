@@ -2,18 +2,19 @@ import random
 import tqdm
 import numpy as np
 from os import listdir
-from nltk.tokenize import RegexpTokenizer
+# from nltk.tokenize import RegexpTokenizer
 from utils import error, tictoc, info, write_pickled, align_index, debug, warning
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.model_selection import StratifiedShuffleSplit
-from keras.preprocessing.text import text_to_word_sequence
 from nltk.corpus import stopwords, reuters
+from nltk.stem import WordNetLemmatizer, PorterStemmer
+from nltk.tokenize import word_tokenize, sent_tokenize
+import string
 import nltk
+from semantic import Wordnet
 
 from serializable import Serializable
 
-# remote keras prepro, do with nltk
-# add lemmatization
 
 class Dataset(Serializable):
     name = ""
@@ -36,12 +37,17 @@ class Dataset(Serializable):
         else:
             error("Undefined dataset: {}".format(name))
 
+    @staticmethod
+    def generate_name(config):
+        name = config.dataset.name
+        if config.dataset.prepro is not None:
+            name += "_" + config.dataset.prepro
+        return name
+
     # dataset creation
     def __init__(self):
         Serializable.__init__(self, self.dir_name)
-        self.nltk_tokenizer = RegexpTokenizer(r'\w+')
         self.set_serialization_params()
-
         # check for limited dataset
         self.apply_limit()
         self.acquire_data()
@@ -80,7 +86,7 @@ class Dataset(Serializable):
         self.loaded_preprocessed = True
 
     def suspend_limit(self):
-        self.name = self.base_name
+        self.name = Dataset.generate_name(self.config)
 
     def is_multilabel(self):
         return self.multilabel
@@ -203,7 +209,7 @@ class Dataset(Serializable):
 
     def apply_limit(self):
         if self.config.has_limit():
-            self.base_name = self.name
+            self.base_name = Dataset.generate_name(self.config)
             name = self.apply_class_limit(self.base_name)
             self.name = self.apply_data_limit(name)
             self.set_paths_by_name(self.name)
@@ -216,18 +222,52 @@ class Dataset(Serializable):
             stopwords.words(self.language)
         except LookupError:
             nltk.download("stopwords")
+
         try:
             nltk.pos_tag("Text")
         except LookupError:
             nltk.download('averaged_perceptron_tagger')
 
+        # setup word prepro
+        while True:
+            try:
+                if self.config.dataset.prepro == "stem":
+                    self.stemmer = PorterStemmer()
+                    self.word_prepro = lambda w_pos: (self.stemmer.stem(w_pos[0]), w_pos[1])
+                elif self.config.dataset.prepro == "lemma":
+                    self.lemmatizer = WordNetLemmatizer()
+                    self.word_prepro = self.apply_lemmatizer
+                else:
+                    self.word_prepro = lambda x: x
+                break
+            except LookupError:
+                nltk.download('punkt')
+        # punctuation
+        self.punctuation_remover = str.maketrans('', '', string.punctuation)
+
+    def apply_lemmatizer(self, w_pos):
+        wordnet_pos = Wordnet.get_wordnet_pos(w_pos[1])
+        if not wordnet_pos:
+            return self.lemmatizer.lemmatize(w_pos[0]), w_pos[1]
+        else:
+            return self.lemmatizer.lemmatize(w_pos[0], wordnet_pos), w_pos[1]
+
     # map text string into list of stopword-filtered words and POS tags
     def process_single_text(self, text, filt, stopwords):
-        words = text_to_word_sequence(text, filters=filt, lower=True, split=' ')
+        sents = sent_tokenize(text.lower())
+        words = []
+        for sent in sents:
+            words.extend(word_tokenize(sent))
+        # words = text_to_word_sequence(text, filters=filt, lower=True, split=' ')
         # words = [w.lower() for w in self.nltk_tokenizer.tokenize(text)]
+
+        # remove stopwords and punctuation content
+        words = [w.translate(self.punctuation_remover) for w in words]
+        words = [w for w in words if w not in stopwords and w.isalpha()]
+        # pos tagging
         words_with_pos = nltk.pos_tag(words)
-        # remove stopwords
-        words_with_pos = [wp for wp in words_with_pos if wp[0] not in stopwords]
+        # stemming / lemmatization
+        words_with_pos = [self.word_prepro(wp) for wp in words_with_pos]
         return words_with_pos
 
     # preprocess single

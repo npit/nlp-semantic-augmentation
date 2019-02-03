@@ -15,7 +15,7 @@ import spotlight
 import yaml
 import requests
 
-from dataset import Dataset
+# from dataset import Dataset
 import defs
 import copy
 
@@ -333,13 +333,27 @@ class SemanticResource(Serializable):
 
 class Wordnet(SemanticResource):
     name = "wordnet"
+    # pos_tag_mapping = {"VB": wn.VERB, "NN": wn.NOUN, "JJ": wn.ADJ, "RB": wn.ADV}
+
+    @staticmethod
+    def get_wordnet_pos(treebank_tag):
+
+        if treebank_tag.startswith('J'):
+            return wn.ADJ
+        elif treebank_tag.startswith('V'):
+            return wn.VERB
+        elif treebank_tag.startswith('N'):
+            return wn.NOUN
+        elif treebank_tag.startswith('R'):
+            return wn.ADV
+        else:
+            return ''
 
     def __init__(self, config):
         self.config = config
         SemanticResource.__init__(self)
 
         # map nltk pos maps into meaningful wordnet ones
-        self.pos_tag_mapping = {"VB": wn.VERB, "NN": wn.NOUN, "JJ": wn.ADJ, "RB": wn.ADV}
 
     def fetch_raw(self, dummy_input):
         if self.base_name not in listdir(nltk.data.find("corpora")):
