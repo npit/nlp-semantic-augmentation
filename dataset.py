@@ -223,6 +223,7 @@ class Dataset(Serializable):
         except LookupError:
             nltk.download("stopwords")
 
+        self.stopwords = set(stopwords.words(self.language))
         try:
             nltk.pos_tag("Text")
         except LookupError:
@@ -253,7 +254,7 @@ class Dataset(Serializable):
             return self.lemmatizer.lemmatize(w_pos[0], wordnet_pos), w_pos[1]
 
     # map text string into list of stopword-filtered words and POS tags
-    def process_single_text(self, text, filt, stopwords):
+    def process_single_text(self, text):
         sents = sent_tokenize(text.lower())
         words = []
         for sent in sents:
@@ -263,7 +264,7 @@ class Dataset(Serializable):
 
         # remove stopwords and punctuation content
         words = [w.translate(self.punctuation_remover) for w in words]
-        words = [w for w in words if w not in stopwords and w.isalpha()]
+        words = [w for w in words if w not in self.stopwords and w.isalpha()]
         # pos tagging
         words_with_pos = nltk.pos_tag(words)
         # stemming / lemmatization
@@ -273,15 +274,15 @@ class Dataset(Serializable):
     # preprocess single
     def preprocess_text_collection(self, document_list, track_vocabulary=False):
         self.setup_nltk_resources()
-        filt = '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\n\t1234567890'
-        stopw = set(stopwords.words(self.language))
+        # filt = '!"#$%&()*+,-./:;<=>?@\[\]^_`{|}~\n\t1234567890'
         ret_words_pos, ret_voc = [], set()
         num_words = []
         with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100, unit="collection") as pbar:
             for i in range(len(document_list)):
                 pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
                 pbar.update()
-                text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
+                # text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
+                text_words_pos = self.process_single_text(document_list[i])
                 ret_words_pos.append(text_words_pos)
                 if track_vocabulary:
                     ret_voc.update([wp[0] for wp in text_words_pos])
