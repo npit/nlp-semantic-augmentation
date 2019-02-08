@@ -23,6 +23,7 @@ class Transform(Serializable):
     process_func_train = None
     process_func_test = None
     is_supervised = None
+    term_components = None
 
     @staticmethod
     def create(representation):
@@ -92,6 +93,7 @@ class Transform(Serializable):
         # compute
         num_chunks = len(repres.dataset_vectors)
         info("Applying {} {}-dimensional transform on the raw representation.".format(self.base_name, self.dimension))
+        self.term_components = []
         for dset_idx, dset in enumerate(repres.dataset_vectors):
             # replace non-reduced vectors, to save memory
             if dset_idx == 0:
@@ -105,6 +107,7 @@ class Transform(Serializable):
             else:
                 info("Transforming test input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
                 repres.dataset_vectors[dset_idx] = self.process_func_test(dset)
+            self.term_components.append(self.transformer._components)
 
         repres.dimension = self.dimension
         info("Output shapes (train/test): {}, {}".format(*shapes_list(repres.dataset_vectors)))
@@ -119,6 +122,11 @@ class Transform(Serializable):
 
     def handle_preprocessed(self, data):
         self.repr_data = data
+
+    def get_term_representations(self, data):
+        """Return term-based, rather than document-based representations
+        """
+        return self.transformer._components
 
 
 class LSA(Transform):
