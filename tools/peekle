@@ -1,0 +1,40 @@
+#!/usr/bin/env ipython3
+import pickle
+import sys
+import os
+import code
+import argparse
+import numpy as np
+
+def rewrite(path, data):
+    with open(path,"wb") as f:
+        pickle.dump(data, path)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("filepath")
+parser.add_argument("-i", "--interactive", dest="interactive", action = "store_true")
+args = parser.parse_args()
+
+filepath = args.filepath
+
+
+
+with open(filepath, "rb") as f:
+    data = pickle.load(f)
+try:
+    print("{} data.".format(len(data)))
+    for i, (name, value) in enumerate(data.items()):
+        print("Datum # {}, name: {}, type: {}, len: {}".format(i+1, name, type(value), len(value)))
+        if type(value) == list:
+            for inner in value[:2]:
+                if type(inner) == list: print("\tlen: {}".format(len(inner)))
+                elif type(inner) == np.ndarray: print("\tshp: {}".format(inner.shape))
+            print("\t(Total: {})".format(len(value)))
+        elif type(value) == np.ndarray:
+             print("shp:", value.shape)
+except:
+    print("No iterable data.")
+    print("type:", type(data))
+
+if args.interactive:
+    code.interact(local=locals())
