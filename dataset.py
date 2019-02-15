@@ -27,6 +27,9 @@ class Dataset(Serializable):
     preprocessed = False
     train, test = None, None
     multilabel = False
+    data_names = ["train-data", "train-labels", "train-label-names",
+                  "test", "test-labels", "test_label-names", "vocabulary",
+                  "vocabulary_index", "undefined_word_index"]
 
     def create(config):
         name = config.dataset.name
@@ -77,7 +80,8 @@ class Dataset(Serializable):
         info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
         self.train, self.train_target, self.train_label_names, \
             self.test, self.test_target, self.test_label_names, \
-            self.vocabulary, self.vocabulary_index, self.undefined_word_index = preprocessed
+            self.vocabulary, self.vocabulary_index, self.undefined_word_index \
+            = [preprocessed[name] for name in self.data_names]
 
         self.num_labels = len(self.train_label_names)
         for index, word in enumerate(self.vocabulary):
@@ -308,15 +312,19 @@ class Dataset(Serializable):
                 self.vocabulary_index.append(index)
             # add another for the missing word
             self.undefined_word_index = len(self.vocabulary)
-
         # serialize
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        return [self.train, self.train_target, self.train_label_names, self.test, self.test_target, self.test_label_names]
+        return {"train-data": self.train, "train-labels": self.train_target, "train-label-names": self.train_label_names,
+                "test": self.test, "test-labels": self.test_target, "test_label-names": self.test_label_names}
 
     def get_all_preprocessed(self):
-        return self.get_all_raw() + [self.vocabulary, self.vocabulary_index, self.undefined_word_index]
+        res = self.get_all_raw()
+        res['vocabulary'] = self.vocabulary
+        res['vocabulary_index'] = self.vocabulary_index
+        res['undefined_word_index'] = self.undefined_word_index
+        return res
 
     def get_name(self):
         return self.name

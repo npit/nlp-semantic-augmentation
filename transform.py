@@ -107,7 +107,7 @@ class Transform(Serializable):
             else:
                 info("Transforming test input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
                 repres.dataset_vectors[dset_idx] = self.process_func_test(dset)
-            self.term_components.append(self.transformer._components)
+            self.term_components.append(self.transformer.components_)
 
         repres.dimension = self.dimension
         info("Output shapes (train/test): {}, {}".format(*shapes_list(repres.dataset_vectors)))
@@ -126,7 +126,7 @@ class Transform(Serializable):
     def get_term_representations(self, data):
         """Return term-based, rather than document-based representations
         """
-        return self.transformer._components
+        return self.transformer.components_
 
 
 class LSA(Transform):

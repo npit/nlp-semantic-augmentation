@@ -42,6 +42,8 @@ class SemanticResource(Serializable):
 
     do_cache = True
 
+    data_names = ["concept_weights", "concept_weights", "reference_concepts"]
+
     def set_additional_serialization_sources(self):
             self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
             self.data_paths.insert(0, self.serialization_path_vectorized)
@@ -145,7 +147,8 @@ class SemanticResource(Serializable):
 
     # preprocessed data getter
     def get_all_preprocessed(self):
-        return [self.concept_freqs, self.global_freqs, self.reference_concepts]
+        return {"concept_weights": self.concept_freqs, "concept_weights": self.global_freqs,
+                "reference_concepts": self.reference_concepts}
 
     def lookup(self, candidate):
         error("Attempted to lookup from the base class")
@@ -322,7 +325,8 @@ class SemanticResource(Serializable):
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.concept_freqs, self.global_freqs, self.reference_concepts = preprocessed
+        self.concept_freqs, self.global_freqs, self.reference_concepts \
+                = [preprocessed[x] for x in self.data_names]
         debug("Read preprocessed concept docs shapes: {}, {}".format(*list(map(len, self.concept_freqs))))
 
     def get_term_delineation(self, document_text):

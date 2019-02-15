@@ -14,6 +14,9 @@ class Representation(Serializable):
     dir_name = "representation"
     loaded_transformed = False
 
+    data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index",
+                  "present_term_indexes"]
+
     @staticmethod
     def create(config):
         name = config.representation.name
@@ -314,6 +317,11 @@ class Embedding(Representation):
             error("Undefined aggregation: {}".format(self.aggregation))
         Representation.set_params(self)
 
+
+    def get_all_preprocessed(self):
+        return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
+                "undefined_word_index": None, "present_term_indexes": self.present_word_indexes}
+
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
@@ -423,9 +431,6 @@ class VectorEmbedding(Embedding):
         self.config = config
         self.name = self.base_name = self.config.representation.name
         Embedding.__init__(self)
-
-    def get_all_preprocessed(self):
-        return [self.dataset_vectors, self.elements_per_instance, None, self.present_word_indexes]
 
 
 class Train(Representation):
