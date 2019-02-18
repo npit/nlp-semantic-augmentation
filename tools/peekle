@@ -6,6 +6,9 @@ import code
 import argparse
 import numpy as np
 
+""" Script to inspect serialized pickle files
+"""
+
 def rewrite(path, data):
     with open(path,"wb") as f:
         pickle.dump(data, path)
