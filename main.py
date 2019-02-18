@@ -16,14 +16,14 @@ def main(config_file):
 
     print("Running main.")
     # initialize configuration
-    config = Config()
-    config.initialize(config_file)
+    config = Config(config_file)
 
     # time the entire run
     with tictoc("Total run"):
         # datasets loading & preprocessing
         info("===== DATASET =====")
         dataset = Dataset.create(config)
+        dataset.preprocess()
 
         # check for existing & precomputed transformed representations
         info("===== REPRESENTATION =====")

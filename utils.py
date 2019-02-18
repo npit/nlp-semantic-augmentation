@@ -6,6 +6,12 @@ import numpy as np
 num_warnings = 0
 
 
+def aslist(x):
+    """Convert the input to a single-element list, if it's not a list
+    """
+    return [x] if type(x) != list else x
+
+
 # function for one-hot encoding, can handle multilabel
 def one_hot(labels, num_labels):
     output = np.empty((0, num_labels), np.float32)

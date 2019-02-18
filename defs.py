@@ -33,3 +33,6 @@ class limit:
 
     def to_string(value):
         return "ALL" if value is None else "".join(list(map(str, value)))
+
+class alias:
+    none = "none"

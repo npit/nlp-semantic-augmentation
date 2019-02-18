@@ -29,6 +29,10 @@ class Representation(Serializable):
         # any unknown name is assumed to be pretrained embeddings
         return VectorEmbedding(config)
 
+    @staticmethod
+    def get_available():
+        return [cls.name for cls in Representation.__subclasses__()]
+
     def __init__(self, can_fail_loading=True):
         self.set_params()
         self.set_name()
@@ -51,7 +55,7 @@ class Representation(Serializable):
         aggr = "".join(list(map(str, self.config.representation.aggregation + [self.sequence_length])))
         self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
 
-        sem = SemanticResource.generate_name(self.config)
+        sem = SemanticResource.generate_name(self.config, include_dataset=False)
         finalized_id = sem + "_" + self.config.semantic.enrichment if sem else "nosem"
         self.serialization_path_finalized = "{}/{}.aggregated_{}.finalized_{}.pickle".format(
             self.serialization_dir, self.name, aggr, finalized_id)
@@ -126,7 +130,7 @@ class Representation(Serializable):
     def handle_finalized(self, data):
         self.handle_preprocessed(data)
         self.loaded_finalized = True
-        self.dimension = data[0][0].shape[-1]
+        self.dimension = data["dataset_vectors"][0].shape[-1]
         debug("Read finalized dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
 
     def get_zero_pad_element(self):
@@ -146,6 +150,8 @@ class Representation(Serializable):
 
     # mark word-index relations for stat computation, add unk if needed
     def handle_raw_serialized(self, raw_serialized):
+        """Read csv mapping in a pickled format
+        """
         # process as dataframe
         self.words_to_numeric_idx = {}
         self.embeddings = raw_serialized
@@ -247,6 +253,7 @@ class Embedding(Representation):
             debug("Will not compute dense, since transformed data were loaded")
             return
 
+        import pdb; pdb.set_trace()
         info("Embeddings are already dense.")
         # instance vectors are already dense - just make dataset-level ndarrays
         for dset_idx in range(len(self.dataset_vectors)):
@@ -325,7 +332,8 @@ class Embedding(Representation):
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.dataset_vectors, self.elements_per_instance, self.undefined_word_index, self.present_word_indexes = preprocessed
+        self.dataset_vectors, self.elements_per_instance, \
+        self.undefined_word_index, self.present_word_indexes = [preprocessed[n] for n in self.data_names]
         debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
 
     def set_transform(self, transform):
@@ -340,7 +348,7 @@ class Embedding(Representation):
 
 # generic class to load pickled embedding vectors
 class VectorEmbedding(Embedding):
-    name = "vector"
+    name = "vector_embedding"
     unknown_word_token = "unk"
 
     # expected raw data path
@@ -371,10 +379,11 @@ class VectorEmbedding(Embedding):
                 info("Mapping text bundle {}/{}: {} texts".format(dset_idx + 1, len(text_bundles), len(text_bundles[dset_idx])))
                 hist = {w: 0 for w in self.embeddings.index}
                 hist_missing = {}
+                num_documents = len(text_bundles[dset_idx])
                 for j, doc_wp_list in enumerate(text_bundles[dset_idx]):
                     # drop POS
                     word_list = [wp[0] for wp in doc_wp_list]
-                    debug("Text {}/{} with {} words".format(j + 1, len(text_bundles[dset_idx]), len(word_list)))
+                    debug("Text {}/{} with {} words".format(j + 1, num_documents, len(word_list)))
                     # check present & missing words
                     missing_words, missing_index, present_words, present_index = [], [], [], []
                     for w, word in enumerate(word_list):
@@ -418,14 +427,11 @@ class VectorEmbedding(Embedding):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def print_word_stats(self, hist, hist_missing):
-        num_words_hit, num_hit = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
-        num_words_miss, num_miss = len(hist_missing.keys()), sum(hist_missing.values())
-        num_total = sum(list(hist.values()) + list(hist_missing.values()))
-
-        debug("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit / num_total * 100, num_total, num_words_hit))
-        debug("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss / num_total * 100, num_total, num_words_miss))
-        if num_hit == 0:
-            error("No hits in embedding generation.")
+        terms_hit, hit_sum = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
+        terms_missed, miss_sum = len([1 for v in hist_missing if hist_missing[v] > 0]), sum(hist_missing.values())
+        total_term_sum = sum(list(hist.values()) + list(hist_missing.values()))
+        debug("{} % terms appear at least once, which corresponds to a total of {} % terms in the text".format(terms_hit / len(hist) * 100, hit_sum / total_term_sum * 100))
+        debug("{} % terms never appear, i.e. a total of {} % terms in the text".format(terms_missed / len(hist) * 100, miss_sum / total_term_sum * 100))
 
     def __init__(self, config):
         self.config = config

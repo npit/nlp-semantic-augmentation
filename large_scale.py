@@ -13,20 +13,15 @@ import smtplib
 import logging
 import os
 import getpass
+from utils import info, error, datetime_str, aslist
 
 """Script to produce large-scale semantic neural augmentation experiments
+
+The experiment variation parameters should be in a "params" field in the configuration file.
+Values in a list are interpreted as different parameters (so for list literal values, add an additional list wrap)
 """
 
 exlogger = logging.getLogger("experiments")
-
-
-def info(msg):
-    exlogger.info(msg)
-
-
-def error(msg):
-    exlogger.error(msg)
-    exit(1)
 
 
 def sendmail(mail, passw, msg, title="nle"):
@@ -53,15 +48,6 @@ def sendmail(mail, passw, msg, title="nle"):
         error(x)
 
 
-def datetime_str():
-    return time.strftime("%d%m%y_%H%M%S")
-
-
-def aslist(x):
-    if type(x) != list:
-        x = [x]
-    return x
-
 
 def traverse_dict(ddict, key, prev_keys):
     res = []
@@ -81,7 +67,7 @@ def traverse_dict(ddict, key, prev_keys):
     return res
 
 
-def make_configs(base_config, run_dir, sources_dir):
+def make_configs(base_config, run_dir, sources_dir="./"):
     vars = []
     params = base_config["params"]
     base_raw_folder = base_config["folders"]["raw_data"]
@@ -90,7 +76,7 @@ def make_configs(base_config, run_dir, sources_dir):
         seqs = traverse_dict(params, val, [])
         vars.extend(seqs)
     configs, run_ids = [], []
-    vars = sorted(vars, key=lambda x: str(x[1]))
+    vars = sorted(vars, key=lambda x: str(x)[2])
 
     values = [v[0] for v in vars]
     names = [v[1] for v in vars]
@@ -140,12 +126,11 @@ def make_run_ids(keychains, confs):
     return names
 
 
-def main():
+def main(config_file="large.config.yml"):
     # settable parameters
     ############################################################
 
     # config file
-    config_file = "config.yml"
     email="pittarasnikif@gmail.com"
     passw=None
 
@@ -155,7 +140,7 @@ def main():
     conf = yaml.load(open(config_file))
     # evaluation measures
     exps = conf["experiments"]
-    eval_measures = aslist(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
+    eval_measures = asligst(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
     aggr_measures = aslist(exps["aggregation"]) if "aggregation" in exps else ["macro", "micro"]
     stat_functions = aslist(exps["stats"]) if "stats" in exps else ["mean"]
     run_types = aslist(exps["run_types"]) if "run_types" in exps else ["run"]
@@ -163,7 +148,7 @@ def main():
     # folder to run experiments in
     run_dir = exps["run_folder"]
     # folder where run scripts are
-    sources_dir = exps["sources_dir"]
+    sources_dir = exps["sources_dir"] if "sources_dir" in exps else "./"
 
     configs, run_ids = make_configs(conf, run_dir, sources_dir)
 
@@ -174,8 +159,8 @@ def main():
     results_file = join(run_dir, "run_results.csv")
 
     # mail
-    do_mail = exps["do_mail"]
-    if do_mail:
+    do_send_mail = exps["send_mail"] if "send_mail" in exps else None
+    if do_send_mail:
         passw=getpass.getpass()
 
 
@@ -241,7 +226,7 @@ def main():
             if exists(error_file):
                 print("An error has occurred in the run, exiting.")
                 info("An error has occurred in the run, exiting.")
-                if do_mail:
+                if do_send_mail:
                     sendmail(email, passw, "an error occurred")
                 exit(1)
         # read experiment results
@@ -281,7 +266,7 @@ def main():
     total_df.to_csv(results_file)
 
     # [info(msg) for msg in messages]
-    if do_mail:
+    if send_mail:
         sendmail(email, passw, "run complete.")
 
 if __name__ == "__main__":

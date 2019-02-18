@@ -40,7 +40,12 @@ class Transform(Serializable):
         if name == LDA.base_name:
             return LDA(representation)
         # any unknown name is assumed to be pretrained embeddings
-        error("Undefined feature transformation: {}".format(name))
+        error("Undefined feature transformation: {}, available ones are {}".format(name, Transform.get_available()))
+
+
+    @staticmethod
+    def get_available():
+        return [cls.base_name for cls in Transform.__subclasses__()]
 
     def __init__(self, representation):
         config = representation.config
@@ -99,6 +104,7 @@ class Transform(Serializable):
             if dset_idx == 0:
                 info("Transforming training input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
                 if self.is_supervised:
+                    import pdb; pdb.set_trace()
                     ground_truth = dataset.get_targets()[dset_idx]
                     ground_truth = repres.match_targets_to_instances(dset_idx, ground_truth)
                     repres.dataset_vectors[dset_idx] = self.process_func_train(dset, ground_truth)
@@ -107,7 +113,7 @@ class Transform(Serializable):
             else:
                 info("Transforming test input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
                 repres.dataset_vectors[dset_idx] = self.process_func_test(dset)
-            self.term_components.append(self.transformer.components_)
+            self.term_components.append(self.get_term_representations())
 
         repres.dimension = self.dimension
         info("Output shapes (train/test): {}, {}".format(*shapes_list(repres.dataset_vectors)))
@@ -123,7 +129,7 @@ class Transform(Serializable):
     def handle_preprocessed(self, data):
         self.repr_data = data
 
-    def get_term_representations(self, data):
+    def get_term_representations(self):
         """Return term-based, rather than document-based representations
         """
         return self.transformer.components_
@@ -155,8 +161,17 @@ class GMMClustering(Transform):
         """GMM-clustering constructor"""
         Transform.__init__(self, representation)
         self.transformer = GaussianMixture(self.dimension)
-        self.process_func_train = self.transformer.fit_transform
-        self.process_func_test = self.transformer.transform
+        self.process_func_train = self.fit_predict_proba
+        self.process_func_test = self.transformer.predict_proba
+
+    def fit_predict_proba(self, data):
+        self.transformer = self.transformer.fit(data)
+        return self.process_func_test(data)
+
+    def get_term_representations(self):
+        """Return term-based, rather than document-based representations
+        """
+        return self.transformer.means_
 
 
 class KMeansClustering(Transform):
@@ -170,9 +185,22 @@ class KMeansClustering(Transform):
         """Kmeans-clustering constructor"""
         Transform.__init__(self, representation)
         self.transformer = KMeans(self.dimension)
-        self.process_func_train = self.transformer.fit_transform
-        self.process_func_test = self.transformer.transform
+        self.process_func_train = self.fit
+        self.process_func_test = self.do_transform
 
+    def fit(self, data):
+        self.transformer = self.transformer.fit(data)
+        return self.do_transform(data)
+
+    def do_transform(self, data):
+        res = self.transformer.transform(data)
+        return res
+
+    def get_term_representations(self):
+        """Return term-based, rather than document-based representations
+        """
+        # TODO: return mean of samples within each cluster
+        return None
 
 class LiDA(Transform):
     """Linear Discriminant Analysis transformation

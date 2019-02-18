@@ -72,9 +72,6 @@ class Dataset(Serializable):
             self.apply_limit()
 
         self.config.dataset.full_name = self.name
-        # if no preprocessed data was loaded, apply it now
-        if not self.loaded_preprocessed:
-            self.preprocess()
 
     def handle_preprocessed(self, preprocessed):
         info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
@@ -232,6 +229,10 @@ class Dataset(Serializable):
             nltk.pos_tag("Text")
         except LookupError:
             nltk.download('averaged_perceptron_tagger')
+        try:
+            [x("the quick brown. fox! jumping-over lazy, dog.") for x in [word_tokenize, sent_tokenize]]
+        except LookupError as err:
+            nltk.download("punkt")
 
         # setup word prepro
         while True:
@@ -245,8 +246,8 @@ class Dataset(Serializable):
                 else:
                     self.word_prepro = lambda x: x
                 break
-            except LookupError:
-                nltk.download('punkt')
+            except LookupError as err:
+                error(err)
         # punctuation
         self.punctuation_remover = str.maketrans('', '', string.punctuation)
 
@@ -277,7 +278,6 @@ class Dataset(Serializable):
 
     # preprocess single
     def preprocess_text_collection(self, document_list, track_vocabulary=False):
-        self.setup_nltk_resources()
         # filt = '!"#$%&()*+,-./:;<=>?@\[\]^_`{|}~\n\t1234567890'
         ret_words_pos, ret_voc = [], set()
         num_words = []
@@ -300,6 +300,7 @@ class Dataset(Serializable):
         if self.loaded_preprocessed:
             info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
             return
+        self.setup_nltk_resources()
         with tictoc("Preprocessing {}".format(self.name)):
             info("Mapping training set to word collections.")
             self.train, self.vocabulary = self.preprocess_text_collection(self.train, track_vocabulary=True)
@@ -369,11 +370,6 @@ class TwentyNewsGroups(Dataset):
     def get_raw_path(self):
         # dataset is downloadable
         pass
-
-
-class Brown:
-    pass
-
 
 class Reuters(Dataset):
     name = "reuters"

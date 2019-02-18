@@ -44,6 +44,10 @@ class SemanticResource(Serializable):
 
     data_names = ["concept_weights", "concept_weights", "reference_concepts"]
 
+    @staticmethod
+    def get_available():
+        return [cls.name for cls in SemanticResource.__subclasses__()]
+
     def set_additional_serialization_sources(self):
             self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
             self.data_paths.insert(0, self.serialization_path_vectorized)
@@ -170,15 +174,17 @@ class SemanticResource(Serializable):
         self.set_name()
 
     @staticmethod
-    def generate_name(config):
+    def generate_name(config, include_dataset=True):
         if not config.has_semantic():
             return None
-        name_components = [config.dataset.full_name, config.semantic.name,
+        name_components = [config.semantic.name,
                            defs.weights.to_string(config.semantic.weights),
                            defs.limit.to_string(config.semantic.limit),
                            "disam{}".format(config.semantic.disambiguation),
                            "_spread{}-{}".format(*config.semantic.spreading_activation)
                            ]
+        if include_dataset:
+            name_components = [config.dataset.full_name] + name_components
         return "_".join(name_components)
 
     # def generate_name(self, limit=None, weights=None):
