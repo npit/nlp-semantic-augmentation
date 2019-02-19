@@ -180,23 +180,30 @@ class Representation(Serializable):
     def get_elements_per_instance(self):
         return self.elements_per_instance
 
-    def match_targets_to_instances(self, dset_idx, gt, binarize_num_labels=None):
+    def match_targets_to_instances(self, dset_idx, gt, do_flatten=True, binarize_num_labels=None):
         """Expand, if needed, ground truth samples for multi-vector instances
         """
         epi = self.elements_per_instance[dset_idx]
-        multi_vector_instances = [i for i in range(len(epi)) if epi[i] > 1]
-        if not multi_vector_instances:
+        multi_vector_instance_idx = [i for i in range(len(epi)) if epi[i] > 1]
+        if not multi_vector_instance_idx:
             if binarize_num_labels is not None:
                 return one_hot(gt, num_labels=binarize_num_labels)
             return gt
         res = []
         for i in range(len(gt)):
-            if i in multi_vector_instances:
-                times = epi[i]
+            # get the number of elements for the instance
+            times = epi[i]
+            if do_flatten:
+                res.extend([gt[i] for _ in range(times)])
+            else:
                 res.append([gt[i] for _ in range(times)])
+
         if binarize_num_labels is not None:
             return one_hot(res, num_labels=binarize_num_labels)
         return res
+
+    def need_load_transform(self):
+        return not (self.loaded_aggregated or self.loaded_finalized)
 
 
 class Embedding(Representation):
@@ -253,7 +260,6 @@ class Embedding(Representation):
             debug("Will not compute dense, since transformed data were loaded")
             return
 
-        import pdb; pdb.set_trace()
         info("Embeddings are already dense.")
         # instance vectors are already dense - just make dataset-level ndarrays
         for dset_idx in range(len(self.dataset_vectors)):
@@ -272,8 +278,8 @@ class Embedding(Representation):
         aggregation_stats = 0, 0
 
         for dset_idx in range(len(self.dataset_vectors)):
-            info("Aggregating embedding vectors for {}-sized collection {}/{}".format(
-                len(self.dataset_vectors[dset_idx]), dset_idx + 1, len(self.dataset_vectors)))
+            info("Aggregating embedding vectors for collection {}/{} with shape {}".format(
+                 dset_idx + 1, len(self.dataset_vectors), self.dataset_vectors[dset_idx].shape))
 
             aggregated_dataset_vectors = np.ndarray((0, self.dimension), np.float32)
             curr_idx = 0
@@ -341,8 +347,9 @@ class Embedding(Representation):
         self.name += transform.get_name()
         self.dimension = transform.get_dimension()
 
+        data = transform.get_all_preprocessed()
         self.dataset_vectors, self.elements_per_instance, self.undefined_word_index, \
-            self.present_word_indexes = transform.get_all_preprocessed()
+            self.present_word_indexes = [data[n] for n in self.data_names]
         self.loaded_transformed = True
 
 
@@ -607,7 +614,8 @@ class BagRepresentation(Representation):
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         # intead of undefined word index, get the term list
-        self.dataset_vectors, self.dataset_words, self.term_list, self.present_word_indexes = preprocessed
+        self.dataset_vectors, self.dataset_words, self.term_list, self.present_word_indexes = \
+            [preprocessed[n] for n in self.data_names]
         # set misc required variables
         self.elements_per_instance = [[1 for _ in ds] for ds in self.dataset_vectors]
 
@@ -626,7 +634,9 @@ class BagRepresentation(Representation):
         self.name += transform.get_name()
         self.dimension = transform.get_dimension()
 
-        self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_word_indexes = transform.get_all_preprocessed()
+        data = transform.get_all_preprocessed()
+        self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_word_indexes = \
+            [data[n] for n in self.data_names]
         self.loaded_transformed = True
 
     def accomodate_dimension_change(self):

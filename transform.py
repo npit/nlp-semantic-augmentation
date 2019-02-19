@@ -82,7 +82,10 @@ class Transform(Serializable):
     def compute(self, repres, dataset):
         """Apply transform on input features"""
         if self.loaded():
-            info("Skipping {} computation due to data already loaded.".format(self.name))
+            info("Skipping {} computation due to transform data already loaded.".format(self.name))
+            return
+        if not repres.need_load_transform():
+            info("Skipping {} computation due to encompassing representations are already loaded. aggregated or finalized data already loaded.".format(self.name))
             return
         if self.do_reinitialize:
             info("Reinitializing transform parameters from the loaded representation config.")
@@ -104,7 +107,6 @@ class Transform(Serializable):
             if dset_idx == 0:
                 info("Transforming training input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
                 if self.is_supervised:
-                    import pdb; pdb.set_trace()
                     ground_truth = dataset.get_targets()[dset_idx]
                     ground_truth = repres.match_targets_to_instances(dset_idx, ground_truth)
                     repres.dataset_vectors[dset_idx] = self.process_func_train(dset, ground_truth)
@@ -113,6 +115,7 @@ class Transform(Serializable):
             else:
                 info("Transforming test input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
                 repres.dataset_vectors[dset_idx] = self.process_func_test(dset)
+            self.verify_dimensionality(repres.dataset_vectors[dset_idx])
             self.term_components.append(self.get_term_representations())
 
         repres.dimension = self.dimension
@@ -133,6 +136,13 @@ class Transform(Serializable):
         """Return term-based, rather than document-based representations
         """
         return self.transformer.components_
+
+    def verify_dimensionality(self, data):
+        """Checks if the projected data dimension matches the one prescribed
+        """
+        data_dim = data.shape[-1]
+        if data_dim != self.dimension:
+            error("{} result dimension {} does not match the prescribed input dimension {}".format(self.name, data_dim, self.dimension))
 
 
 class LSA(Transform):
@@ -199,8 +209,8 @@ class KMeansClustering(Transform):
     def get_term_representations(self):
         """Return term-based, rather than document-based representations
         """
-        # TODO: return mean of samples within each cluster
-        return None
+        return self.transformer.cluster_centers_
+
 
 class LiDA(Transform):
     """Linear Discriminant Analysis transformation
@@ -220,8 +230,14 @@ class LiDA(Transform):
     def check_compatibility(self, dataset):
         if dataset.is_multilabel():
             error("{} transform is not compatible with multi-label data.".format(self.base_name))
-        if self.dimension >= dataset.get_num_labels():
-            error("The {} projection dimension ({}) needs to be less than the dataset classes ({})".format(self.base_name, self.dimension, dataset.get_num_labels()))
+        if not (self.dimension < dataset.get_num_labels() - 1):
+            error("The {} projection dimension ({}) needs to be less than the dataset classes minus one ({} -1 = {})".\
+                  format(self.base_name, self.dimension, dataset.get_num_labels(), dataset.get_num_labels() - 1))
+
+    def get_term_representations(self):
+        """Return term-based, rather than document-based representations
+        """
+        return self.transformer.means_
 
 
 class LDA(Transform):

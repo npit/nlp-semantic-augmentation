@@ -2,7 +2,6 @@ from os.path import join, exists, isabs, basename, splitext
 from os import makedirs
 import subprocess
 import yaml
-import time
 import pickle
 import pandas as pd
 from functools import reduce
@@ -48,7 +47,6 @@ def sendmail(mail, passw, msg, title="nle"):
         error(x)
 
 
-
 def traverse_dict(ddict, key, prev_keys):
     res = []
     if key is None:
@@ -58,7 +56,7 @@ def traverse_dict(ddict, key, prev_keys):
         return res
     if type(ddict[key]) == dict:
         prev_keys.append(key)
-        res =  traverse_dict(ddict[key], None, prev_keys)
+        res = traverse_dict(ddict[key], None, prev_keys)
     else:
         val = ddict[key]
         if type(val) != list:
@@ -131,8 +129,8 @@ def main(config_file="large.config.yml"):
     ############################################################
 
     # config file
-    email="pittarasnikif@gmail.com"
-    passw=None
+    email = "pittarasnikif@gmail.com"
+    passw = None
 
     ############################################################
 
@@ -140,7 +138,7 @@ def main(config_file="large.config.yml"):
     conf = yaml.load(open(config_file))
     # evaluation measures
     exps = conf["experiments"]
-    eval_measures = asligst(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
+    eval_measures = aslist(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
     aggr_measures = aslist(exps["aggregation"]) if "aggregation" in exps else ["macro", "micro"]
     stat_functions = aslist(exps["stats"]) if "stats" in exps else ["mean"]
     run_types = aslist(exps["run_types"]) if "run_types" in exps else ["run"]
@@ -161,8 +159,7 @@ def main(config_file="large.config.yml"):
     # mail
     do_send_mail = exps["send_mail"] if "send_mail" in exps else None
     if do_send_mail:
-        passw=getpass.getpass()
-
+        passw = getpass.getpass()
 
     # dir checks
     if venv_dir and not exists(venv_dir):
@@ -170,6 +167,18 @@ def main(config_file="large.config.yml"):
     if not exists(run_dir):
         info("Run dir {} not found, creating.".format(run_dir))
         makedirs(run_dir)
+
+    # copy the configuration file in the target directory
+    copied_conf = join(run_dir, basename(config_file))
+    if exists(copied_conf):
+        # make sure it's the same effing config
+        cconf = yaml.load(copied_conf)
+        if cconf != conf:
+            info("The original config differs from the one in the experiment directory!")
+    else:
+        info("Copying experiments configuration at {}".format(copied_conf))
+        with open(copied_conf, "w") as f:
+            yaml.dump(conf, f)
 
     # logging
     level = logging._nameToLevel[conf["log_level"].upper()]
@@ -235,7 +244,7 @@ def main(config_file="large.config.yml"):
             res_data = pickle.load(f)
         results[run_id] = res_data
 
-    messages = []
+    # messages = []
     total_results = {}
     # show results
     for stat in stat_functions:
@@ -266,8 +275,9 @@ def main(config_file="large.config.yml"):
     total_df.to_csv(results_file)
 
     # [info(msg) for msg in messages]
-    if send_mail:
+    if do_send_mail:
         sendmail(email, passw, "run complete.")
+
 
 if __name__ == "__main__":
     main()

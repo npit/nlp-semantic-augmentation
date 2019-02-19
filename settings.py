@@ -192,6 +192,8 @@ class Config:
             if len(lims) == 1:
                 self.dataset.data_limit = [lims[0] if type(lims) == list else lims, None]
             self.dataset.class_limit = self.get_value("class_limit", base=dataset_opts, default=None)
+        self.dataset.prepro = self.get_value("prepro", base=dataset_opts, default=None)
+
         # read representation options
         need(self.has_value("representation"), "Need representation information")
         representation_information = self.conf["representation"]
@@ -220,7 +222,7 @@ class Config:
             self.semantic.context_file = self.get_value("context_file", base=semantic_opts)
             self.semantic.context_aggregation = self.get_value("context_aggregation", base=semantic_opts)
             self.semantic.context_threshold = self.get_value("context_threshold", base=semantic_opts)
-            self.semantic.spreading_activation = self.get_value("spreading_activation", base=semantic_opts)
+            self.semantic.spreading_activation = self.get_value("spreading_activation", base=semantic_opts, expected_type=list)
 
         need(self.has_value("learner"), "Need learner information")
         learner_opts = self.conf["learner"]
@@ -252,6 +254,7 @@ class Config:
             self.print.aggregations = self.get_value("aggregations", base=print_opts)
             self.print.folds = self.get_value("folds", base=print_opts, default=False)
             self.print.training_progress = self.get_value("training_progress", base=print_opts, default=False)
+            self.print.stats = self.get_value("stats", base=print_opts)
 
         if self.has_value("misc"):
             if self.has_value("keys", base=self.conf["misc"]):
@@ -263,10 +266,10 @@ class Config:
         print("Read configuration for run {} from {}".format(self.run_id, input_config))
 
     def has_transform(self):
-        return self.transform.name is not None
+        return self.transform.name not in [defs.alias.none, None]
 
     def has_semantic(self):
-        return all([x is not None for x in [self.semantic.enrichment, self.semantic.name]])
+        return all([x not in [defs.alias.none, None] for x in [self.semantic.enrichment, self.semantic.name]])
 
     def is_debug(self):
         return self.conf["log_level"] == "debug"

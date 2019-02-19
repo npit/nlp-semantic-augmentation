@@ -112,15 +112,18 @@ class Serializable:
 
     # attemp to load resource from specified paths
     def attempt_load(self, index):
-        path = self.data_paths[index]
+        path, reader, handler = [x[index] for x in
+                                 [self.data_paths, self.read_functions, self.handler_functions]]
+
         # either path is None (resource is acquired without one) or it's a file that will be loaded
         if path is None or (exists(path) and isfile(path)):
             # debug("Attempting load of {} with {}.".format(path, self.read_functions[index]))
-            data = self.read_functions[index](path)
+            data = reader(path)
             if data is None:
                 # debug("Failed to load {} from path {}".format(self.name, path))
                 return False
-            self.handler_functions[index](data)
+            debug("Reading path {} with func {} and handler {}".format(path, reader, handler))
+            handler(data)
             self.load_flags[index] = True
             return True
         else:

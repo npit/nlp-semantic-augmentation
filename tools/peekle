@@ -27,7 +27,8 @@ with open(filepath, "rb") as f:
 try:
     print("{} data.".format(len(data)))
     for i, (name, value) in enumerate(data.items()):
-        print("Datum # {}, name: {}, type: {}, len: {}".format(i+1, name, type(value), len(value)))
+        print("Datum # {}, name: {}, type: {}".format(i+1, name, type(value)), end=" ")
+        print("len: {}".format(len(value)))
         if type(value) == list:
             for inner in value[:2]:
                 if type(inner) == list: print("\tlen: {}".format(len(inner)))
