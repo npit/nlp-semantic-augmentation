@@ -142,7 +142,7 @@ class Bag:
 
     def map_collection(self, text_collection):
         # present word tracking only available for the default (word-wise) delineation
-        do_track_present_words = False if self.term_delineation_func != Bag.delineate_words else True
+        do_track_present_terms = False if self.term_delineation_func != Bag.delineate_words else True
 
         # collection-wise information
         self.weights, self.present_terms, self.present_term_indexes = [], [], []
@@ -153,7 +153,7 @@ class Bag:
                 pbar.set_description("Text {}/{}".format(t + 1, len(text_collection)))
                 pbar.update()
                 text_term_freqs = {}
-                present_words = []
+                present_terms = []
                 # delineate and extract terms of interest
                 term_list = [self.term_extraction_func(x) for x in self.term_delineation_func(word_info_list)]
                 # iterate
@@ -164,8 +164,8 @@ class Bag:
                     if not term_weights:
                         continue
                     # add the term as a valid / present one
-                    if do_track_present_words:
-                        present_words.append(term)
+                    if do_track_present_terms:
+                        present_terms.append(term)
                     # accumulate the term-weight results
                     for item, weight in term_weights.items():
                         # use item index as the key
@@ -174,9 +174,9 @@ class Bag:
                 # completed document parsing
                 # add required results
                 self.weights.append(text_term_freqs)
-                if do_track_present_words:
-                    self.present_term_indexes.append([term_list.index(p) for p in present_words])
-                    self.present_terms.append(len(present_words))
+                if do_track_present_terms:
+                    self.present_term_indexes.append([term_list.index(p) for p in present_terms])
+                    self.present_terms.append(len(present_terms))
             # completed collection parsing - wrap up
             if not self.use_fixed_term_list:
                 # if we computed the term list, store it

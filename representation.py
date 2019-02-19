@@ -171,8 +171,8 @@ class Representation(Serializable):
     def loaded_enriched(self):
         return self.loaded_finalized
 
-    def get_present_word_indexes(self):
-        return self.present_word_indexes
+    def get_present_term_indexes(self):
+        return self.present_term_indexes
 
     def get_vectors(self):
         return self.dataset_vectors
@@ -333,13 +333,13 @@ class Embedding(Representation):
 
     def get_all_preprocessed(self):
         return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
-                "undefined_word_index": None, "present_term_indexes": self.present_word_indexes}
+                "undefined_word_index": None, "present_term_indexes": self.present_term_indexes}
 
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         self.dataset_vectors, self.elements_per_instance, \
-        self.undefined_word_index, self.present_word_indexes = [preprocessed[n] for n in self.data_names]
+        self.undefined_word_index, self.present_term_indexes = [preprocessed[n] for n in self.data_names]
         debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
 
     def set_transform(self, transform):
@@ -349,7 +349,7 @@ class Embedding(Representation):
 
         data = transform.get_all_preprocessed()
         self.dataset_vectors, self.elements_per_instance, self.undefined_word_index, \
-            self.present_word_indexes = [data[n] for n in self.data_names]
+            self.present_term_indexes = [data[n] for n in self.data_names]
         self.loaded_transformed = True
 
 
@@ -369,7 +369,7 @@ class VectorEmbedding(Embedding):
         info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
         text_bundles = dset.train, dset.test
         self.dataset_vectors = []
-        self.present_word_indexes = []
+        self.present_term_indexes = []
         self.vocabulary = dset.vocabulary
         self.elements_per_instance = []
 
@@ -380,7 +380,7 @@ class VectorEmbedding(Embedding):
         # loop over input text bundles (e.g. train & test)
         for dset_idx in range(len(text_bundles)):
             self.dataset_vectors.append([])
-            self.present_word_indexes.append([])
+            self.present_term_indexes.append([])
             self.elements_per_instance.append([])
             with tictoc("Embedding mapping for text bundle {}/{}".format(dset_idx + 1, len(text_bundles))):
                 info("Mapping text bundle {}/{}: {} texts".format(dset_idx + 1, len(text_bundles), len(text_bundles[dset_idx])))
@@ -392,7 +392,7 @@ class VectorEmbedding(Embedding):
                     word_list = [wp[0] for wp in doc_wp_list]
                     debug("Text {}/{} with {} words".format(j + 1, num_documents, len(word_list)))
                     # check present & missing words
-                    missing_words, missing_index, present_words, present_index = [], [], [], []
+                    missing_words, missing_index, present_terms, present_index = [], [], [], []
                     for w, word in enumerate(word_list):
                         if word not in self.embeddings.index:
                             # debug("Word [{}] not in embedding index.".format(word))
@@ -402,20 +402,20 @@ class VectorEmbedding(Embedding):
                                 hist_missing[word] = 0
                             hist_missing[word] += 1
                         else:
-                            present_words.append(word)
+                            present_terms.append(word)
                             present_index.append(w)
                             hist[word] += 1
 
                     # handle missing
                     if not self.map_missing_unks:
                         # ignore & discard missing words
-                        word_list = present_words
+                        word_list = present_terms
                     else:
                         # replace missing words with UNKs
                         for m in missing_index:
                             word_list[m] = self.unknown_word_token
 
-                    if not present_words and not self.map_missing_unks:
+                    if not present_terms and not self.map_missing_unks:
                         # no words present in the mapping, force
                         error("No words persent in document.")
 
@@ -425,7 +425,7 @@ class VectorEmbedding(Embedding):
 
                     # update present words and their index, per doc
                     self.elements_per_instance[-1].append(len(text_embeddings))
-                    self.present_word_indexes[-1].append(present_index)
+                    self.present_term_indexes[-1].append(present_index)
 
             self.print_word_stats(hist, hist_missing)
 
@@ -593,7 +593,8 @@ class BagRepresentation(Representation):
         return None
 
     def get_all_preprocessed(self):
-        return [self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_word_indexes]
+        return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
+                "term_list": self.term_list, "present_term_indexes": self.present_term_indexes}
 
     # sparse to dense
     def compute_dense(self):
@@ -614,7 +615,7 @@ class BagRepresentation(Representation):
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         # intead of undefined word index, get the term list
-        self.dataset_vectors, self.dataset_words, self.term_list, self.present_word_indexes = \
+        self.dataset_vectors, self.dataset_words, self.term_list, self.present_term_indexes = \
             [preprocessed[n] for n in self.data_names]
         # set misc required variables
         self.elements_per_instance = [[1 for _ in ds] for ds in self.dataset_vectors]
@@ -635,7 +636,7 @@ class BagRepresentation(Representation):
         self.dimension = transform.get_dimension()
 
         data = transform.get_all_preprocessed()
-        self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_word_indexes = \
+        self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_term_indexes = \
             [data[n] for n in self.data_names]
         self.loaded_transformed = True
 
@@ -670,7 +671,7 @@ class BagRepresentation(Representation):
 
         self.dataset_words = [self.term_list, None]
         self.dataset_vectors = []
-        self.present_word_indexes = []
+        self.present_term_indexes = []
 
         # train
         self.bag = self.bag_class()
@@ -679,7 +680,7 @@ class BagRepresentation(Representation):
             self.bag.set_term_filtering(self.limit_type, self.limit_number)
         self.bag.map_collection(dset.train)
         self.dataset_vectors.append(self.bag.get_weights())
-        self.present_word_indexes.append(self.bag.get_present_term_indexes())
+        self.present_term_indexes.append(self.bag.get_present_term_indexes())
         if self.do_limit:
             self.term_list = self.bag.get_term_list()
             self.term_index = {k: v for (k, v) in self.term_index.items() if k in self.term_list}
@@ -693,7 +694,7 @@ class BagRepresentation(Representation):
         self.bag.set_term_list(self.term_list)
         self.bag.map_collection(dset.test)
         self.dataset_vectors.append(self.bag.get_weights())
-        self.present_word_indexes.append(self.bag.get_present_term_indexes())
+        self.present_term_indexes.append(self.bag.get_present_term_indexes())
 
         # set misc required variables
         self.elements_per_instance = [[1 for _ in ds] for ds in self.dataset_vectors]
