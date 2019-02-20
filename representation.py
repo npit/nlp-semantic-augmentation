@@ -14,14 +14,10 @@ class Representation(Serializable):
     dir_name = "representation"
     loaded_transformed = False
 
-    data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index",
-                  "present_term_indexes"]
 
     @staticmethod
     def create(config):
         name = config.representation.name
-        if name == Train.name:
-            return Train(config)
         if name == BagRepresentation.name:
             return BagRepresentation(config)
         if name == TFIDFRepresentation.name:
@@ -214,6 +210,9 @@ class Embedding(Representation):
     words_to_numeric_idx = None
     dimension = None
     sequence_length = None
+
+    data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index",
+                  "present_term_indexes"]
 
     def save_raw_embedding_weights(self, weights):
         error("{} is for pretrained embeddings only.".format(self.name))
@@ -446,87 +445,14 @@ class VectorEmbedding(Embedding):
         Embedding.__init__(self)
 
 
-class Train(Representation):
-    name = "train"
-    undefined_word_name = "unk"
-
-    def __init__(self, config):
-        self.config = config
-        Representation.__init__(self)
-
-    # embedding training data (e.g. word indexes) does not depend on embedding dimension
-    # so naming is overriden to omit embedding dimension
-    def set_name(self):
-        self.name = "{}_{}".format(self.base_name, self.dataset_name)
-
-    # transform input texts to embeddings
-    def map_text(self, dset):
-        # assign all embeddings
-        self.embeddings = pd.DataFrame(dset.vocabulary_index, dset.vocabulary)
-        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
-            return
-        info("Mapping {} to {} represntations.".format(dset.name, self.name))
-        text_bundles = dset.train, dset.test
-        self.dataset_vectors = []
-        self.undefined_word_index = dset.undefined_word_index
-        non_train_words = []
-        # loop over input text bundles (e.g. train & test)
-        for i in range(len(text_bundles)):
-            self.dataset_vectors.append([])
-            with tictoc("Embedding mapping for text bundle {}/{}".format(i + 1, len(text_bundles))):
-                info("Mapping text bundle {}/{}: {} texts".format(i + 1, len(text_bundles), len(text_bundles[i])))
-                for j in range(len(text_bundles[i])):
-                    word_list = [word_pos[0] for word_pos in text_bundles[i][j]]
-                    index_list = [[dset.word_to_index[w]] if w in dset.vocabulary else [dset.undefined_word_index] for w in word_list]
-                    embedding = pd.DataFrame(index_list, index=word_list)
-                    debug("Text {}/{}".format(j + 1, len(text_bundles[i])))
-                    self.dataset_vectors[-1].append(embedding)
-                    # get test words, perhaps
-                    if i > 0:
-                        for w in word_list:
-                            if w not in non_train_words:
-                                non_train_words.append(w)
-        self.dataset_words = [dset.vocabulary, non_train_words]
-        # write mapped data
-        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
-
-    def get_all_preprocessed(self):
-        # instead of undefined word index, plug in the term list
-        return [self.dataset_vectors, self.dataset_words, self.undefined_word_index, None]
-
-    def get_zero_pad_element(self):
-        return self.undefined_word_index
-
-    def get_raw_path(self):
-        return None
-
-    def fetch_raw(self, dummy_input):
-        return dummy_input
-
-    def handle_preprocessed(self, preprocessed):
-        self.loaded_preprocessed = True
-        self.dataset_vectors, self.dataset_words, self.undefined_word_index, _ = preprocessed
-        debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
-
-    def save_raw_embedding_weights(self, weights, write_dir):
-        # rename to generic vectorembedding
-        emb_name = ("raw_" + self.name + "_dim{}.pickle".
-                    format(self.config.representation.dimension)).replace(Train.name, VectorEmbedding.name)
-        writepath = join(write_dir, emb_name)
-        # associate with respective words
-        index = self.dataset_words[0] + [self.undefined_word_name]
-        data = pd.DataFrame(weights, index=index)
-        write_pickled(writepath, data)
-
-    def get_words(self):
-        return self.dataset_words
-
-
 class BagRepresentation(Representation):
     name = "bag"
     bag_class = Bag
     term_list = None
     do_limit = None
+
+    data_names = ["dataset_vectors", "elements_per_instance", "term_list",
+                  "present_term_indexes"]
 
     def __init__(self, config):
         self.config = config
@@ -550,7 +476,6 @@ class BagRepresentation(Representation):
         if config.representation.limit is not defs.limit.none:
             name_components.append(defs.limit.to_string(config.representation.limit))
         return name + "_".join(name_components)
-
 
     def set_multiple_config_names(self):
         names = []
@@ -654,15 +579,18 @@ class BagRepresentation(Representation):
             # no supplied token list -- use vocabulary of the training dataset
             self.term_list = dset.vocabulary
             info("Setting bag dimension to {} from dataset vocabulary.".format(len(self.term_list)))
-        self.dimension = len(self.term_list)
+        if self.do_limit:
+            self.dimension = self.limit_number
+        else:
+            self.dimension = len(self.term_list)
         self.accomodate_dimension_change()
         info("Renamed representation after bag computation to: {}".format(self.name))
 
         # calc term index mapping
         self.term_index = {term: self.term_list.index(term) for term in self.term_list}
 
-        if self.dimension is not None and self.dimension != len(self.term_list):
-            error("Specified an explicit bag dimension of {} but term list contains {} elements (delete it?).".format(self.dimension, len(self.term_list)))
+        # if self.dimension is not None and self.dimension != len(self.term_list):
+        #     error("Specified an explicit bag dimension of {} but term list contains {} elements (delete it?).".format(self.dimension, len(self.term_list)))
 
         if self.loaded_preprocessed:
             debug("Skippping {} mapping due to preloading".format(self.base_name))

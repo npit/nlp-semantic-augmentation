@@ -189,13 +189,13 @@ def main(config_file="large.config.yml"):
     chandler = logging.StreamHandler()
     chandler.setFormatter(formatter)
     chandler.setLevel(level)
-    exlogger.addHandler(chandler)
+    logging.getLogger().addHandler(chandler)
 
     fhandler = logging.FileHandler(logfile)
     fhandler.setLevel(level)
     fhandler.setFormatter(formatter)
-    exlogger.addHandler(fhandler)
-    exlogger.setLevel(logging.DEBUG)
+    logging.getLogger().addHandler(fhandler)
+    logging.getLogger().setLevel(logging.DEBUG)
 
     results = {}
 

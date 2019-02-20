@@ -189,20 +189,6 @@ class DNN:
 
     # to preliminary work
     def make(self, representation, dataset):
-        # if embeddings.base_name == "train":
-        #     self.do_train_embeddings = True
-        #     self.embedding_name = embeddings.name
-        #     self.representation_dim = embeddings.get_dimension()
-        #     info("Will train {}-dimensional embeddings.".format(self.representation_dim))
-        #     self.final_dim = embeddings.get_final_dim()
-        #     self.vocabulary_size = embeddings.get_vocabulary_size()
-        #     emb_seqlen = embeddings.sequence_length
-        #     self.sequence_length = self.config.learner.sequence_length
-        #     if self.sequence_length is not None:
-        #         if emb_seqlen != self.sequence_length:
-        #             error("Specified embedding sequence of length {}, but learner sequence is of length {}".format(emb_seqlen, self.sequence_length))
-        #     self.sequence_length = emb_seqlen
-        #     self.embeddings = embeddings
 
         self.verbosity = 1 if self.config.print.training_progress else 0
         self.train, self.test = representation.get_data()

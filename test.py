@@ -11,7 +11,6 @@ import representation
 import semantic
 import transform
 import learner
-
 from defs import alias
 
 import large_scale
@@ -66,13 +65,13 @@ def setup_test_resources(args):
     conf["params"]["semantic"] = {"name": [semantic.Wordnet.name, alias.none]}
 
     # set static parameters
-    conf["dataset"] = {"name": "20newsgroups", "data_limit": [100, 50], "class_limit": 5}
+    conf["dataset"] = {"name": "20newsgroups", "data_limit": [300, 150], "class_limit": 6}
     conf["experiments"] = {"run_folder": args.test_directory}
     conf["folders"]["serialization"] = serialization_dir
     conf["folders"]["raw_data"] = raw_data_dir
     conf["representation"]["dimension"] = embedding_dim
     conf["representation"]["limit"] = ["top", 30]
-    conf["transform"]["dimension"] = 2
+    conf["transform"]["dimension"] = 4
     conf["semantic"]["limit"] = ["top", 20]
     conf["semantic"]["disambiguation"] = "first"
 
