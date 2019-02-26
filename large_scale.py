@@ -12,7 +12,7 @@ import smtplib
 import logging
 import os
 import getpass
-from utils import info, error, datetime_str, aslist
+from utils import info, error, datetime_str, aslist, setup_simple_logging
 
 """Script to produce large-scale semantic neural augmentation experiments
 
@@ -181,22 +181,7 @@ def main(config_file="large.config.yml"):
             yaml.dump(conf, f)
 
     # logging
-    level = logging._nameToLevel[conf["log_level"].upper()]
-    formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
-
-    logfile = os.path.join(run_dir, "experiments_{}.log".format(datetime_str()))
-
-    chandler = logging.StreamHandler()
-    chandler.setFormatter(formatter)
-    chandler.setLevel(level)
-    logging.getLogger().addHandler(chandler)
-
-    fhandler = logging.FileHandler(logfile)
-    fhandler.setLevel(level)
-    fhandler.setFormatter(formatter)
-    logging.getLogger().addHandler(fhandler)
-    logging.getLogger().setLevel(logging.DEBUG)
-
+    setup_simple_logging(conf["log_level"])
     results = {}
 
     #################################################################################

@@ -120,3 +120,8 @@ folders:
   serialization: "serialization"
   # folder to supply raw data, where applicable
   raw_data: raw_data
+
+misc:
+  keys:
+    googleapi: my-google-api-key 
+  skip_deserialization: True

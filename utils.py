@@ -2,8 +2,38 @@ import time
 import pickle
 import logging
 import numpy as np
+import os
+from collections import namedtuple
 
 num_warnings = 0
+
+
+def setup_simple_logging(level="info", logging_dir="."):
+    level = logging._nameToLevel[level.upper()]
+    formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
+
+    logfile = os.path.join(logging_dir, "experiments_{}.log".format(datetime_str()))
+
+    chandler = logging.StreamHandler()
+    chandler.setFormatter(formatter)
+    chandler.setLevel(level)
+    logging.getLogger().addHandler(chandler)
+
+    fhandler = logging.FileHandler(logfile)
+    fhandler.setLevel(level)
+    fhandler.setFormatter(formatter)
+    logging.getLogger().addHandler(fhandler)
+    logging.getLogger().setLevel(logging.DEBUG)
+
+
+def to_namedtuple(conf_dict, ntname, do_recurse=False):
+    keys = sorted(conf_dict.keys())
+    if do_recurse:
+        # apply namedtuple conversion to internal dicts
+        conf = namedtuple(ntname, keys)(*[to_namedtuple(conf_dict[k], "dummy") if type(conf_dict[k]) == dict else conf_dict[k] for k in keys])
+    else:
+        conf = namedtuple(ntname, keys)(*[conf_dict[k] for k in keys])
+    return conf
 
 
 def aslist(x):

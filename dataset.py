@@ -48,7 +48,9 @@ class Dataset(Serializable):
         return name
 
     # dataset creation
-    def __init__(self):
+    def __init__(self, skip_init=False):
+        if skip_init or self.config is None:
+            return
         Serializable.__init__(self, self.dir_name)
         self.set_serialization_params()
         # check for limited dataset
@@ -259,7 +261,7 @@ class Dataset(Serializable):
             return self.lemmatizer.lemmatize(w_pos[0], wordnet_pos), w_pos[1]
 
     # map text string into list of stopword-filtered words and POS tags
-    def process_single_text(self, text):
+    def process_single_text(self, text, punctuation_remover, word_prepro, stopwords):
         sents = sent_tokenize(text.lower())
         words = []
         for sent in sents:
@@ -268,12 +270,12 @@ class Dataset(Serializable):
         # words = [w.lower() for w in self.nltk_tokenizer.tokenize(text)]
 
         # remove stopwords and punctuation content
-        words = [w.translate(self.punctuation_remover) for w in words]
-        words = [w for w in words if w not in self.stopwords and w.isalpha()]
+        words = [w.translate(punctuation_remover) for w in words]
+        words = [w for w in words if w not in stopwords and w.isalpha()]
         # pos tagging
         words_with_pos = nltk.pos_tag(words)
         # stemming / lemmatization
-        words_with_pos = [self.word_prepro(wp) for wp in words_with_pos]
+        words_with_pos = [word_prepro(wp) for wp in words_with_pos]
         return words_with_pos
 
     # preprocess single
@@ -286,7 +288,8 @@ class Dataset(Serializable):
                 pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
                 pbar.update()
                 # text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
-                text_words_pos = self.process_single_text(document_list[i])
+                text_words_pos = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover,
+                                                          word_prepro=self.word_prepro, stopwords=self.stopwords)
                 ret_words_pos.append(text_words_pos)
                 if track_vocabulary:
                     ret_voc.update([wp[0] for wp in text_words_pos])

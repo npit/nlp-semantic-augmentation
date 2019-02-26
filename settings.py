@@ -73,6 +73,10 @@ class Config:
     class misc:
         keys = {}
 
+    class flags:
+        skip_deserialization = None
+        independent_component = None
+
     def __init__(self, conf_file):
         "Configuration object constructor"
         self.initialize(conf_file)
@@ -257,9 +261,17 @@ class Config:
             self.print.stats = self.get_value("stats", base=print_opts)
 
         if self.has_value("misc"):
-            if self.has_value("keys", base=self.conf["misc"]):
-                for kname, kvalue in self.conf["misc"]['keys'].items():
+            misc_opts = self.conf["misc"]
+            if self.has_value("keys", base=misc_opts):
+                for kname, kvalue in misc_opts['keys'].items():
                     self.misc.keys[kname] = kvalue
+            self.misc.independent = self.get_value("independent_component", base=misc_opts, default=False)
+            self.misc.skip_deserialization = self.get_value("skip_deserialization", base=misc_opts, default=False)
+
+        if self.has_value("flags"):
+            flag_opts = self.conf["flags"]
+            self.flags.independent = self.get_value("independent_component", base=flag_opts, default=False)
+            self.misc.skip_deserialization = self.get_value("skip_deserialization", base=flag_opts, default=False)
 
         self.log_level = self.get_value("log_level", default="info")
 

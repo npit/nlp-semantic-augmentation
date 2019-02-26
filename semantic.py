@@ -49,10 +49,10 @@ class SemanticResource(Serializable):
         return [cls.name for cls in SemanticResource.__subclasses__()]
 
     def set_additional_serialization_sources(self):
-            self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
-            self.data_paths.insert(0, self.serialization_path_vectorized)
-            self.read_functions.insert(0, read_pickled)
-            self.handler_functions.insert(0, self.handle_vectorized)
+        self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
+        self.data_paths.insert(0, self.serialization_path_vectorized)
+        self.read_functions.insert(0, read_pickled)
+        self.handler_functions.insert(0, self.handle_vectorized)
 
     def set_multiple_config_names(self):
         semantic_names = []
@@ -76,15 +76,19 @@ class SemanticResource(Serializable):
 
     def __init__(self):
         self.base_name = self.name
-        Serializable.__init__(self, self.dir_name)
+        if not self.config.flags.skip_deserialization:
+            Serializable.__init__(self, self.dir_name)
+
         self.set_parameters()
-        self.acquire_data()
+        if not self.config.flags.skip_deserialization:
+            self.acquire_data()
         # restore correct config
         self.set_name()
         info("Restored semantic name to : {}".format(self.name))
 
-    def create(config):
-        name = config.semantic.name
+    def create(config, name=None):
+        if name is None:
+            name = config.semantic.name
         if name == Wordnet.name:
             return Wordnet(config)
         if name == GoogleKnowledgeGraph.name:
@@ -169,7 +173,7 @@ class SemanticResource(Serializable):
 
         if self.config.semantic.spreading_activation:
             self.do_spread_activation = True
-            self.spread_steps, self.spread_decay = self.config.semantic.spreading_activation
+            self.spread_steps, self.spread_decay_factor = self.config.semantic.spreading_activation
 
         self.set_name()
 
@@ -183,21 +187,10 @@ class SemanticResource(Serializable):
                            "disam{}".format(config.semantic.disambiguation),
                            "_spread{}-{}".format(*config.semantic.spreading_activation)
                            ]
-        if include_dataset:
+        if include_dataset and not config.flags.independent_component:
+            # include the dataset in the sem. resource name
             name_components = [config.dataset.full_name] + name_components
         return "_".join(name_components)
-
-    # def generate_name(self, limit=None, weights=None):
-    #     limit = self.config.semantic.limit if limit is None else limit
-    #     weights = self.semantic_weights if weights is None else weights
-    #     name_components = [self.config.dataset.full_name, self.config.representation.full_name]
-    #     if limit is not None:
-    #         name_components.append(defs.limit.to_string(limit))
-    #     name_components.append(weights)
-    #     name_components.append("disam{}".format(self.config.semantic.disambiguation))
-    #     if self.config.semantic.spreading_activation:
-    #         name_components.append("_spread{}-{}".format(self.spread_steps, self.spread_decay))
-    #     return "_".join(name_components)
 
     # make name string from components
     def set_name(self):
@@ -359,11 +352,19 @@ class Wordnet(SemanticResource):
         else:
             return ''
 
+    def get_clear_concept_word(self, concept):
+        name = concept._name if type(concept) != str else concept
+        if "." not in name:
+            return name
+        return name[: name.index(".")]
+
+    def get_all_available_concepts(self):
+        info("Getting all available {} concepts".format(self.name))
+        return list(wn.all_synsets())
+
     def __init__(self, config):
         self.config = config
         SemanticResource.__init__(self)
-
-        # map nltk pos maps into meaningful wordnet ones
 
     def fetch_raw(self, dummy_input):
         if self.base_name not in listdir(nltk.data.find("corpora")):
@@ -394,7 +395,7 @@ class Wordnet(SemanticResource):
             return
         activations = {}
         # current weight value
-        new_decay = current_decay * self.spread_decay
+        new_decay = current_decay * self.spread_decay_factor
         for synset in synsets:
             # get hypernyms of synset
             for hyper in synset.hypernyms():
@@ -578,12 +579,12 @@ class GoogleKnowledgeGraph(SemanticResource):
                 hyps = hypers[idx]
                 activations[name] = 1
                 if self.do_spread_activation:
-                    current_decay = self.spread_decay
+                    current_decay = self.spread_decay_factor
                     for h, hyp in enumerate(hyps):
                         if h + 1 > self.spread_steps:
                             break
                         activations[hyp] = current_decay
-                        current_decay *= self.spread_decay
+                        current_decay *= self.spread_decay_factor
         return activations
 
 
@@ -638,7 +639,7 @@ class Framenet(SemanticResource):
         if steps_to_go == 0:
             return
         activations = {}
-        current_decay *= self.spread_decay
+        current_decay *= self.spread_decay_factor
         for frame in frames:
             related_frames = self.get_related_frames(frame)
             for rel in related_frames:
@@ -711,7 +712,7 @@ class DBPedia(SemanticResource):
 
         # dbpedia conf
         if not exists(self.dbpedia_config):
-            error("Need a dbpedia semantic extractor configuration file: {}".format(self.dbpedia_config))
+            error("The {} semantic resource needs an extractor configuration file: {}".format(self.name, self.dbpedia_config))
         with open(self.dbpedia_config) as f:
             dbpedia_conf = yaml.load(f)
         self.rest_url = dbpedia_conf["rest_url"]
