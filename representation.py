@@ -14,7 +14,6 @@ class Representation(Serializable):
     dir_name = "representation"
     loaded_transformed = False
 
-
     @staticmethod
     def create(config):
         name = config.representation.name

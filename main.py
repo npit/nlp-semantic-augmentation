@@ -4,10 +4,11 @@ from dataset import Dataset
 from representation import Representation
 from semantic import SemanticResource
 from transform import Transform
-from learner import DNN
+from learner import Learner
 from settings import Config
 import argparse
 from utils import info, warning, num_warnings, tictoc
+from instantiator import instantiate_learner
 warnings.simplefilter(action='ignore', category=FutureWarning)
 print("Imports done.")
 
@@ -65,7 +66,7 @@ def main(config_file):
         # learning
         info("===== LEARNING =====")
         # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
-        learner = DNN.create(config)
+        learner = instantiate_learner(config)
         learner.make(representation, dataset)
         learner.do_traintest()
 
