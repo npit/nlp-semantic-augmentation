@@ -4,12 +4,11 @@ import warnings
 from os import makedirs
 import numpy as np
 from classifier import Classifier
-import pandas as pd
-from keras.models import Sequential, load_model
+from keras.models import Sequential
 from keras.layers import Activation, Dense, Dropout
 from keras.layers import LSTM as keras_lstm
 from keras import callbacks
-from utils import info, debug, error, write_pickled, read_pickled, one_hot
+from utils import info, debug, error, write_pickled, one_hot
 # from keras import backend
 # import tensorflow as tf
 
@@ -94,13 +93,6 @@ class DNN(Classifier):
         if self.validation_exists and self.early_stopping is not None:
             info("Stopped on epoch {}/{}".format(self.early_stopping.stopped_epoch + 1, self.epochs))
             write_pickled(self.model_path + ".early_stopping", self.early_stopping.stopped_epoch)
-
-    def is_already_completed(self):
-        predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
-        if exists(predictions_file):
-            info("Reading existing predictions: {}".format(predictions_file))
-            return read_pickled(predictions_file)
-        return None
 
     # handle multi-vector items, expanding indexes to the specified sequence length
     def expand_index_to_sequence(self, fold_data):
@@ -221,10 +213,19 @@ class LSTM(DNN):
         self.input_shape = (self.sequence_length, self.input_dim)
         aggr = self.config.representation.aggregation
         aggregation = aggr[0]
+        # sanity checks
+        # sequence-based aggregation
         if aggregation not in ["pad"]:
-            error("Aggregation {} incompatible with {} model.".format(aggregation, self.name))
-        if aggr in ["train"]:
-            error("Embedding {} incompatible with {} model.".format(aggregation, self.name))
+            error("Aggregation [{}] incompatible with [{}] model.".format(aggregation, self.name))
+
+        # non constant instance element num
+        set_instance_lengths = [set(x) for x in representation.get_elements_per_instance()]
+        if any([len(x) != 1 for x in set_instance_lengths]):
+            error("[{}] needs a constant number of elements per instance per dataset, but got lengths: {}".format(self.name, ))
+        # non-unity elements per instance
+        unit_instance_indexes = [[i for i in range(len(x)) if x[i] <= 1] for x in representation.get_elements_per_instance()]
+        if any(unit_instance_indexes):
+            error("[{}] not compatible with unit instance indexes: {}.".format(self.name, unit_instance_indexes))
         # sequence length data / label matching
         if self.num_train != self.num_train_labels and (self.num_train != self.sequence_length * self.num_train_labels):
             error("Irreconcilable lengths of training data and labels: {}, {} with learner sequence length of {}.".

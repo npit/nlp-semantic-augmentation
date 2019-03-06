@@ -175,6 +175,9 @@ class Representation(Serializable):
     def get_elements_per_instance(self):
         return self.elements_per_instance
 
+    def get_min_elements_per_instance(self):
+        return [min(x) for x in self.elements_per_instance]
+
     def match_targets_to_instances(self, dset_idx, gt, do_flatten=True, binarize_num_labels=None):
         """Expand, if needed, ground truth samples for multi-vector instances
         """

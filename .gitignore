@@ -1,0 +1,9 @@
+*.log
+raw_data
+.idea
+.projectile*
+.flake8rc
+__pycache__*
+seed.txt
+TAGS
+config.yml

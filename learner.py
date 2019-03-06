@@ -1,6 +1,6 @@
 from utils import error, info
 import numpy as np
-from os.path import join
+from os.path import join, exists
 from evaluator import Evaluator
 
 
@@ -60,3 +60,10 @@ class Learner:
 
         # measure sanity checks
         self.evaluator.check_sanity(self.do_multilabel)
+
+    def is_already_completed(self):
+        predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
+        if exists(predictions_file):
+            info("Reading existing predictions: {}".format(predictions_file))
+            return read_pickled(predictions_file)
+        return None
