@@ -340,7 +340,7 @@ class Wordnet(SemanticResource):
 
     @staticmethod
     def get_wordnet_pos(treebank_tag):
-
+        Wordnet.setup_nltk_resources()
         if treebank_tag.startswith('J'):
             return wn.ADJ
         elif treebank_tag.startswith('V'):
@@ -364,7 +364,14 @@ class Wordnet(SemanticResource):
 
     def __init__(self, config):
         self.config = config
+        Wordnet.setup_nltk_resources()
         SemanticResource.__init__(self)
+
+    def setup_nltk_resources():
+        try:
+            wn.VERB
+        except:
+            nltk.download("wordnet")
 
     def fetch_raw(self, dummy_input):
         if self.base_name not in listdir(nltk.data.find("corpora")):

@@ -237,6 +237,10 @@ class Embedding(Representation):
             self.embeddings = pd.read_csv(path, delimiter=" ", header=None, index_col=0)
         except ParserError as pe:
             error(pe.msg)
+        # sanity check on defined dimension
+        csv_dimension = self.embeddings.shape[-1]
+        if csv_dimension != self.dimension:
+            error("Specified representation dimension of {} but read csv embeddings are {}-dimensional.".format(self.dimension, csv_dimension))
 
     def __init__(self):
         Representation.__init__(self)
@@ -276,13 +280,14 @@ class Embedding(Representation):
         info("Aggregating embeddings to single-vector-instances via the {} method.".format(self.aggregation))
         # use words per document for the aggregation, aggregating function as an argument
         # stats
-        aggregation_stats = 0, 0
+        aggregation_stats = [0, 0]
 
         for dset_idx in range(len(self.dataset_vectors)):
             info("Aggregating embedding vectors for collection {}/{} with shape {}".format(
                  dset_idx + 1, len(self.dataset_vectors), self.dataset_vectors[dset_idx].shape))
 
             aggregated_dataset_vectors = np.ndarray((0, self.dimension), np.float32)
+            new_numel_per_instance = []
             curr_idx = 0
             for inst_len in self.elements_per_instance[dset_idx]:
                 curr_instance = self.dataset_vectors[dset_idx][curr_idx: curr_idx + inst_len]
@@ -290,9 +295,11 @@ class Embedding(Representation):
                 # average aggregation to a single vector
                 if self.aggregation[0] == "avg":
                     curr_instance = np.mean(curr_instance, axis=0).reshape(1, self.dimension)
+                    new_numel_per_instance.append(1)
                 # padding aggregation to specified vectors per instance
                 elif self.aggregation[0] == "pad":
                     # filt = self.aggregation[1]
+                    new_numel_per_instance.append(self.sequence_length)
                     num_vectors = len(curr_instance)
                     if self.sequence_length < num_vectors:
                         # truncate
@@ -311,6 +318,9 @@ class Embedding(Representation):
                 curr_idx += inst_len
             # update the dataset vector collection and dimension
             self.dataset_vectors[dset_idx] = aggregated_dataset_vectors
+            # update the elements per instance
+            self.elements_per_instance[dset_idx] = new_numel_per_instance
+
             # report stats
             if self.aggregation[0] == "pad":
                 info("Truncated {:.3f}% and padded {:.3f} % items.".format(*[x / len(self.dataset_vectors[dset_idx]) * 100 for x in aggregation_stats]))
@@ -374,6 +384,7 @@ class VectorEmbedding(Embedding):
         self.vocabulary = dset.vocabulary
         self.elements_per_instance = []
 
+        # initialize unknown token embedding, if it's not defined
         if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
             warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
             self.embeddings.loc[self.unknown_word_token] = np.zeros(self.dimension)

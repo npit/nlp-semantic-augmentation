@@ -221,7 +221,7 @@ class LSTM(DNN):
         # non constant instance element num
         set_instance_lengths = [set(x) for x in representation.get_elements_per_instance()]
         if any([len(x) != 1 for x in set_instance_lengths]):
-            error("[{}] needs a constant number of elements per instance per dataset, but got lengths: {}".format(self.name, ))
+            error("[{}] needs a constant number of elements per instance per dataset, but got lengths: {}".format(self.name, set_instance_lengths))
         # non-unity elements per instance
         unit_instance_indexes = [[i for i in range(len(x)) if x[i] <= 1] for x in representation.get_elements_per_instance()]
         if any(unit_instance_indexes):

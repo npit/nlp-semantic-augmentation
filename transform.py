@@ -76,7 +76,9 @@ class Transform(Serializable):
         """Composite name getter"""
         return "{}_{}".format(self.name, self.dimension)
 
-    def check_compatibility(self, multilabel):
+    def check_compatibility(self, dataset, repres):
+        if repres.get_dimension() < self.dimension:
+            error("Got transform dimension of {} but representation of {}.".format(self.dimension, repres.get_dimension()))
         return True
 
     def compute(self, repres, dataset):
@@ -96,7 +98,7 @@ class Transform(Serializable):
                 return
 
         # sanity checks
-        self.check_compatibility(dataset)
+        self.check_compatibility(dataset, repres)
 
         # compute
         num_chunks = len(repres.dataset_vectors)
@@ -227,7 +229,7 @@ class LiDA(Transform):
         self.process_func_train = self.transformer.fit_transform
         self.process_func_test = self.transformer.transform
 
-    def check_compatibility(self, dataset):
+    def check_compatibility(self, dataset, repres):
         if dataset.is_multilabel():
             error("{} transform is not compatible with multi-label data.".format(self.base_name))
         if not (self.dimension < dataset.get_num_labels() - 1):
