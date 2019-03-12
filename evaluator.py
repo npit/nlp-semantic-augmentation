@@ -200,6 +200,8 @@ class Evaluator:
         # loop thresholds & amax, get respective TPs, FPs, etc
         # evaluate metrics there, and multilabel evals with these.
 
+        if self.num_labels != preds_proba.shape[-1]:
+            error("Attempted to evaluated {}-dimensional predictions against {} labels".format(preds_proba.shape[-1], self.num_labels))
         if self.do_multilabel:
             onehot_gt = one_hot(self.test_labels, self.num_labels)
 

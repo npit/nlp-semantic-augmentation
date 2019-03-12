@@ -49,13 +49,20 @@ class Config:
 
     class learner:
         name = None
+
+        # clusterers
+        num_clusters = None
+
+        # dnns
         hidden_dim = None
         num_layers = None
         sequence_length = None
         noload = False
 
         def to_str():
-            return "{} {} {} {}".format(Config.learner.name, Config.learner.hidden_dim, Config.learner.num_layers, Config.learner.sequence_length)
+            return "{} {} {} {}".format(
+                Config.learner.name, Config.learner.hidden_dim,
+                Config.learner.num_layers, Config.learner.sequence_length)
 
     class folders:
         run = None
@@ -235,6 +242,7 @@ class Config:
         self.learner.num_layers = learner_opts["layers"]
         self.learner.sequence_length = self.get_value("sequence_length", default=1, base=learner_opts)
         self.learner.no_load = self.get_value("no_load", default=False, base=learner_opts)
+        self.learner.num_clusters = self.get_value("num_clusters", default=None, base=learner_opts)
 
         need(self.has_value("train"), "Need training information")
         training_opts = self.conf["train"]

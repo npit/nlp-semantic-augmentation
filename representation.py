@@ -1,4 +1,4 @@
-from os.path import join, basename
+from os.path import basename
 import pandas as pd
 from pandas.errors import ParserError
 from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot
@@ -175,9 +175,6 @@ class Representation(Serializable):
     def get_elements_per_instance(self):
         return self.elements_per_instance
 
-    def get_min_elements_per_instance(self):
-        return [min(x) for x in self.elements_per_instance]
-
     def match_targets_to_instances(self, dset_idx, gt, do_flatten=True, binarize_num_labels=None):
         """Expand, if needed, ground truth samples for multi-vector instances
         """
@@ -291,6 +288,8 @@ class Embedding(Representation):
             curr_idx = 0
             for inst_len in self.elements_per_instance[dset_idx]:
                 curr_instance = self.dataset_vectors[dset_idx][curr_idx: curr_idx + inst_len]
+                if np.size(curr_instance) == 0:
+                    error("Empty slice in index {} and instance length {}".format(curr_idx, inst_len))
 
                 # average aggregation to a single vector
                 if self.aggregation[0] == "avg":
@@ -341,7 +340,6 @@ class Embedding(Representation):
             error("Undefined aggregation: {}".format(self.aggregation))
         Representation.set_params(self)
 
-
     def get_all_preprocessed(self):
         return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
                 "undefined_word_index": None, "present_term_indexes": self.present_term_indexes}
@@ -350,7 +348,7 @@ class Embedding(Representation):
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         self.dataset_vectors, self.elements_per_instance, \
-        self.undefined_word_index, self.present_term_indexes = [preprocessed[n] for n in self.data_names]
+            self.undefined_word_index, self.present_term_indexes = [preprocessed[n] for n in self.data_names]
         debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
 
     def set_transform(self, transform):
@@ -402,7 +400,7 @@ class VectorEmbedding(Embedding):
                 for j, doc_wp_list in enumerate(text_bundles[dset_idx]):
                     # drop POS
                     word_list = [wp[0] for wp in doc_wp_list]
-                    debug("Text {}/{} with {} words".format(j + 1, num_documents, len(word_list)))
+                    # debug("Text {}/{} with {} words".format(j + 1, num_documents, len(word_list)))
                     # check present & missing words
                     missing_words, missing_index, present_terms, present_index = [], [], [], []
                     for w, word in enumerate(word_list):
@@ -426,6 +424,7 @@ class VectorEmbedding(Embedding):
                         # replace missing words with UNKs
                         for m in missing_index:
                             word_list[m] = self.unknown_word_token
+                        print(word_list)
 
                     if not present_terms and not self.map_missing_unks:
                         # no words present in the mapping, force
@@ -436,7 +435,10 @@ class VectorEmbedding(Embedding):
                     self.dataset_vectors[-1].append(text_embeddings)
 
                     # update present words and their index, per doc
-                    self.elements_per_instance[-1].append(len(text_embeddings))
+                    num_embeddings = len(text_embeddings)
+                    if num_embeddings == 0:
+                        error("No embeddings generated for text")
+                    self.elements_per_instance[-1].append(num_embeddings)
                     self.present_term_indexes[-1].append(present_index)
 
             self.print_word_stats(hist, hist_missing)
@@ -446,11 +448,14 @@ class VectorEmbedding(Embedding):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def print_word_stats(self, hist, hist_missing):
-        terms_hit, hit_sum = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
-        terms_missed, miss_sum = len([1 for v in hist_missing if hist_missing[v] > 0]), sum(hist_missing.values())
+        terms_hit, hit_sum = len([v for v in hist if hist[v] > 0]), sum(hist.values())
+        terms_missed, miss_sum = len([v for v in hist_missing if hist_missing[v] > 0]), \
+                                 sum(hist_missing.values())
         total_term_sum = sum(list(hist.values()) + list(hist_missing.values()))
-        debug("{} % terms appear at least once, which corresponds to a total of {} % terms in the text".format(terms_hit / len(hist) * 100, hit_sum / total_term_sum * 100))
-        debug("{} % terms never appear, i.e. a total of {} % terms in the text".format(terms_missed / len(hist) * 100, miss_sum / total_term_sum * 100))
+        debug("{:.3f} % terms in the vocabulary appear at least once, which corresponds to a total of {} % terms in the text".
+              format(terms_hit / len(hist) * 100, hit_sum / total_term_sum * 100))
+        debug("{:.3f} % terms in the vocabulary never appear, i.e. a total of {} % terms in the text".format(
+            terms_missed / len(self.vocabulary) * 100, miss_sum / total_term_sum * 100))
 
     def __init__(self, config):
         self.config = config

@@ -60,6 +60,10 @@ def shapes_list(thelist):
     return [x.shape for x in thelist]
 
 
+def lens_list(thelist):
+    return [len(x) for x in thelist]
+
+
 def read_lines(path):
     lines = []
     with open(path) as f:

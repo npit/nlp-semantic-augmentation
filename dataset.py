@@ -28,8 +28,8 @@ class Dataset(Serializable):
     train, test = None, None
     multilabel = False
     data_names = ["train-data", "train-labels", "train-label-names",
-                  "test", "test-labels", "test_label-names", "vocabulary",
-                  "vocabulary_index", "undefined_word_index"]
+                  "test", "test-labels", "test_label-names"]
+    preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
 
     def create(config):
         name = config.dataset.name
@@ -49,6 +49,7 @@ class Dataset(Serializable):
 
     # dataset creation
     def __init__(self, skip_init=False):
+        random.seed(self.config.seed)
         if skip_init or self.config is None:
             return
         Serializable.__init__(self, self.dir_name)
@@ -80,7 +81,7 @@ class Dataset(Serializable):
         self.train, self.train_target, self.train_label_names, \
             self.test, self.test_target, self.test_label_names, \
             self.vocabulary, self.vocabulary_index, self.undefined_word_index \
-            = [preprocessed[name] for name in self.data_names]
+            = [preprocessed[name] for name in self.data_names + self.preprocessed_data_names]
 
         self.num_labels = len(self.train_label_names)
         for index, word in enumerate(self.vocabulary):
@@ -105,7 +106,8 @@ class Dataset(Serializable):
 
     def handle_raw_serialized(self, deserialized_data):
         self.train, self.train_target, self.train_label_names, \
-            self.test, self.test_target, self.test_label_names = deserialized_data
+            self.test, self.test_target, self.test_label_names = \
+            [deserialized_data[n] for n in self.data_names]
         self.num_labels = len(set(self.train_label_names))
         self.loaded_raw_serialized = True
 
@@ -262,6 +264,7 @@ class Dataset(Serializable):
 
     # map text string into list of stopword-filtered words and POS tags
     def process_single_text(self, text, punctuation_remover, word_prepro, stopwords):
+        debug("Processing raw text:\n{}".format(text))
         sents = sent_tokenize(text.lower())
         words = []
         for sent in sents:
@@ -276,11 +279,14 @@ class Dataset(Serializable):
         words_with_pos = nltk.pos_tag(words)
         # stemming / lemmatization
         words_with_pos = [word_prepro(wp) for wp in words_with_pos]
+        if not words_with_pos:
+            error("Text preprocessed to an empty list:\n{}".format(text))
         return words_with_pos
 
     # preprocess single
     def preprocess_text_collection(self, document_list, track_vocabulary=False):
         # filt = '!"#$%&()*+,-./:;<=>?@\[\]^_`{|}~\n\t1234567890'
+        import pdb; pdb.set_trace()
         ret_words_pos, ret_voc = [], set()
         num_words = []
         with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100, unit="collection") as pbar:
@@ -389,57 +395,73 @@ class Reuters(Dataset):
         if self.name != self.base_name:
             return None
         info("Downloading raw {} dataset".format(self.name))
-        if not self.base_name + ".zip" in listdir(nltk.data.find("corpora")):
+        if not (Reuters.name + ".zip") in listdir(nltk.data.find("corpora")):
             nltk.download("reuters")
         # get ids
         categories = reuters.categories()
         self.num_labels = len(categories)
         self.train_label_names, self.test_label_names = [], []
-        cat_idx2label_train, cat_idx2label_test = {}, {}
+        # train / test labels
+        cat2label = {}
+        label_samples_traintest = {}
         train_docs, test_docs = [], []
         doc2labels = {}
 
         # get content
-        self.train, self.test = [], []
-        self.train_target, self.test_target = [], []
         for cat_index, cat in enumerate(categories):
+            if cat_index not in cat2label:
+                cat2label[cat_index] = len(cat2label)
+            if cat not in label_samples_traintest:
+                label_samples_traintest[cat] = [0, 0]
+
             # get all docs in that category
             for doc in reuters.fileids(cat):
                 # document to label mappings
                 if doc not in doc2labels:
+                    # not encountered: init label list
                     doc2labels[doc] = []
-                doc2labels[doc].append(cat_index)
-                # get its content
-                content = reuters.raw(doc)
-                # assign content
-                if doc.startswith("training"):
-                    train_docs.append(doc)
-                    self.train.append(content)
-                    if cat_index not in cat_idx2label_train:
-                        cat_idx2label_train[cat_index] = cat
-                else:
-                    test_docs.append(doc)
-                    self.test.append(content)
-                    if cat_index not in cat_idx2label_test:
-                        cat_idx2label_test[cat_index] = cat
+                    # assign content
+                    if doc.startswith("training"):
+                        train_docs.append(doc)
+                        label_samples_traintest[cat][0] += 1
+                    else:
+                        test_docs.append(doc)
+                        label_samples_traintest[cat][1] += 1
 
-        # list out labels
+                # append the label
+                doc2labels[doc].append(cat_index)
+
+        doc2labels = self.delete_no_sample_labels(label_samples_traintest, doc2labels)
+
+        self.train, self.test = [], []
+        self.train_target, self.test_target = [], []
+        # assign label lists
         for doc in train_docs:
-            self.train.append(doc)
+            self.train.append(reuters.raw(doc))
             self.train_target.append(doc2labels[doc])
         for doc in test_docs:
-            self.test.append(doc)
+            self.test.append(reuters.raw(doc))
             self.test_target.append(doc2labels[doc])
 
-        if len(cat_idx2label_test) != len(cat_idx2label_train):
-            error("{} number of label train/test mismatch: {} / {}".format(self.name, len(cat_idx2label_test), len(cat_idx2label_test)))
-        if cat_idx2label_test != cat_idx2label_train:
-            error("{} index-label mismatch".format(self.name, cat_idx2label_test, cat_idx2label_test))
-        self.train_label_names, self.test_label_names = [[cat_idx2label_test[i] for i in cat_idx2label_test]] * 2
+        labelnames = sorted(cat2label.items(), key=lambda x: x[1])
+        self.train_label_names, self.test_label_names = labelnames, labelnames
         self.test_label_names = list(self.test_label_names)
-        # self.train_target = np.asarray(self.train_target, np.int32)
-        # self.test_target = np.asarray(self.test_target, np.int32)
+        info("Loaded {} train & {} test instances.".format(len(self.train), len(self.test)))
         return self.get_all_raw()
+
+    # delete undersamples classes
+    def delete_no_sample_labels(self, label_samples_traintest,  doc2labels):
+        # This reports different smaples: https://martin-thoma.com/nlp-reuters/
+        labels2delete = []
+        for label in label_samples_traintest:
+            if any([x == 0 for x in label_samples_traintest[label]]):
+                warning("Will remove label {} with samples: {}".format(label, label_samples_traintest[label]))
+                labels2delete.append(label)
+        warning("Removing {} labels due to no train/test samples: {}".format(len(labels2delete), labels2delete))
+        for doc in doc2labels:
+            doc2labels[doc] = [l for l in doc2labels[doc] if l not in labels2delete]
+        return doc2labels
+
 
     def handle_raw(self, raw_data):
         # serialize

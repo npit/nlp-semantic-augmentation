@@ -1,4 +1,5 @@
 from utils import error, info, shapes_list, write_pickled, debug
+import numpy as np
 from sklearn.decomposition import TruncatedSVD, LatentDirichletAllocation
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
@@ -117,7 +118,7 @@ class Transform(Serializable):
             else:
                 info("Transforming test input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
                 repres.dataset_vectors[dset_idx] = self.process_func_test(dset)
-            self.verify_dimensionality(repres.dataset_vectors[dset_idx])
+            self.verify_transformed(repres.dataset_vectors[dset_idx])
             self.term_components.append(self.get_term_representations())
 
         repres.dimension = self.dimension
@@ -139,12 +140,15 @@ class Transform(Serializable):
         """
         return self.transformer.components_
 
-    def verify_dimensionality(self, data):
+    def verify_transformed(self, data):
         """Checks if the projected data dimension matches the one prescribed
         """
         data_dim = data.shape[-1]
         if data_dim != self.dimension:
             error("{} result dimension {} does not match the prescribed input dimension {}".format(self.name, data_dim, self.dimension))
+        nans = np.where(np.isnan(data))
+        if np.size(nans) != 0:
+            error("{} result contains nan elements in :{}".format(self.name, nans))
 
 
 class LSA(Transform):

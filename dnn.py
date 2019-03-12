@@ -30,14 +30,6 @@ class DNN(Classifier):
         Classifier.__init__(self)
         pass
 
-    def get_current_model_path(self):
-        filepath = join(self.models_folder, "{}".format(self.name))
-        if self.do_folds:
-            filepath += "_fold{}".format(self.fold_index)
-        if self.do_validate_portion:
-            filepath += "_valportion{}".format(self.validation_portion)
-        return filepath
-
     # define useful keras callbacks for the training process
     def get_callbacks(self):
         self.callbacks = []
@@ -49,7 +41,8 @@ class DNN(Classifier):
 
         # weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
         self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
-                                                     save_best_only=self.validation_exists, save_weights_only=False,
+                                                     save_best_only=self.validation_exists,
+                                                     save_weights_only=False,
                                                      mode='auto', period=1)
         self.callbacks.append(self.model_saver)
         if self.early_stopping_patience and self.validation_exists:
@@ -84,44 +77,11 @@ class DNN(Classifier):
         Classifier.make(self, representation, dataset)
         pass
 
-    # potentially apply DNN input data tranformations
-    def process_input(self, data):
-        return data
-
     # print information pertaining to early stopping
     def report_early_stopping(self):
         if self.validation_exists and self.early_stopping is not None:
             info("Stopped on epoch {}/{}".format(self.early_stopping.stopped_epoch + 1, self.epochs))
             write_pickled(self.model_path + ".early_stopping", self.early_stopping.stopped_epoch)
-
-    # handle multi-vector items, expanding indexes to the specified sequence length
-    def expand_index_to_sequence(self, fold_data):
-        # map to indexes in the full-sequence data (e.g. times sequence_length)
-        fold_data = list(map(lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
-        for i in range(len(fold_data)):
-            if fold_data[i] is None:
-                continue
-            # expand with respective sequence members (add an increment, vstack)
-            stacked = np.vstack([fold_data[i] + incr for incr in range(self.sequence_length)])
-            # reshape to a single vector, in the vertical (column) direction, that increases incrementally
-            fold_data[i] = np.ndarray.flatten(stacked, order='F')
-        return fold_data
-
-    # split train/val labels and convert to one-hot
-    def prepare_labels(self, trainval_idx):
-        train_idx, val_idx = trainval_idx
-        train_labels = self.train_labels
-        if len(train_idx) > 0:
-            train_labels = [self.train_labels[i] for i in train_idx]
-            train_labels = one_hot(train_labels, self.num_labels)
-        else:
-            train_labels = np.empty((0,))
-        if len(val_idx) > 0:
-            val_labels = [self.train_labels[i] for i in val_idx]
-            val_labels = one_hot(val_labels, self.num_labels)
-        else:
-            val_labels = np.empty((0,))
-        return train_labels, val_labels
 
     # train a model on training & validation data portions
     def train_model(self, trainval_idx):
@@ -148,6 +108,10 @@ class DNN(Classifier):
         self.report_early_stopping()
         return model
 
+    # evaluate a dnn
+    def test_model(self, test_data, model):
+        return model.predict(test_data, batch_size=self.batch_size, verbose=self.verbosity)
+
     # add softmax classification layer
     def add_softmax(self, model, is_first=False):
         if is_first:
@@ -157,6 +121,9 @@ class DNN(Classifier):
 
         model.add(Activation('softmax', name="softmax"))
         return model
+
+    def get_model_path(self):
+        return self.model_saver.filepath
 
 
 class MLP(DNN):
