@@ -4,7 +4,6 @@ from dataset import Dataset
 from representation import Representation
 from semantic import SemanticResource
 from transform import Transform
-from learner import Learner
 from settings import Config
 import argparse
 from utils import info, warning, num_warnings, tictoc

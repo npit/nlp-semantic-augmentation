@@ -235,7 +235,7 @@ class Dataset(Serializable):
             nltk.download('averaged_perceptron_tagger')
         try:
             [x("the quick brown. fox! jumping-over lazy, dog.") for x in [word_tokenize, sent_tokenize]]
-        except LookupError as err:
+        except LookupError:
             nltk.download("punkt")
 
         # setup word prepro
@@ -254,6 +254,7 @@ class Dataset(Serializable):
                 error(err)
         # punctuation
         self.punctuation_remover = str.maketrans('', '', string.punctuation)
+        self.digit_remover = str.maketrans('', '', string.digits)
 
     def apply_lemmatizer(self, w_pos):
         wordnet_pos = Wordnet.get_wordnet_pos(w_pos[1])
@@ -263,18 +264,20 @@ class Dataset(Serializable):
             return self.lemmatizer.lemmatize(w_pos[0], wordnet_pos), w_pos[1]
 
     # map text string into list of stopword-filtered words and POS tags
-    def process_single_text(self, text, punctuation_remover, word_prepro, stopwords):
-        debug("Processing raw text:\n{}".format(text))
+    def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro, stopwords):
+        debug("Processing raw text:\n[[[{}]]]".format(text))
         sents = sent_tokenize(text.lower())
         words = []
         for sent in sents:
+            # remove punctuation content
+            sent = sent.translate(punctuation_remover)
             words.extend(word_tokenize(sent))
         # words = text_to_word_sequence(text, filters=filt, lower=True, split=' ')
         # words = [w.lower() for w in self.nltk_tokenizer.tokenize(text)]
 
-        # remove stopwords and punctuation content
-        words = [w.translate(punctuation_remover) for w in words]
-        words = [w for w in words if w not in stopwords and w.isalpha()]
+        # remove stopwords and numbers
+        # words = [w.translate(digit_remover) for w in words if w not in stopwords and w.isalpha()]
+        words = [w for w in [w.translate(digit_remover) for w in words if w not in stopwords] if w]
         # pos tagging
         words_with_pos = nltk.pos_tag(words)
         # stemming / lemmatization
@@ -286,7 +289,6 @@ class Dataset(Serializable):
     # preprocess single
     def preprocess_text_collection(self, document_list, track_vocabulary=False):
         # filt = '!"#$%&()*+,-./:;<=>?@\[\]^_`{|}~\n\t1234567890'
-        import pdb; pdb.set_trace()
         ret_words_pos, ret_voc = [], set()
         num_words = []
         with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100, unit="collection") as pbar:
@@ -294,7 +296,7 @@ class Dataset(Serializable):
                 pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
                 pbar.update()
                 # text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
-                text_words_pos = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover,
+                text_words_pos = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
                                                           word_prepro=self.word_prepro, stopwords=self.stopwords)
                 ret_words_pos.append(text_words_pos)
                 if track_vocabulary:
@@ -380,6 +382,7 @@ class TwentyNewsGroups(Dataset):
         # dataset is downloadable
         pass
 
+
 class Reuters(Dataset):
     name = "reuters"
     language = "english"
@@ -402,36 +405,33 @@ class Reuters(Dataset):
         self.num_labels = len(categories)
         self.train_label_names, self.test_label_names = [], []
         # train / test labels
-        cat2label = {}
-        label_samples_traintest = {}
+        samples = {}
         train_docs, test_docs = [], []
         doc2labels = {}
 
         # get content
         for cat_index, cat in enumerate(categories):
-            if cat_index not in cat2label:
-                cat2label[cat_index] = len(cat2label)
-            if cat not in label_samples_traintest:
-                label_samples_traintest[cat] = [0, 0]
+            samples[cat] = [0, 0]
 
             # get all docs in that category
             for doc in reuters.fileids(cat):
                 # document to label mappings
                 if doc not in doc2labels:
-                    # not encountered: init label list
+                    # not encountered: init document label list
                     doc2labels[doc] = []
-                    # assign content
                     if doc.startswith("training"):
                         train_docs.append(doc)
-                        label_samples_traintest[cat][0] += 1
                     else:
                         test_docs.append(doc)
-                        label_samples_traintest[cat][1] += 1
-
+                # count samples
+                if doc.startswith("training"):
+                    samples[cat][0] += 1
+                else:
+                    samples[cat][1] += 1
                 # append the label
                 doc2labels[doc].append(cat_index)
 
-        doc2labels = self.delete_no_sample_labels(label_samples_traintest, doc2labels)
+        doc2labels, label_set = self.delete_no_sample_labels(samples, doc2labels)
 
         self.train, self.test = [], []
         self.train_target, self.test_target = [], []
@@ -443,25 +443,29 @@ class Reuters(Dataset):
             self.test.append(reuters.raw(doc))
             self.test_target.append(doc2labels[doc])
 
-        labelnames = sorted(cat2label.items(), key=lambda x: x[1])
-        self.train_label_names, self.test_label_names = labelnames, labelnames
-        self.test_label_names = list(self.test_label_names)
+        self.train_label_names, self.test_label_names = label_set, label_set
         info("Loaded {} train & {} test instances.".format(len(self.train), len(self.test)))
         return self.get_all_raw()
 
-    # delete undersamples classes
-    def delete_no_sample_labels(self, label_samples_traintest,  doc2labels):
+    # delete undersampled classes
+    def delete_no_sample_labels(self, samples, doc2labels):
         # This reports different smaples: https://martin-thoma.com/nlp-reuters/
         labels2delete = []
-        for label in label_samples_traintest:
-            if any([x == 0 for x in label_samples_traintest[label]]):
-                warning("Will remove label {} with samples: {}".format(label, label_samples_traintest[label]))
+        for label in samples:
+            if any([x == 0 for x in samples[label]]):
+                warning("Will remove label {} with samples: {}".format(label, samples[label]))
                 labels2delete.append(label)
-        warning("Removing {} labels due to no train/test samples: {}".format(len(labels2delete), labels2delete))
-        for doc in doc2labels:
-            doc2labels[doc] = [l for l in doc2labels[doc] if l not in labels2delete]
-        return doc2labels
-
+        if labels2delete:
+            warning("Removing {} labels due to no train/test samples: {}".format(len(labels2delete), labels2delete))
+            docs2delete = []
+            for doc in doc2labels:
+                new_labels = [l for l in doc2labels[doc] if l not in labels2delete]
+                if not new_labels:
+                    docs2delete.append(doc)
+                doc2labels[doc] = new_labels
+            for doc in docs2delete:
+                del doc2labels[doc]
+        return doc2labels, list(samples.keys())
 
     def handle_raw(self, raw_data):
         # serialize

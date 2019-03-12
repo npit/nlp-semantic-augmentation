@@ -75,7 +75,7 @@ def mine_wordnet_examples_definitions():
     with tqdm.tqdm(total=len(all_ssets), ascii=True, desc="Fetching example and definition words") as pbar:
         for i, ss in enumerate(all_ssets):
             name = ss.name()
-            examples = list(set([word for t in ss.examples() for word in dset.process_single_text(t, dset.punctuation_remover, dset.word_prepro, dset.stopwords)]))
+            examples = list(set([word for t in ss.examples() for word in dset.process_single_text(t, dset.punctuation_remover, dset.digit_remover, dset.word_prepro, dset.stopwords)]))
             definition = list(set(dset.process_single_text(ss.definition(), dset.punctuation_remover, dset.word_prepro, dset.stopwords)))
             # print("Synset {}/{}".format(i + 1, len(all_ssets)))
 
