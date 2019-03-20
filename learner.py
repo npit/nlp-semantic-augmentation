@@ -26,11 +26,10 @@ class Learner:
         return data
 
     def make(self, representation, dataset):
-
         self.verbosity = 1 if self.config.print.training_progress else 0
         # get data and labels
         self.train, self.test = representation.get_data()
-        self.train_labels, self.test_labels = [x for x in dataset.get_targets()]
+        self.train_labels, self.test_labels = [x for x in dataset.get_labels()]
         # need at least one sample per class
         zero_samples_idx = np.where(np.sum(self.train_labels, axis=0) == 0)
         if np.any(zero_samples_idx):

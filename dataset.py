@@ -1,7 +1,9 @@
 import random
+import json
 import tqdm
 import numpy as np
 from os import listdir
+from os.path import basename
 # from nltk.tokenize import RegexpTokenizer
 from utils import error, tictoc, info, write_pickled, align_index, debug, warning
 from sklearn.datasets import fetch_20newsgroups
@@ -38,11 +40,12 @@ class Dataset(Serializable):
         elif name == Reuters.name:
             return Reuters(config)
         else:
-            error("Undefined dataset: {}".format(name))
+            # default to manually-defined dataset
+            return ManualDataset(config)
 
     @staticmethod
     def generate_name(config):
-        name = config.dataset.name
+        name = basename(config.dataset.name)
         if config.dataset.prepro is not None:
             name += "_" + config.dataset.prepro
         return name
@@ -70,6 +73,8 @@ class Dataset(Serializable):
             self.handler_functions = self.handler_functions[1:]
             # get the data but do not preprocess
             self.acquire_data()
+            if not self.loaded():
+                error("Failed to download dataset")
             self.loaded_index = self.load_flags.index(True)
             # reapply the limit
             self.apply_limit()
@@ -78,8 +83,8 @@ class Dataset(Serializable):
 
     def handle_preprocessed(self, preprocessed):
         info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
-        self.train, self.train_target, self.train_label_names, \
-            self.test, self.test_target, self.test_label_names, \
+        self.train, self.train_labels, self.train_label_names, \
+            self.test, self.test_labels, self.test_label_names, \
             self.vocabulary, self.vocabulary_index, self.undefined_word_index \
             = [preprocessed[name] for name in self.data_names + self.preprocessed_data_names]
 
@@ -105,8 +110,8 @@ class Dataset(Serializable):
         error("Need to override raw data handler for {}".format(self.name))
 
     def handle_raw_serialized(self, deserialized_data):
-        self.train, self.train_target, self.train_label_names, \
-            self.test, self.test_target, self.test_label_names = \
+        self.train, self.train_labels, self.train_label_names, \
+            self.test, self.test_labels, self.test_label_names = \
             [deserialized_data[n] for n in self.data_names]
         self.num_labels = len(set(self.train_label_names))
         self.loaded_raw_serialized = True
@@ -115,8 +120,8 @@ class Dataset(Serializable):
     def get_data(self):
         return self.train, self.test
 
-    def get_targets(self):
-        return self.train_target, self.test_target
+    def get_labels(self):
+        return self.train_labels, self.test_labels
 
     def get_num_labels(self):
         return self.num_labels
@@ -144,15 +149,15 @@ class Dataset(Serializable):
                     # use stratification
                     ratio = ltrain / len(self.train)
                     splitter = StratifiedShuffleSplit(1, test_size=ratio)
-                    splits = list(splitter.split(np.zeros(len(self.train)), self.train_target))
+                    splits = list(splitter.split(np.zeros(len(self.train)), self.train_labels))
                     self.train = [self.train[n] for n in splits[0][1]]
-                    self.train_target = [self.train_target[n] for n in splits[0][1]]
+                    self.train_labels = [self.train_labels[n] for n in splits[0][1]]
                     info("Limited {} loaded data to {} train items.".format(self.base_name, len(self.train)))
                 except ValueError as ve:
                     warning(ve)
                     warning("Resorting to non-stratified limiting")
                     self.train = self.train[:ltrain]
-                    self.train_target = self.train_target[:ltrain]
+                    self.train_labels = self.train_labels[:ltrain]
         if ltest:
             name += "_dlim_te{}".format(ltest)
             if self.test:
@@ -160,15 +165,15 @@ class Dataset(Serializable):
                     # use stratification
                     ratio = ltest / len(self.test)
                     splitter = StratifiedShuffleSplit(1, test_size=ratio)
-                    splits = list(splitter.split(np.zeros(len(self.test)), self.test_target))
+                    splits = list(splitter.split(np.zeros(len(self.test)), self.test_labels))
                     self.test = [self.test[n] for n in splits[0][1]]
-                    self.test_target = [self.test_target[n] for n in splits[0][1]]
+                    self.test_labels = [self.test_labels[n] for n in splits[0][1]]
                     info("Limited {} loaded data to {} test items.".format(self.base_name, len(self.test)))
                 except ValueError as ve:
                     warning(ve)
                     warning("Resorting to non-stratified limiting")
                     self.test = self.test[:ltest]
-                    self.test_target = self.test_target[:ltest]
+                    self.test_labels = self.test_labels[:ltest]
         return name
 
     def restrict_to_classes(self, data, labels, restrict_classes):
@@ -195,13 +200,13 @@ class Dataset(Serializable):
                 retained_classes = random.sample(list(range(self.num_labels)), c_lim)
                 info("Limiting to the {} classes: {}".format(c_lim, retained_classes))
                 if self.multilabel:
-                    debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_target)), max(map(len, self.test_target))))
-                self.train, self.train_target = self.restrict_to_classes(self.train, self.train_target, retained_classes)
-                self.test, self.test_target = self.restrict_to_classes(self.test, self.test_target, retained_classes)
+                    debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_labels)), max(map(len, self.test_labels))))
+                self.train, self.train_labels = self.restrict_to_classes(self.train, self.train_labels, retained_classes)
+                self.test, self.test_labels = self.restrict_to_classes(self.test, self.test_labels, retained_classes)
                 self.num_labels = len(retained_classes)
                 # remap retained classes to indexes starting from 0
-                self.train_target = align_index(self.train_target, retained_classes)
-                self.test_target = align_index(self.test_target, retained_classes)
+                self.train_labels = align_index(self.train_labels, retained_classes)
+                self.test_labels = align_index(self.test_labels, retained_classes)
                 # fix the label names
                 self.train_label_names = [self.train_label_names[rc] for rc in retained_classes]
                 self.test_label_names = [self.test_label_names[rc] for rc in retained_classes]
@@ -209,7 +214,7 @@ class Dataset(Serializable):
                      .format(self.base_name, self.num_labels, retained_classes,
                              self.train_label_names, len(self.train), len(self.test)))
                 if self.multilabel:
-                    debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_target)), max(map(len, self.test_target))))
+                    debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_labels)), max(map(len, self.test_labels))))
         return name
 
     def apply_limit(self):
@@ -217,7 +222,7 @@ class Dataset(Serializable):
             self.base_name = Dataset.generate_name(self.config)
             name = self.apply_class_limit(self.base_name)
             self.name = self.apply_data_limit(name)
-            self.set_paths_by_name(self.name)
+            self.set_paths_by_name(self.name, self.get_raw_path())
         if self.train:
             # serialize the limited version
             write_pickled(self.serialization_path, self.get_all_raw())
@@ -265,7 +270,7 @@ class Dataset(Serializable):
 
     # map text string into list of stopword-filtered words and POS tags
     def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro, stopwords):
-        debug("Processing raw text:\n[[[{}]]]".format(text))
+        # debug("Processing raw text:\n[[[{}]]]".format(text))
         sents = sent_tokenize(text.lower())
         words = []
         for sent in sents:
@@ -328,8 +333,8 @@ class Dataset(Serializable):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        return {"train-data": self.train, "train-labels": self.train_target, "train-label-names": self.train_label_names,
-                "test": self.test, "test-labels": self.test_target, "test_label-names": self.test_label_names}
+        return {"train-data": self.train, "train-labels": self.train_labels, "train-label-names": self.train_label_names,
+                "test": self.test, "test-labels": self.test_labels, "test_label-names": self.test_label_names}
 
     def get_all_preprocessed(self):
         res = self.get_all_raw()
@@ -363,7 +368,7 @@ class TwentyNewsGroups(Dataset):
         train, test = raw_data
         info("Got {} and {} train / test samples".format(len(train.data), len(test.data)))
         self.train, self.test = train.data, test.data
-        self.train_target, self.test_target = train.target, test.target
+        self.train_labels, self.test_labels = train.target, test.target
         self.train_label_names = train.target_names
         self.test_label_names = test.target_names
         self.num_labels = len(self.train_label_names)
@@ -434,14 +439,14 @@ class Reuters(Dataset):
         doc2labels, label_set = self.delete_no_sample_labels(samples, doc2labels)
 
         self.train, self.test = [], []
-        self.train_target, self.test_target = [], []
+        self.train_labels, self.test_labels = [], []
         # assign label lists
         for doc in train_docs:
             self.train.append(reuters.raw(doc))
-            self.train_target.append(doc2labels[doc])
+            self.train_labels.append(doc2labels[doc])
         for doc in test_docs:
             self.test.append(reuters.raw(doc))
-            self.test_target.append(doc2labels[doc])
+            self.test_labels.append(doc2labels[doc])
 
         self.train_label_names, self.test_label_names = label_set, label_set
         info("Loaded {} train & {} test instances.".format(len(self.train), len(self.test)))
@@ -473,13 +478,69 @@ class Reuters(Dataset):
         self.loaded_raw = True
         pass
 
-    # raw path setter
+    # raw path getter
     def get_raw_path(self):
         # dataset is downloadable
         return None
 
-# class MultilingMMS:
-#    name = "multiling-mms"
-#    def get_raw_path():
-#        pass
-#
+
+class ManualDataset(Dataset):
+    """ Class to import a dataset from a folder.
+
+    Expected format in the yml config:
+    name: path/to/dataset_name.json
+
+    In the above path, define dataset as:
+    train.json: array with objects having fields:
+    text: text of document
+    labels: array of integer zero-indexed labels
+
+    # train.txt with the contents of one document per line
+    # train.labels.txt with labels of the above corresponding document per line
+    # test.txt, test.labels.txt (as above)
+    """
+
+    def __init__(self, config):
+        self.config = config
+        self.name = basename(config.dataset.name)
+        Dataset.__init__(self)
+
+    # raw path getter
+    def get_raw_path(self):
+        return self.config.dataset.name
+
+    def fetch_raw(self, raw_data_path):
+        with open(raw_data_path) as f:
+            raw_data = json.load(f)
+        return raw_data
+
+    def handle_raw(self, raw_data):
+        self.num_labels = raw_data["num_labels"]
+        self.language = raw_data["language"]
+        data = raw_data["data"]
+
+        self.train, self.train_labels = [], []
+        self.test, self.test_labels = [], []
+
+        unique_labels = {"train":set(), "test": set()}
+        for obj in data["train"]:
+            self.train.append(obj["text"])
+            self.train_labels.append(obj["labels"])
+            unique_labels["train"].update(obj["labels"])
+        for obj in data["test"]:
+            self.test.append(obj["text"])
+            self.test_labels.append(obj["labels"])
+            unique_labels["test"].update(obj["labels"])
+
+        if "label_names" in raw_data:
+            self.train_label_names = raw_data["label_names"]["train"]
+            self.test_label_names = raw_data["label_names"]["test"]
+        else:
+            self.train_label_names, self.test_label_names = \
+                [list(map(str, sorted(unique_labels[tt]))) for tt in ["train", "test"]]
+        # write serialized data
+        write_pickled(self.serialization_path, self.get_all_raw())
+
+    def handle_raw_serialized(self, deserialized_data):
+        Dataset.handle_raw_serialized(self, deserialized_data)
+        self.language = deserialized_data["language"]

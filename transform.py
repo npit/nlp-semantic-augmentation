@@ -110,8 +110,8 @@ class Transform(Serializable):
             if dset_idx == 0:
                 info("Transforming training input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
                 if self.is_supervised:
-                    ground_truth = dataset.get_targets()[dset_idx]
-                    ground_truth = repres.match_targets_to_instances(dset_idx, ground_truth)
+                    ground_truth = dataset.get_labels()[dset_idx]
+                    ground_truth = repres.match_labels_to_instances(dset_idx, ground_truth)
                     repres.dataset_vectors[dset_idx] = self.process_func_train(dset, ground_truth)
                 else:
                     repres.dataset_vectors[dset_idx] = self.process_func_train(dset)

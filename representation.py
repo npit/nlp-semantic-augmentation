@@ -175,7 +175,7 @@ class Representation(Serializable):
     def get_elements_per_instance(self):
         return self.elements_per_instance
 
-    def match_targets_to_instances(self, dset_idx, gt, do_flatten=True, binarize_num_labels=None):
+    def match_labels_to_instances(self, dset_idx, gt, do_flatten=True, binarize_num_labels=None):
         """Expand, if needed, ground truth samples for multi-vector instances
         """
         epi = self.elements_per_instance[dset_idx]
@@ -424,7 +424,7 @@ class VectorEmbedding(Embedding):
                         # replace missing words with UNKs
                         for m in missing_index:
                             word_list[m] = self.unknown_word_token
-                        print(word_list)
+                        # print(word_list)
 
                     if not present_terms and not self.map_missing_unks:
                         # no words present in the mapping, force

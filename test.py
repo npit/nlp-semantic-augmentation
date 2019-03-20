@@ -4,19 +4,20 @@ import os
 from os.path import join, exists
 import nltk
 import yaml
-from utils import write_pickled, error, warning
+from utils import write_pickled, warning
 import argparse
 
 import representation
 import semantic
 import transform
-import learner
 from defs import alias
 
 import large_scale
 
+
 """ Run tests
 """
+
 
 def setup_test_resources(args):
     """Creates the necessary data and configuration for running tests.
@@ -42,7 +43,7 @@ def setup_test_resources(args):
     print("Creating dummy embedding mapping.")
     try:
         words = nltk.corpus.words.words()
-    except:
+    except LookupError:
         nltk.download("words")
         words = nltk.corpus.words.words()
 
@@ -61,9 +62,10 @@ def setup_test_resources(args):
     conf["params"] = {}
     conf["params"]["representation"] = {"name": [representation.VectorEmbedding.name, representation.BagRepresentation.name, representation.TFIDFRepresentation.name]}
     # drop lida due to colinear results -- should be testing manually
-    conf["params"]["transform"] = {"name": [t for t in transform.Transform.get_available() if t != transform.LinearDiscriminantAnalysis] + [alias.none]}
+    conf["params"]["transform"] = {"name": [t for t in transform.Transform.get_available() if t != transform.LiDA.base_name] + [alias.none]}
     # conf["params"]["semantic"] = semantic.SemanticResource.get_available()
     conf["params"]["semantic"] = {"name": [semantic.Wordnet.name, alias.none]}
+    conf["params"]["learner"] = {"name": ["mlp"], "hidden_dim": [64], "layers": [2], "no_load": [True]}
 
     # set static parameters
     conf["dataset"] = {"name": "20newsgroups", "data_limit": [300, 150], "class_limit": 6}
@@ -78,7 +80,6 @@ def setup_test_resources(args):
 
     conf["train"]["folds"] = 3
     conf["train"]["validation_portion"] = None
-    conf["learner"] = {"name": "mlp", "hidden_dim": 64, "layers":2, "no_load": True}
 
     conf["print"]["run_types"] = ["run", "majority"]
 
