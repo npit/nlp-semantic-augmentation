@@ -135,7 +135,7 @@ def main(config_file="large.config.yml"):
     ############################################################
 
     # set the expeirment parameters via a configuration list
-    conf = yaml.load(open(config_file))
+    conf = yaml.load(open(config_file, Loader=yaml.SafeLoader))
     # evaluation measures
     exps = conf["experiments"]
     eval_measures = aslist(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
@@ -172,7 +172,7 @@ def main(config_file="large.config.yml"):
     copied_conf = join(run_dir, basename(config_file))
     if exists(copied_conf):
         # make sure it's the same effing config
-        cconf = yaml.load(copied_conf)
+        cconf = yaml.load(copied_conf, Loader=yaml.SafeLoader)
         if cconf != conf:
             info("The original config differs from the one in the experiment directory!")
     else:

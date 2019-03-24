@@ -2,7 +2,7 @@ from os.path import join, exists, splitext, basename, dirname
 from os import listdir, makedirs
 import pickle
 import nltk
-from utils import tictoc, error, info, debug, warning, write_pickled, read_pickled, shapes_list
+from utils import tictoc, error, info, debug, warning, write_pickled, read_pickled, shapes_list, nltk_download
 import numpy as np
 from serializable import Serializable
 from nltk.corpus import wordnet as wn
@@ -15,7 +15,6 @@ import spotlight
 import yaml
 import requests
 
-# from dataset import Dataset
 import defs
 import copy
 
@@ -339,8 +338,8 @@ class Wordnet(SemanticResource):
     # pos_tag_mapping = {"VB": wn.VERB, "NN": wn.NOUN, "JJ": wn.ADJ, "RB": wn.ADV}
 
     @staticmethod
-    def get_wordnet_pos(treebank_tag):
-        Wordnet.setup_nltk_resources()
+    def get_wordnet_pos(config, treebank_tag):
+        Wordnet.setup_nltk_resources(config)
         if treebank_tag.startswith('J'):
             return wn.ADJ
         elif treebank_tag.startswith('V'):
@@ -364,18 +363,18 @@ class Wordnet(SemanticResource):
 
     def __init__(self, config):
         self.config = config
-        Wordnet.setup_nltk_resources()
+        Wordnet.setup_nltk_resources(config)
         SemanticResource.__init__(self)
 
-    def setup_nltk_resources():
+    def setup_nltk_resources(config):
         try:
             wn.VERB
         except:
-            nltk.download("wordnet")
+            nltk_download(config, "wordnet")
 
     def fetch_raw(self, dummy_input):
         if self.base_name not in listdir(nltk.data.find("corpora")):
-            nltk.download("wordnet")
+            nltk_download(self.config, "wordnet")
         return None
 
     def handle_raw_serialized(self, raw_serialized):
@@ -607,7 +606,7 @@ class Framenet(SemanticResource):
 
     def fetch_raw(self, dummy_input):
         if not self.base_name + "_v17" in listdir(nltk.data.find("corpora")):
-            nltk.download("framenet_v17")
+            nltk_download(self.config, "framenet_v17")
         return None
 
     def lookup(self, candidate):
@@ -721,7 +720,7 @@ class DBPedia(SemanticResource):
         if not exists(self.dbpedia_config):
             error("The {} semantic resource needs an extractor configuration file: {}".format(self.name, self.dbpedia_config))
         with open(self.dbpedia_config) as f:
-            dbpedia_conf = yaml.load(f)
+            dbpedia_conf = yaml.load(f, Loader=yaml.SafeLoader)
         self.rest_url = dbpedia_conf["rest_url"]
         self.confidence = dbpedia_conf["confidence"]
         SemanticResource.__init__(self)

@@ -5,6 +5,7 @@ import random
 import yaml
 import utils
 import defs
+import nltk
 from utils import need, error
 import shutil
 
@@ -180,7 +181,7 @@ class Config:
         if type(input_config) == str:
             # it's a yaml file
             with open(input_config) as f:
-                self.conf = yaml.load(f)
+                self.conf = yaml.load(f, Loader=yaml.SafeLoader)
         elif type(input_config) == dict:
             self.conf = input_config
 
@@ -258,6 +259,9 @@ class Config:
             self.folders.results = join(self.folders.run, "results")
             self.folders.serialization = self.get_value("serialization", base=folder_opts, default="serialization")
             self.folders.raw_data = self.get_value("raw_data", base=folder_opts, default="raw_data")
+            nltk_data_path = self.get_value("nltk", base=folder_opts, default=os.path.join(self.folders.raw_data, "nltk"))
+            # set nltk data folder
+            nltk.data.path = [nltk_data_path]
 
         if self.has_value("print"):
             print_opts = self.conf['print']

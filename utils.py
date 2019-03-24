@@ -4,9 +4,13 @@ import logging
 import numpy as np
 import os
 from collections import namedtuple
+import nltk
 
 num_warnings = 0
 
+
+def nltk_download(config, name):
+    nltk.download(name, download_dir=nltk.data.path[0])
 
 def setup_simple_logging(level="info", logging_dir="."):
     level = logging._nameToLevel[level.upper()]

@@ -3,9 +3,9 @@ import json
 import tqdm
 import numpy as np
 from os import listdir
-from os.path import basename
+from os.path import basename, join
 # from nltk.tokenize import RegexpTokenizer
-from utils import error, tictoc, info, write_pickled, align_index, debug, warning
+from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.model_selection import StratifiedShuffleSplit
 from nltk.corpus import stopwords, reuters
@@ -49,6 +49,14 @@ class Dataset(Serializable):
         if config.dataset.prepro is not None:
             name += "_" + config.dataset.prepro
         return name
+
+    def nltk_dataset_resource_exists(self, name):
+        try:
+            if (name + ".zip") in listdir(nltk.data.find("corpora")):
+                return True
+        except:
+            warning("Unable to probe nltk corpora at path {}".format(nltk.data.path))
+        return False
 
     # dataset creation
     def __init__(self, skip_init=False):
@@ -231,17 +239,17 @@ class Dataset(Serializable):
         try:
             stopwords.words(self.language)
         except LookupError:
-            nltk.download("stopwords")
+            nltk_download(self.config, "stopwords")
 
         self.stopwords = set(stopwords.words(self.language))
         try:
             nltk.pos_tag("Text")
         except LookupError:
-            nltk.download('averaged_perceptron_tagger')
+            nltk_download(self.config, 'averaged_perceptron_tagger')
         try:
             [x("the quick brown. fox! jumping-over lazy, dog.") for x in [word_tokenize, sent_tokenize]]
         except LookupError:
-            nltk.download("punkt")
+            nltk_download(self.config, "punkt")
 
         # setup word prepro
         while True:
@@ -357,8 +365,8 @@ class TwentyNewsGroups(Dataset):
             return None
         info("Downloading {} via sklearn".format(self.name))
 
-        train = fetch_20newsgroups(subset='train', shuffle=True, random_state=self.config.get_seed())
-        test = fetch_20newsgroups(subset='test', shuffle=True, random_state=self.config.get_seed())
+        train = fetch_20newsgroups(data_home=join(self.config.folders.raw_data, "sklearn"), subset='train', shuffle=True, random_state=self.config.get_seed())
+        test = fetch_20newsgroups(data_home=join(self.config.folders.raw_data, "sklearn"), subset='test', shuffle=True, random_state=self.config.get_seed())
         return [train, test]
 
     def handle_raw(self, raw_data):
@@ -403,8 +411,8 @@ class Reuters(Dataset):
         if self.name != self.base_name:
             return None
         info("Downloading raw {} dataset".format(self.name))
-        if not (Reuters.name + ".zip") in listdir(nltk.data.find("corpora")):
-            nltk.download("reuters")
+        if not self.nltk_dataset_resource_exists(Reuters.name):
+            nltk_download(self.config, "reuters")
         # get ids
         categories = reuters.categories()
         self.num_labels = len(categories)

@@ -56,7 +56,7 @@ def setup_test_resources(args):
 
     # write large-scale yaml config
     with open("example.config.yml") as f:
-        conf = yaml.load(f)
+        conf = yaml.load(f, Loader=yaml.SafeLoader)
 
     # insert available configurations
     conf["params"] = {}
