@@ -73,6 +73,7 @@ class Learner:
 
         # measure sanity checks
         self.evaluator.check_sanity(self.do_multilabel)
+        info("Created learner: {}".format(self))
 
     def is_already_completed(self):
         predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")

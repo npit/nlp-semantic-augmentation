@@ -30,6 +30,10 @@ class DNN(Classifier):
         Classifier.__init__(self)
         pass
 
+    def __str__(self):
+        return "name:{} hidden dim:{} nlayers:{} sequence len:{}".format(
+            self.name, self.hidden, self.layers, self.sequence_length)
+
     # define useful keras callbacks for the training process
     def get_callbacks(self):
         self.callbacks = []

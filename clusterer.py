@@ -21,6 +21,10 @@ class Clusterer(Learner):
 class KMeansClusterer(Clusterer):
     name = "kmeans"
 
+    def __str__(self):
+        return "name: {} clusters:{}".format(
+            self.name, self.num_clusters)
+
     def __init__(self, config):
         """kmeans constructor"""
         self.config = config

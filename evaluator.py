@@ -54,7 +54,6 @@ class Evaluator:
     # initialize evaluation containers and preferred evaluation printage
     def configure_evaluation_measures(self):
         """Method to initialize evaluation measure containers"""
-        info("Creating learner: {}".format(self.config.learner.to_str()))
         for run_type in self.run_types:
             self.performance[run_type] = {}
             for measure in self.measures:

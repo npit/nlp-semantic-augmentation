@@ -60,11 +60,6 @@ class Config:
         sequence_length = None
         noload = False
 
-        def to_str():
-            return "{} {} {} {}".format(
-                Config.learner.name, Config.learner.hidden_dim,
-                Config.learner.num_layers, Config.learner.sequence_length)
-
     class folders:
         run = None
         results = None

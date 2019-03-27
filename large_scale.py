@@ -135,7 +135,7 @@ def main(config_file="large.config.yml"):
     ############################################################
 
     # set the expeirment parameters via a configuration list
-    conf = yaml.load(open(config_file, Loader=yaml.SafeLoader))
+    conf = yaml.load(open(config_file), Loader=yaml.SafeLoader)
     # evaluation measures
     exps = conf["experiments"]
     eval_measures = aslist(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
