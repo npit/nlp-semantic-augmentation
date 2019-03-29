@@ -12,7 +12,7 @@ import smtplib
 import logging
 import os
 import getpass
-from utils import info, error, datetime_str, aslist, setup_simple_logging
+from utils import info, error, datetime_str, as_list, setup_simple_logging
 
 """Script to produce large-scale semantic neural augmentation experiments
 
@@ -138,10 +138,10 @@ def main(config_file="large.config.yml"):
     conf = yaml.load(open(config_file), Loader=yaml.SafeLoader)
     # evaluation measures
     exps = conf["experiments"]
-    eval_measures = aslist(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
-    aggr_measures = aslist(exps["aggregation"]) if "aggregation" in exps else ["macro", "micro"]
-    stat_functions = aslist(exps["stats"]) if "stats" in exps else ["mean"]
-    run_types = aslist(exps["run_types"]) if "run_types" in exps else ["run"]
+    eval_measures = as_list(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
+    aggr_measures = as_list(exps["aggregation"]) if "aggregation" in exps else ["macro", "micro"]
+    stat_functions = as_list(exps["stats"]) if "stats" in exps else ["mean"]
+    run_types = as_list(exps["run_types"]) if "run_types" in exps else ["run"]
 
     # folder to run experiments in
     run_dir = exps["run_folder"]

@@ -60,7 +60,7 @@ def setup_test_resources(args):
 
     # insert available configurations
     conf["params"] = {}
-    conf["params"]["representation"] = {"name": [representation.VectorEmbedding.name, representation.BagRepresentation.name, representation.TFIDFRepresentation.name]}
+    conf["params"]["representation"] = {"name": [representation.WordEmbedding.name, representation.BagRepresentation.name, representation.TFIDFRepresentation.name]}
     # drop lida due to colinear results -- should be testing manually
     conf["params"]["transform"] = {"name": [t for t in transform.Transform.get_available() if t != transform.LiDA.base_name] + [alias.none]}
     # conf["params"]["semantic"] = semantic.SemanticResource.get_available()

@@ -192,7 +192,7 @@ class Config:
         self.dataset.name = dataset_opts["name"]
         lims = self.get_value("data_limit", base=dataset_opts, default=None)
         if lims is not None:
-            lims = utils.aslist(lims)
+            lims = utils.as_list(lims)
             if not(all([type(x) == int and x > 0 for x in lims]) and len(lims) in [1, 2]):
                 error("Invalid data limits: {}".format(lims))
             self.dataset.data_limit = lims
@@ -205,7 +205,7 @@ class Config:
         need(self.has_value("representation"), "Need representation information")
         representation_information = self.conf["representation"]
         self.representation.name = representation_information["name"]
-        self.representation.aggregation = representation_information["aggregation"] if type(representation_information["aggregation"]) == list else [representation_information["aggregation"]]
+        self.representation.aggregation = utils.as_list(self.get_value("aggregation", base=representation_information, default=defs.alias.none))
         self.representation.dimension = representation_information["dimension"]
         self.representation.sequence_length = self.get_value("sequence_length", default=1, base=representation_information)
         self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)

@@ -40,7 +40,7 @@ def to_namedtuple(conf_dict, ntname, do_recurse=False):
     return conf
 
 
-def aslist(x):
+def as_list(x):
     """Convert the input to a single-element list, if it's not a list
     """
     return [x] if type(x) != list else x

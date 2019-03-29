@@ -354,6 +354,21 @@ class Dataset(Serializable):
     def get_name(self):
         return self.name
 
+    def get_word_lists(self):
+        """Get word-only data"""
+        res = [], []
+        for doc in self.train:
+            res[0].append([wp[0] for wp in doc])
+        for doc in self.test:
+            res[1].append([wp[0] for wp in doc])
+        return res
+
+    def get_multi_labels(self):
+        """ Returns a list of labels per instance
+        """
+        if self.is_multilabel():
+            return self.train_labels, self.test_labels
+        return list(map( lambda x: [x], self.train_labels)), list(map( lambda x: [x], self.test_labels))
 
 class TwentyNewsGroups(Dataset):
     name = "20newsgroups"
