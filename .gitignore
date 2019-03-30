@@ -7,3 +7,9 @@ __pycache__*
 seed.txt
 TAGS
 config.yml
+raw_data
+raw_data_test
+serialization_test
+serialization
+test.config.yml
+test
