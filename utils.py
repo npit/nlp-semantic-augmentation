@@ -86,7 +86,7 @@ def align_index(input_list, reference):
             output.append(res)
         else:
             output.append(reference.index(l))
-    return output
+    return np.array_split(np.array(output), len(output))
 
 
 def get_majority_label(inp, num_labels, is_multilabel):

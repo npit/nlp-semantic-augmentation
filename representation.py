@@ -716,7 +716,7 @@ class DocumentEmbedding(Embedding):
             return
         info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
         word_lists = dset.get_word_lists()
-        d2v = self.fit_doc2vec(word_lists[0], dset.get_multi_labels()[0])
+        d2v = self.fit_doc2vec(word_lists[0], dset.train_labels)
 
         text_bundles = dset.train, dset.test
         self.dataset_vectors = []

@@ -197,7 +197,7 @@ class Dataset(Serializable):
                 continue
             new_data.append(d)
             new_labels.append(rl)
-        return new_data, new_labels
+        return new_data, np.array_split(np.array(new_labels), len(new_labels))
 
     def apply_class_limit(self, name):
         c_lim = self.config.dataset.class_limit
@@ -363,13 +363,6 @@ class Dataset(Serializable):
             res[1].append([wp[0] for wp in doc])
         return res
 
-    def get_multi_labels(self):
-        """ Returns a list of labels per instance
-        """
-        if self.is_multilabel():
-            return self.train_labels, self.test_labels
-        return list(map( lambda x: [x], self.train_labels)), list(map( lambda x: [x], self.test_labels))
-
 class TwentyNewsGroups(Dataset):
     name = "20newsgroups"
     language = "english"
@@ -391,7 +384,7 @@ class TwentyNewsGroups(Dataset):
         train, test = raw_data
         info("Got {} and {} train / test samples".format(len(train.data), len(test.data)))
         self.train, self.test = train.data, test.data
-        self.train_labels, self.test_labels = train.target, test.target
+        self.train_labels, self.test_labels = np.array_split(train.target, len(train.target)), np.array_split(test.target, len(test.target))
         self.train_label_names = train.target_names
         self.test_label_names = test.target_names
         self.num_labels = len(self.train_label_names)
@@ -513,20 +506,26 @@ class ManualDataset(Dataset):
     Expected format in the yml config:
     name: path/to/dataset_name.json
 
-    In the above path, define dataset as:
-    train.json: array with objects having fields:
-    text: text of document
-    labels: array of integer zero-indexed labels
-
-    # train.txt with the contents of one document per line
-    # train.labels.txt with labels of the above corresponding document per line
-    # test.txt, test.labels.txt (as above)
+    In the above path, define dataset json as:
+    data:
+      train:
+        text: "this is the document text"
+        labels: [0,2,3]
+    num_labels: 10
+    label_names: ['cat', 'dog', ...]
+    language: english
     """
 
     def __init__(self, config):
         self.config = config
         self.name = basename(config.dataset.name)
         Dataset.__init__(self)
+
+    def get_all_raw(self):
+        data = Dataset.get_all_raw(self)
+        data["language"] = self.language
+        data["multilabel"] = self.is_multilabel()
+        return data
 
     # raw path getter
     def get_raw_path(self):
@@ -538,6 +537,7 @@ class ManualDataset(Dataset):
         return raw_data
 
     def handle_raw(self, raw_data):
+        max_num_instance_labels = 0
         self.num_labels = raw_data["num_labels"]
         self.language = raw_data["language"]
         data = raw_data["data"]
@@ -548,8 +548,10 @@ class ManualDataset(Dataset):
         unique_labels = {"train":set(), "test": set()}
         for obj in data["train"]:
             self.train.append(obj["text"])
-            self.train_labels.append(obj["labels"])
-            unique_labels["train"].update(obj["labels"])
+            lbls = obj["labels"]
+            self.train_labels.append(lbls)
+            unique_labels["train"].update(lbls)
+            max_num_instance_labels = len(lbls) if len(lbls) > max_num_instance_labels else max_num_instance_labels
         for obj in data["test"]:
             self.test.append(obj["text"])
             self.test_labels.append(obj["labels"])
@@ -561,9 +563,22 @@ class ManualDataset(Dataset):
         else:
             self.train_label_names, self.test_label_names = \
                 [list(map(str, sorted(unique_labels[tt]))) for tt in ["train", "test"]]
+        if max_num_instance_labels > 1:
+            self.is_multilabel = max_num_instance_labels
         # write serialized data
         write_pickled(self.serialization_path, self.get_all_raw())
 
     def handle_raw_serialized(self, deserialized_data):
         Dataset.handle_raw_serialized(self, deserialized_data)
         self.language = deserialized_data["language"]
+        self.is_multilabel = deserialized_data["multilabel"]
+
+    def handle_serialized(self, deserialized_data):
+        Dataset.handle_serialized(self, deserialized_data)
+        self.language = deserialized_data["language"]
+        self.is_multilabel = deserialized_data["multilabel"]
+
+    def handle_preprocessed(self, deserialized_data):
+        Dataset.handle_preprocessed(self, deserialized_data)
+        self.language = deserialized_data["language"]
+        self.is_multilabel = deserialized_data["multilabel"]
