@@ -131,6 +131,20 @@ class Learner:
         predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
         write_pickled(predictions_file, predictions)
 
+    # get training and validation data chunks, given the input indexes
+    def get_trainval_data(self, trainval_idx):
+        """get training and validation data chunks, given the input indexes"""
+        # labels
+        train_labels, val_labels = self.prepare_labels(trainval_idx)
+        # data
+        if self.num_train != self.num_train_labels:
+            trainval_idx = self.expand_index_to_sequence(trainval_idx)
+        train_data, val_data = [self.process_input(data) if len(data) > 0 else np.empty((0,)) for data in
+                                [self.train[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
+        val_datalabels = (val_data, val_labels) if val_data.size > 0 else None
+        return train_data, train_labels, val_datalabels
+
+
     def get_current_model_path(self):
         filepath = join(self.models_folder, "{}".format(self.name))
         if self.do_folds:

@@ -293,7 +293,6 @@ class Embedding(Representation):
             curr_idx = 0
             for inst_idx, inst_len in enumerate(self.elements_per_instance[dset_idx]):
                 curr_instance = self.dataset_vectors[dset_idx][curr_idx: curr_idx + inst_len]
-                print("Instance {}, shp:{},  curridx: {}".format(inst_idx, curr_instance.shape, curr_idx))
                 if np.size(curr_instance) == 0:
                     error("Empty slice! Current index: {} / {}, instance numel: {}".format(curr_idx, len(self.dataset_vectors[dset_idx]), inst_len))
 
@@ -707,8 +706,8 @@ class DocumentEmbedding(Embedding):
             word_index = model.wv.index2entity.index(word)
             model.wv.syn0[word_index] = self.embeddings.loc[word]
         # model.wv.add(words, self.embeddings.loc[words], replace=True)
-        model.train(tagged_docs, epochs=5, total_examples=len(tagged_docs))
-        model.delete_temporary_training_data()
+        model.train(tagged_docs, epochs=10, total_examples=len(tagged_docs))
+        model.delete_temporary_training_data(keep_doctags_vectors=True, keep_inference=True)
         del self.embeddings
         return model
 

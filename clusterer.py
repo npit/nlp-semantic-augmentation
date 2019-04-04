@@ -37,14 +37,8 @@ class KMeansClusterer(Clusterer):
     # train a model on training & validation data portions
     def train_model(self, trainval_idx):
         # labels
-        train_labels, val_labels = self.prepare_labels(trainval_idx)
-        # data
-        if self.num_train != self.num_train_labels:
-            trainval_idx = self.expand_index_to_sequence(trainval_idx)
-        train_data, val_data = [self.process_input(data) if len(data) > 0 else np.empty((0,)) for data in
-                                [self.train[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
-        val_datalabels = (val_data, val_labels) if val_data.size > 0 else None
-        # build model
+        train_data, train_labels, _ = self.get_trainval_data(trainval_idx)
+        # define the model
         model = KMeans(self.num_clusters)
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
