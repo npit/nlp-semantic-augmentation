@@ -19,8 +19,6 @@ class Config:
     conf = {}
     run_id = None
 
-    name_value_entries = {}
-
     class dataset:
         name = None
         prepro = None
@@ -38,6 +36,7 @@ class Config:
         name = None
         dimension = None
         term_list = None
+        aggregation = None
 
     class transform:
         dimension = None
@@ -205,7 +204,8 @@ class Config:
         need(self.has_value("representation"), "Need representation information")
         representation_information = self.conf["representation"]
         self.representation.name = representation_information["name"]
-        self.representation.aggregation = utils.as_list(self.get_value("aggregation", base=representation_information, default=defs.alias.none))
+        self.representation.aggregation = self.get_value("aggregation", base=representation_information, default=defs.alias.none)
+        self.representation.aggregation_params = utils.as_list(self.get_value("aggregation_params", base=representation_information, default=[]))
         self.representation.dimension = representation_information["dimension"]
         self.representation.sequence_length = self.get_value("sequence_length", default=1, base=representation_information)
         self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)

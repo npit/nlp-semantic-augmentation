@@ -1,4 +1,4 @@
-from os.path import basename
+from os.path import basename, isfile
 import pandas as pd
 from pandas.errors import ParserError
 from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot
@@ -24,7 +24,9 @@ class Representation(Serializable):
             return TFIDFRepresentation(config)
         if name == DocumentEmbedding.name:
             return DocumentEmbedding(config)
-        # any unknown name is assumed to be pretrained embeddings
+        if name == ExistingVectors.name:
+            return ExistingVectors(config)
+        # any unknown name is assumed to be pretrained word embeddings
         return WordEmbedding(config)
 
     @staticmethod
@@ -50,7 +52,7 @@ class Representation(Serializable):
     # add exra representations-specific serialization paths
     def set_additional_serialization_sources(self):
         # compute names
-        aggr = "".join(list(map(str, self.config.representation.aggregation + [self.sequence_length])))
+        aggr = "".join(list(map(str, [self.config.representation.aggregation] + self.config.representation.aggregation_params + [self.sequence_length])))
         self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
 
         sem = SemanticResource.generate_name(self.config, include_dataset=False)
@@ -200,10 +202,11 @@ class Representation(Serializable):
     def need_load_transform(self):
         return not (self.loaded_aggregated or self.loaded_finalized)
 
-    def set_single_elements_per_instance(self):
+    # set one element per instance
+    def set_constant_elements_per_instance(self, num=1):
         if not self.dataset_vectors:
-            error("Attempted to set unit epi before computing dataset vectors.")
-        self.elements_per_instance = [[1 for _ in ds] for ds in self.dataset_vectors]
+            error("Attempted to set constant epi before computing dataset vectors.")
+        self.elements_per_instance = [[num for _ in ds] for ds in self.dataset_vectors]
 
 class Embedding(Representation):
     name = ""
@@ -276,6 +279,8 @@ class Embedding(Representation):
     # prepare embedding data to be ready for classification
     def aggregate_instance_vectors(self):
         """Method that maps features to a single vector per instance"""
+        if self.aggregation == defs.alias.none:
+            return
         if self.loaded_aggregated or self.loaded_finalized:
             debug("Skipping representation aggregation.")
             return
@@ -297,11 +302,11 @@ class Embedding(Representation):
                     error("Empty slice! Current index: {} / {}, instance numel: {}".format(curr_idx, len(self.dataset_vectors[dset_idx]), inst_len))
 
                 # average aggregation to a single vector
-                if self.aggregation[0] == "avg":
+                if self.aggregation == "avg":
                     curr_instance = np.mean(curr_instance, axis=0).reshape(1, self.dimension)
                     new_numel_per_instance.append(1)
                 # padding aggregation to specified vectors per instance
-                elif self.aggregation[0] == "pad":
+                elif self.aggregation == "pad":
                     # filt = self.aggregation[1]
                     new_numel_per_instance.append(self.sequence_length)
                     num_vectors = len(curr_instance)
@@ -315,6 +320,8 @@ class Embedding(Representation):
                         pad = np.tile(self.get_zero_pad_element(), (pad_size, 1), np.float32)
                         curr_instance = np.append(curr_instance, pad, axis=0)
                         aggregation_stats[1] += 1
+                elif self.aggregation == defs.alias.none:
+                    pass
                 else:
                     error("Undefined aggregation: {}".format(self.aggregation))
 
@@ -326,7 +333,7 @@ class Embedding(Representation):
             self.elements_per_instance[dset_idx] = new_numel_per_instance
 
             # report stats
-            if self.aggregation[0] == "pad":
+            if self.aggregation == "pad":
                 info("Truncated {:.3f}% and padded {:.3f} % items.".format(*[x / len(self.dataset_vectors[dset_idx]) * 100 for x in aggregation_stats]))
             info("Aggregated shapes: {}".format(shapes_list(self.dataset_vectors)))
 
@@ -335,15 +342,10 @@ class Embedding(Representation):
         self.aggregation = self.config.representation.aggregation
         self.sequence_length = self.config.representation.sequence_length
         self.map_missing_unks = self.config.representation.missing_words == "unk"
-        if type(self.aggregation) == list:
-            if self.aggregation[0] == "pad":
-                self.desired_vectors_per_doc = self.sequence_length
-            elif self.aggregation[0] == "avg":
-                self.desired_vectors_per_doc = 1
-            elif self.aggregation[0] == defs.alias.none:
-                self.aggregation = self.aggregation[0]
-            else:
-                error("Undefined aggregation: {}".format(self.aggregation))
+        if self.aggregation == "pad":
+            self.desired_vectors_per_doc = self.sequence_length
+        elif self.aggregation == "avg":
+            self.desired_vectors_per_doc = 1
         else:
             error("Undefined aggregation: {}".format(self.aggregation))
         Representation.set_params(self)
@@ -484,6 +486,7 @@ class BagRepresentation(Representation):
         Representation.__init__(self)
 
     def set_params(self):
+        self.aggregation = self.config.representation.aggregation
         self.desired_vectors_per_doc = 1
         self.sequence_length = 1
         self.do_limit = False
@@ -651,7 +654,7 @@ class BagRepresentation(Representation):
         self.present_term_indexes.append(self.bag.get_present_term_indexes())
 
         # set misc required variables
-        self.set_single_elements_per_instance([len(x) for x in text_bundles])
+        self.set_single_elements_per_instance()
 
         # write mapped data
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
@@ -719,7 +722,6 @@ class DocumentEmbedding(Embedding):
         d2v = self.fit_doc2vec(word_lists[0], dset.train_labels)
 
         text_bundles = dset.train, dset.test
-        self.dataset_vectors = []
         self.present_term_indexes = []
         self.dataset_vectors = [[], []]
 
@@ -744,3 +746,50 @@ class DocumentEmbedding(Embedding):
             error("Specified {} aggregation with {} representation, but only {} is compatible.".format(self.aggregation, self.name, defs.alias.none))
         self.desired_vectors_per_doc = 1
         return
+
+
+class ExistingVectors(Embedding):
+    name = "existing"
+
+    def __init__(self, config):
+        self.config = config
+        self.name = self.base_name = self.config.representation.name
+        Representation.__init__(self)
+
+    def set_params(self):
+        self.sequence_length = self.config.representation.sequence_length
+        self.aggregation = self.config.representation.aggregation
+        self.aggregation_params = self.config.representation.aggregation_params
+        Representation.set_params(self)
+
+    def set_resources(self):
+        if self.loaded():
+            return
+        dataset_name = self.config.dataset.name
+        if isfile(dataset_name):
+            dataset_name = basename(dataset_name)
+        csv_mapping_name = "{}/{}.{}.csv".format(self.raw_data_dir, dataset_name, self.base_name)
+        self.resource_paths.append(csv_mapping_name)
+        self.resource_read_functions.append(self.read_vectors)
+        self.resource_handler_functions.append(lambda x: x)
+
+    def read_vectors(self, path):
+        self.vectors = pd.read_csv(path, index_col=0, header=None, sep=" ").values
+        self.dimension = self.vectors.shape[-1]
+
+    def map_text(self, dset):
+        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
+            return
+        info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
+        if self.sequence_length * (len(dset.train) + len(dset.test)) != len(self.vectors):
+            error("Loaded {} existing vectors for a seqlen of {} with a dataset of {} and {} train/test samples.".\
+                  format(len(self.vectors), self.sequence_length, len(dset.train), len(dset.test)))
+        self.dataset_vectors = [self.vectors[:self.sequence_length * len(dset.train)], self.vectors[:self.sequence_length * len(dset.test)]]
+        self.set_constant_elements_per_instance(num=self.sequence_length)
+        self.present_term_indexes = []
+
+        del self.vectors
+        # write
+        info("Writing dataset mapping to {}".format(self.serialization_path_preprocessed))
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+

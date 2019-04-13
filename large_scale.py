@@ -65,6 +65,15 @@ def traverse_dict(ddict, key, prev_keys):
     return res
 
 
+def keyseq_exists(key_seq, ddict):
+    # make sure no key sequence param exists in the base config
+    for key in key_seq:
+        try:
+            ddict = ddict[key]
+        except KeyError:
+            return False
+    return True
+
 def make_configs(base_config, run_dir, sources_dir="./"):
     vars = []
     params = base_config["params"]
@@ -79,8 +88,13 @@ def make_configs(base_config, run_dir, sources_dir="./"):
     values = [v[0] for v in vars]
     names = [v[1] for v in vars]
 
+    for name_seq in names:
+        if keyseq_exists(name_seq, base_config):
+            error("Key sequence {} exists both in the base config and the variable params".format(name_seq))
+
     for combo in itertools.product(*values):
         conf = deepcopy(base_config)
+        del conf['params']
         name_components = []
         for v, value in enumerate(combo):
             lconf = conf
@@ -123,12 +137,39 @@ def make_run_ids(keychains, confs):
         names.append("_".join(map(str, name_components)))
     return names
 
+# get a nested dict value from a list of keys
+def get_kseq_value(kseq, ddict):
+    res = ddict
+    for k in kseq:
+        res = res[k]
+    return res
 
-def main(config_file="large.config.yml"):
+def filter_testing(configs, run_ids, config_file):
+    # discard configurations with incompatible components
+    out_conf, out_run_ids = [], []
+    # read bad combos
+    with open(join(config_file + ".bad_combos")) as f:
+        bad_combos_lists = yaml.load(f, Loader=yaml.SafeLoader)
+    for conf, run in zip(configs, run_ids):
+        bad_conf = False
+        for bad_combo in bad_combos_lists:
+            # if all bad key-value pairs exist in the conf, drop it
+            combo_components_exist = [ \
+                    keyseq_exists(keyseq, conf) and value == get_kseq_value(keyseq, conf) if type(value) != list else get_kseq_value(keyseq, conf) in value \
+                    for (keyseq, value) in bad_combo]
+            if all(combo_components_exist):
+                bad_conf = True
+                info("Omitting incompatible config {} with bad entries: {}".format(run, bad_combo))
+                break
+        if not bad_conf:
+            out_conf.append(conf)
+            out_run_ids.append(run)
+    return out_conf, out_run_ids
+
+def main(config_file="large.config.yml", is_testing_run=False):
     # settable parameters
     ############################################################
 
-    # config file
     email = "pittarasnikif@gmail.com"
     passw = None
 
@@ -136,19 +177,29 @@ def main(config_file="large.config.yml"):
 
     # set the expeirment parameters via a configuration list
     conf = yaml.load(open(config_file), Loader=yaml.SafeLoader)
-    # evaluation measures
     exps = conf["experiments"]
+
+    # folder to run experiments in
+    run_dir = exps["run_folder"]
+
+    # logging
+    setup_simple_logging(conf["log_level"], logging_dir=run_dir)
+
+    info("Generating configurations from source file {}".format(config_file))
+
+    # evaluation measures
     eval_measures = as_list(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
     aggr_measures = as_list(exps["aggregation"]) if "aggregation" in exps else ["macro", "micro"]
     stat_functions = as_list(exps["stats"]) if "stats" in exps else ["mean"]
     run_types = as_list(exps["run_types"]) if "run_types" in exps else ["run"]
 
-    # folder to run experiments in
-    run_dir = exps["run_folder"]
     # folder where run scripts are
     sources_dir = exps["sources_dir"] if "sources_dir" in exps else "./"
 
     configs, run_ids = make_configs(conf, run_dir, sources_dir)
+    # if we're running a testing suite, filter out incompatible configs
+    if is_testing_run:
+        configs, run_ids = filter_testing(configs, run_ids, config_file)
 
     # virtualenv folder
     venv_dir = conf["experiments"]["venv"] if "venv" in conf["experiments"] else None
@@ -172,16 +223,15 @@ def main(config_file="large.config.yml"):
     copied_conf = join(run_dir, basename(config_file))
     if exists(copied_conf):
         # make sure it's the same effing config
-        cconf = yaml.load(copied_conf, Loader=yaml.SafeLoader)
+        with open(copied_conf) as f:
+            cconf = yaml.load(f, Loader=yaml.SafeLoader)
         if cconf != conf:
-            info("The original config differs from the one in the experiment directory!")
+            error("The original config differs from the one in the experiment directory!")
     else:
         info("Copying experiments configuration at {}".format(copied_conf))
         with open(copied_conf, "w") as f:
             yaml.dump(conf, f)
 
-    # logging
-    setup_simple_logging(conf["log_level"])
     results = {}
 
     #################################################################################

@@ -18,14 +18,15 @@ representation:
   # Sequence length, for embedding training: <int>
   sequence_length: 10
   # aggregation method:
+  # avg, pad, none
+  aggregation: avg
   # - avg: average word representations to a single doc vector
-  # - [pad,NUM,filter]: e.g. [pad, 10, first]
-  # -- pad / num: Pad (or prune) to NUM items: pad, <int>
+  # - [pad,filter]: e.g. [pad, 10, first]
+  # -- pad: Pad (or prune) to <sequence_length> items
   # -- filter: how to select these NUM items:
   # --- first: just get the first NUM words
   # --- freq: get the first NUM words that are most frequent in the dataset (TODO)
-  #aggregation: [pad, 10, first]
-  aggregation: avg
+  aggregation_params: []
   # what to do with words missing from the embedding: drop / unk
   # unk: map to an <unknown> category
   # drop: discard them

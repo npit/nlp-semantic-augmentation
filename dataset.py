@@ -90,16 +90,14 @@ class Dataset(Serializable):
         self.config.dataset.full_name = self.name
 
     def handle_preprocessed(self, preprocessed):
-        info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
-        self.train, self.train_labels, self.train_label_names, \
-            self.test, self.test_labels, self.test_label_names, \
-            self.vocabulary, self.vocabulary_index, self.undefined_word_index \
-            = [preprocessed[name] for name in self.data_names + self.preprocessed_data_names]
-
-        self.num_labels = len(self.train_label_names)
+        # info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
+        self.handle_raw_serialized()
+        self.vocabulary, self.vocabulary_index, self.undefined_word_index \
+        = [preprocessed[name] for name in self.data_names + self.preprocessed_data_names]
         for index, word in enumerate(self.vocabulary):
             self.word_to_index[word] = index
         info("Loaded preprocessed data: {} train, {} test, with {} labels".format(len(self.train), len(self.test), self.num_labels))
+        self.loaded_raw_serialized = False
         self.loaded_preprocessed = True
 
     def suspend_limit(self):
@@ -153,6 +151,8 @@ class Dataset(Serializable):
         if ltrain:
             name += "_dlim_tr{}".format(ltrain)
             if self.train:
+                if len(self.train) < ltrain:
+                    error("Attempted to data-limit {} train items to {}".format(len(self.train), ltrain))
                 try:
                     # use stratification
                     ratio = ltrain / len(self.train)
@@ -166,9 +166,13 @@ class Dataset(Serializable):
                     warning("Resorting to non-stratified limiting")
                     self.train = self.train[:ltrain]
                     self.train_labels = self.train_labels[:ltrain]
+                if not len(set([ltrain, len(self.train), len(self.train_labels)])) == 1:
+                    error("Inconsistent limiting in train data.")
         if ltest:
             name += "_dlim_te{}".format(ltest)
             if self.test:
+                if len(self.test) < ltest:
+                    error("Attempted to data-limit {} test items to {}".format(len(self.test), ltest))
                 try:
                     # use stratification
                     ratio = ltest / len(self.test)
@@ -182,28 +186,27 @@ class Dataset(Serializable):
                     warning("Resorting to non-stratified limiting")
                     self.test = self.test[:ltest]
                     self.test_labels = self.test_labels[:ltest]
+                if not len(set([ltest, len(self.test), len(self.test_labels)])) == 1:
+                    error("Inconsistent limiting in test data.")
         return name
 
     def restrict_to_classes(self, data, labels, restrict_classes):
         new_data, new_labels = [], []
         for d, l in zip(data, labels):
-            if self.multilabel:
-                rl = list(set(l).intersection(restrict_classes))
-                if not rl:
-                    continue
-            else:
-                rl = l if l in restrict_classes else None
-            if not rl:
+            valid_classes = [cl for cl in l if cl in restrict_classes]
+            if not valid_classes:
                 continue
             new_data.append(d)
-            new_labels.append(rl)
-        return new_data, np.array_split(np.array(new_labels), len(new_labels))
+            new_labels.append(valid_classes)
+        return new_data, new_labels
 
     def apply_class_limit(self, name):
         c_lim = self.config.dataset.class_limit
         if c_lim is not None:
             name += "_clim_{}".format(c_lim)
             if self.train:
+                if c_lim > self.num_labels:
+                    error("Attempted to limit {} classes to {}".format(self.num_labels, c_lim))
                 # data have been loaded -- apply limit
                 retained_classes = random.sample(list(range(self.num_labels)), c_lim)
                 info("Limiting to the {} classes: {}".format(c_lim, retained_classes))
@@ -212,6 +215,8 @@ class Dataset(Serializable):
                 self.train, self.train_labels = self.restrict_to_classes(self.train, self.train_labels, retained_classes)
                 self.test, self.test_labels = self.restrict_to_classes(self.test, self.test_labels, retained_classes)
                 self.num_labels = len(retained_classes)
+                if not self.num_labels:
+                    error("Zero labels after limiting.")
                 # remap retained classes to indexes starting from 0
                 self.train_labels = align_index(self.train_labels, retained_classes)
                 self.test_labels = align_index(self.test_labels, retained_classes)
@@ -518,7 +523,7 @@ class ManualDataset(Dataset):
 
     def __init__(self, config):
         self.config = config
-        self.name = basename(config.dataset.name)
+        self.name = self.base_name = basename(config.dataset.name)
         Dataset.__init__(self)
 
     def get_all_raw(self):
@@ -532,6 +537,10 @@ class ManualDataset(Dataset):
         return self.config.dataset.name
 
     def fetch_raw(self, raw_data_path):
+        # no limited dataset
+        if self.name != self.base_name:
+            return None
+
         with open(raw_data_path) as f:
             raw_data = json.load(f)
         return raw_data
@@ -564,21 +573,25 @@ class ManualDataset(Dataset):
             self.train_label_names, self.test_label_names = \
                 [list(map(str, sorted(unique_labels[tt]))) for tt in ["train", "test"]]
         if max_num_instance_labels > 1:
-            self.is_multilabel = max_num_instance_labels
+            self.multilabel = True
         # write serialized data
         write_pickled(self.serialization_path, self.get_all_raw())
 
     def handle_raw_serialized(self, deserialized_data):
         Dataset.handle_raw_serialized(self, deserialized_data)
         self.language = deserialized_data["language"]
-        self.is_multilabel = deserialized_data["multilabel"]
+        self.multilabel = deserialized_data["multilabel"]
 
     def handle_serialized(self, deserialized_data):
-        Dataset.handle_serialized(self, deserialized_data)
-        self.language = deserialized_data["language"]
-        self.is_multilabel = deserialized_data["multilabel"]
+        self.handle_raw_serialized(self, deserialized_data)
 
     def handle_preprocessed(self, deserialized_data):
         Dataset.handle_preprocessed(self, deserialized_data)
-        self.language = deserialized_data["language"]
-        self.is_multilabel = deserialized_data["multilabel"]
+
+    def get_name(self):
+        # get only the filename
+        return os.path.basename(self.name)
+
+    def get_base_name(self):
+        # get only the base filename
+        return os.path.basename(self.base_name)

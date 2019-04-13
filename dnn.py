@@ -176,8 +176,7 @@ class LSTM(DNN):
         # make sure embedding aggregation is compatible
         # with the sequence-based lstm model
         self.input_shape = (self.sequence_length, self.input_dim)
-        aggr = self.config.representation.aggregation
-        aggregation = aggr[0]
+        aggregation = self.config.representation.aggregation
         # sanity checks
         # sequence-based aggregation
         if aggregation not in ["pad"]:

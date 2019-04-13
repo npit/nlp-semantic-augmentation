@@ -20,7 +20,8 @@ dataset:
   name: 20newsgroups
 
 representation:
-  aggregation: [pad, 10, first]
+  aggregation: pad
+  aggregation_params: [first]
   dimension: 50
   name: glove
   sequence_length: 10

@@ -40,7 +40,7 @@ class SKLClassifier(Classifier):
     def train_model(self, trainval_idx):
         model = self.model()
         train_data, train_labels, _ = self.get_trainval_data(trainval_idx)
-        model.fit(train_data, train_labels)
+        model.fit(train_data, np.asarray(train_labels).ravel())
         return model
 
     # evaluate a clustering

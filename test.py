@@ -4,7 +4,7 @@ import os
 from os.path import join, exists
 import nltk
 import yaml
-from utils import write_pickled, warning
+from utils import write_pickled, warning, nltk_download
 import argparse
 
 import representation
@@ -23,11 +23,13 @@ def setup_test_resources(args):
     """Creates the necessary data and configuration for running tests.
     """
 
-    config_file = "test.config.yml"
+    config_file = join(args.test_directory, "test.config.yml")
+    os.makedirs(args.test_directory, exist_ok=True)
 
     if args.cont:
         print("Resuming testing in directory {}".format(args.test_directory))
-        return join(args.test_directory, config_file)
+        return config_file
+    nltk.data.path = [args.nltk]
 
     print("Creating test data and configuration")
     num_words = 100
@@ -44,7 +46,7 @@ def setup_test_resources(args):
     try:
         words = nltk.corpus.words.words()
     except LookupError:
-        nltk.download("words")
+        nltk_download(None, "words")
         words = nltk.corpus.words.words()
 
     # pick random words for the embedding mapping
@@ -52,23 +54,36 @@ def setup_test_resources(args):
     # make random embedding
     embedding_map = np.random.rand(len(words), embedding_dim)
     pandas.DataFrame(embedding_map, index=words).to_csv(
-        join(raw_data_dir, "representation", "vector_embedding.csv"), header=None, sep=" ")
+        join(raw_data_dir, "representation", "word_embedding.csv"), header=None, sep=" ")
 
     # write large-scale yaml config
     with open("example.config.yml") as f:
         conf = yaml.load(f, Loader=yaml.SafeLoader)
 
+    # delete param fields
     # insert available configurations
     conf["params"] = {}
-    conf["params"]["representation"] = {"name": [representation.WordEmbedding.name, representation.BagRepresentation.name, representation.TFIDFRepresentation.name]}
+
+    conf["params"]["representation"] = {"name": [representation.WordEmbedding.name, representation.BagRepresentation.name, representation.TFIDFRepresentation.name],
+                                        "aggregation": ["avg", "pad", "none"]}
+    del conf["representation"]["name"]
+    del conf["representation"]["aggregation"]
+
     # drop lida due to colinear results -- should be testing manually
     conf["params"]["transform"] = {"name": [t for t in transform.Transform.get_available() if t != transform.LiDA.base_name] + [alias.none]}
+    del conf["transform"]["name"]
+
     # conf["params"]["semantic"] = semantic.SemanticResource.get_available()
     conf["params"]["semantic"] = {"name": [semantic.Wordnet.name, alias.none]}
-    conf["params"]["learner"] = {"name": ["mlp"], "hidden_dim": [64], "layers": [2], "no_load": [True]}
+    del conf["semantic"]["name"]
+
+    conf["params"]["learner"] = {"name": ["mlp"], "hidden_dim": [64], "layers": [2]}
+    for x in ["name", "hidden_dim", "layers"]:
+        del conf["learner"][x]
+
 
     # set static parameters
-    conf["dataset"] = {"name": "20newsgroups", "data_limit": [300, 150], "class_limit": 6}
+    conf["dataset"] = {"name": "20newsgroups", "data_limit": [190, 90], "class_limit": 6}
     conf["experiments"] = {"run_folder": args.test_directory}
     conf["folders"]["serialization"] = serialization_dir
     conf["folders"]["raw_data"] = raw_data_dir
@@ -82,20 +97,64 @@ def setup_test_resources(args):
     conf["train"]["validation_portion"] = None
 
     conf["print"]["run_types"] = ["run", "majority"]
+    conf["learner"]["no_load"] = True
+
+    # write incompatible combinations
+    write_bad_combos(config_file + ".bad_combos")
 
     with open(config_file, "w") as f:
         yaml.dump(conf, f, default_flow_style=False)
+    print("Generated test yaml config at {}".format(config_file))
     return config_file
 
+# write down inconsistent parameter configs to skip during testing
+def write_bad_combos(outfile):
+    combos = []
+    # bags with aggregation
+    combos.append(
+        [
+        [["representation", "name"], "bag"],
+        [["representation", "aggregation"], ["avg", "pad"]]
+            ])
+    combos.append(
+        [
+        [["representation", "name"], "tfidf"],
+        [["representation", "aggregation"], ["avg", "pad"]]
+            ])
+    # lstms without pad
+    combos.append(
+        [
+        [["learner", "name"], "lstm"],
+        [["representation", "aggregation"], ["avg", "none"]]
+            ])
+    # pad with no lstms
+    combos.append(
+        [
+        [["learner", "name"], ["mlp", "kmeans", "naive_bayes"] ],
+        [["representation", "aggregation"], "pad"]
+            ])
+    # WEs with no aggregation
+    combos.append(
+        [
+        [["representation", "name"], ["word_embedding"] ],
+        [["representation", "aggregation"], "none"]
+            ])
+    with open(outfile, "w") as f:
+        yaml.dump(combos, f)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Testing script for the semantic augmentation tool.')
     parser.add_argument('-c', '--continue', action="store_true", dest="cont")
+    parser.add_argument('-g', '--generate-only', action="store_true")
     parser.add_argument('-d', '--directory', dest="test_directory", default="test_runs")
+    parser.add_argument('--nltk', default="raw_data_test", help="nltk data directory")
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = parse_arguments()
     conf_file = setup_test_resources(args)
-    large_scale.main(conf_file)
+    if args.generate_only:
+        print("Generated, exiting.")
+        exit(1)
+    large_scale.main(conf_file, is_testing_run=True)
