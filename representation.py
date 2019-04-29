@@ -89,7 +89,8 @@ class Representation(Serializable):
         if self.config.semantic.enrichment is not None:
             semantic_data = semantic.get_vectors()
             info("Enriching [{}] embeddings with shapes: {} {} and {} vecs/doc with [{}] semantic information of shapes {} {}.".
-                 format(self.config.representation.name, *shapes_list(self.dataset_vectors), self.desired_vectors_per_doc, self.config.semantic.name, *shapes_list(semantic_data)))
+                 format(self.config.representation.name, *shapes_list(self.dataset_vectors), self.desired_vectors_per_doc,
+                        self.config.semantic.name, *shapes_list(semantic_data)))
 
             if self.config.semantic.enrichment == "concat":
                 semantic_dim = len(semantic_data[0][0])
@@ -787,6 +788,7 @@ class ExistingVectors(Embedding):
         self.dataset_vectors = [self.vectors[:self.sequence_length * len(dset.train)], self.vectors[:self.sequence_length * len(dset.test)]]
         self.set_constant_elements_per_instance(num=self.sequence_length)
         self.present_term_indexes = []
+
 
         del self.vectors
         # write

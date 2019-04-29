@@ -89,11 +89,10 @@ class Dataset(Serializable):
 
         self.config.dataset.full_name = self.name
 
-    def handle_preprocessed(self, preprocessed):
+    def handle_preprocessed(self, data):
         # info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
-        self.handle_raw_serialized()
-        self.vocabulary, self.vocabulary_index, self.undefined_word_index \
-        = [preprocessed[name] for name in self.data_names + self.preprocessed_data_names]
+        self.handle_raw_serialized(data)
+        self.vocabulary, self.vocabulary_index, self.undefined_word_index = [data[name] for name in self.preprocessed_data_names]
         for index, word in enumerate(self.vocabulary):
             self.word_to_index[word] = index
         info("Loaded preprocessed data: {} train, {} test, with {} labels".format(len(self.train), len(self.test), self.num_labels))
@@ -512,13 +511,21 @@ class ManualDataset(Dataset):
     name: path/to/dataset_name.json
 
     In the above path, define dataset json as:
-    data:
-      train:
-        text: "this is the document text"
-        labels: [0,2,3]
-    num_labels: 10
-    label_names: ['cat', 'dog', ...]
-    language: english
+    {
+        data:
+            train:
+                 [
+                     {
+                        text: "this is the document text"
+                        labels: [0,2,3]
+                     },
+                     ...
+                 ],
+            test: [...]
+        num_labels: 10
+        label_names: ['cat', 'dog', ...]
+        language: english
+    }
     """
 
     def __init__(self, config):
