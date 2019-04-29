@@ -117,11 +117,14 @@ def mine_wordnet_examples_definitions():
 def produce_semantic_neighbourhood(config_file):
     """Function that produces semantic word neighbourhoods from a semantic resource.
     """
-    config = settings.Config(config_file)
-    config.flags.independent_component = True
-    config.flags.skip_deserialization = True
-    config.semantic.spreading_activation = config.semantic.spreading_activation[0], 0.5
-    semres = semantic.SemanticResource.create(config)
+    try:
+        config = settings.Config(config_file)
+        config.flags.independent_component = True
+        config.flags.skip_deserialization = True
+        config.semantic.spreading_activation = config.semantic.spreading_activation[0], 0.5
+        semres = semantic.SemanticResource.create(config)
+    except:
+        print("Problematic configuration in {}".format(config_file))
 
     all_concepts = semres.get_all_available_concepts()
     info("Got a total of {} concepts".format(semres.name))
@@ -146,6 +149,7 @@ def produce_semantic_neighbourhood(config_file):
                     step_index += 1
             pbar.update()
 
+    # write marginal
     for step in range(semres.spread_steps):
         outfile = "{}.neighbours.step_{}.txt".format(semres.base_name, step + 1)
         info("Writing to {}".format(outfile))
@@ -154,6 +158,17 @@ def produce_semantic_neighbourhood(config_file):
                 if step in neighbours[concept]:
                     neighs = list(set(neighbours[concept][step]))
                     f.write("{} {}\n".format(concept, " ".join(neighs)))
+    # write total
+    outfile = "{}.neighbours.total.txt".format(semres.base_name, step + 1)
+    info("Writing to {}".format(outfile))
+    with open(outfile, "w") as f:
+        for c, concept in enumerate(neighbours):
+            neighs = []
+            for step in range(semres.spread_steps):
+                if step in neighbours[concept]:
+                    neighs.extend(neighbours[concept][step])
+            neighs = list(set(neighs))
+            f.write("{} {}\n".format(concept, " ".join(neighs)))
 
 
 def parse_arguments():
