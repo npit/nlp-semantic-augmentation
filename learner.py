@@ -105,7 +105,7 @@ class Learner:
                 if not self.forbid_load:
                     existing_predictions = self.is_already_completed()
                     if existing_predictions is not None:
-                        self.evaluator.compute_performance(existing_predictions)
+                        self.evaluator.evaluate_learning_run(existing_predictions)
                         continue
                 # train the model
                 with tictoc("Training run {} on train/val data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
@@ -124,9 +124,9 @@ class Learner:
         test_data = self.process_input(self.test)
         predictions = self.test_model(test_data, model)
         # get baseline performances
-        self.evaluator.compute_performance(predictions)
+        self.evaluator.evaluate_learning_run(predictions)
         if print_results:
-            self.evaluator.print_performance(self.current_run_descr, self.fold_index)
+            self.evaluator.print_run_performance(self.current_run_descr, self.fold_index)
         # write fold predictions
         predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
         write_pickled(predictions_file, predictions)

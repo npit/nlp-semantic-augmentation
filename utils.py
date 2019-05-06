@@ -8,6 +8,18 @@ import nltk
 
 num_warnings = 0
 
+# for laconic passing to the error function
+def ill_defined(var, can_be=None, cannot_be=None):
+    return not well_defined(var, can_be, cannot_be)
+
+# verifies that the input variable is either None, or conforms to acceptable (can only be such) or problematic (can not equal) values
+def well_defined(var, can_be=None, cannot_be=None):
+    if var is None:
+        return True
+    error("Specified both acceptable and problematic constraint values in well_defined", can_be is not None and cannot_be is not None)
+    if can_be:
+        return var == can_be
+    return var != cannot_be
 
 def nltk_download(config, name):
     nltk.download(name, download_dir=nltk.data.path[0])
@@ -94,10 +106,7 @@ def get_majority_label(inp, num_labels, is_multilabel):
     """
     maxfreq, maxlabel = -1, -1
     for t in range(num_labels):
-        if is_multilabel:
-            freq = len([1 for x in inp if t in x])
-        else:
-            freq = len([1 for x in inp if x == t])
+        freq = len([1 for x in inp if t in x])
         if freq > maxfreq:
             maxfreq = freq
             maxlabel = t

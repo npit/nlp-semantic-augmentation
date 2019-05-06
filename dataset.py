@@ -5,7 +5,7 @@ import numpy as np
 from os import listdir
 from os.path import basename, join
 # from nltk.tokenize import RegexpTokenizer
-from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download
+from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, shapes_list
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.model_selection import StratifiedShuffleSplit
 from nltk.corpus import stopwords, reuters
@@ -88,6 +88,7 @@ class Dataset(Serializable):
             self.apply_limit()
 
         self.config.dataset.full_name = self.name
+        info("Acquired dataset:{}".format(str(self)))
 
     def handle_preprocessed(self, data):
         # info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
@@ -366,6 +367,9 @@ class Dataset(Serializable):
         for doc in self.test:
             res[1].append([wp[0] for wp in doc])
         return res
+
+    def __str__(self):
+        return "{}, train/test {}, num labels: {}".format(self.base_name, len(self.train), len(self.test), self.num_labels)
 
 class TwentyNewsGroups(Dataset):
     name = "20newsgroups"

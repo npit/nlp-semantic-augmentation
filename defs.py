@@ -9,6 +9,11 @@ def avail(cls):
     return ret
 
 
+class aggregation:
+    pad, avg = "pad", "avg"
+    def avail():
+        return avail(aggregation)
+
 class weights:
     frequencies, tfidf = "frequencies", "tfidf"
 

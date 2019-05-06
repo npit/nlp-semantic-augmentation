@@ -1,5 +1,5 @@
 from learner import Learner
-from utils import tictoc, write_pickled, info, error, read_pickled, one_hot
+from utils import tictoc, write_pickled, info, error, read_pickled, one_hot, ill_defined
 import numpy as np
 from sklearn.naive_bayes import GaussianNB
 
@@ -12,6 +12,8 @@ class Classifier(Learner):
         Learner.__init__(self)
 
     def make(self, representation, dataset):
+        # make sure there exist enough labels
+        error("Dataset supplied to classifier has only one label", ill_defined(dataset.get_num_labels(), cannot_be=1))
         Learner.make(self, representation, dataset)
 
 

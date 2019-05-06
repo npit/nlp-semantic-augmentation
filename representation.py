@@ -1,7 +1,7 @@
 from os.path import basename, isfile
 import pandas as pd
 from pandas.errors import ParserError
-from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot
+from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot, well_defined
 import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
@@ -89,7 +89,7 @@ class Representation(Serializable):
         if self.config.semantic.enrichment is not None:
             semantic_data = semantic.get_vectors()
             info("Enriching [{}] embeddings with shapes: {} {} and {} vecs/doc with [{}] semantic information of shapes {} {}.".
-                 format(self.config.representation.name, *shapes_list(self.dataset_vectors), self.desired_vectors_per_doc,
+                 format(self.config.representation.name, *shapes_list(self.dataset_vectors), self.sequence_length,
                         self.config.semantic.name, *shapes_list(semantic_data)))
 
             if self.config.semantic.enrichment == "concat":
@@ -97,9 +97,9 @@ class Representation(Serializable):
                 final_dim = self.dimension + semantic_dim
                 for dset_idx in range(len(semantic_data)):
                     info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx + 1, len(semantic_data), final_dim))
-                    if self.desired_vectors_per_doc > 1:
+                    if self.sequence_length > 1:
                         # tile the vector the needed times to the right, reshape to the correct dim
-                        semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.desired_vectors_per_doc)),
+                        semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.sequence_length)),
                                                              (-1, semantic_dim))
                     self.dataset_vectors[dset_idx] = np.concatenate(
                         [self.dataset_vectors[dset_idx], semantic_data[dset_idx]], axis=1)
@@ -108,9 +108,9 @@ class Representation(Serializable):
                 final_dim = len(semantic_data[0][0])
                 for dset_idx in range(len(semantic_data)):
                     info("Replacing dataset part {}/{} with semantic info of dimension: {}".format(dset_idx + 1, len(semantic_data), final_dim))
-                    if self.desired_vectors_per_doc > 1:
+                    if self.sequence_length > 1:
                         # tile the vector the needed times to the right, reshape to the correct dim
-                        semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.desired_vectors_per_doc)),
+                        semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.sequence_length)),
                                                              (-1, final_dim))
                     self.dataset_vectors[dset_idx] = semantic_data[dset_idx]
             else:
@@ -343,10 +343,11 @@ class Embedding(Representation):
         self.aggregation = self.config.representation.aggregation
         self.sequence_length = self.config.representation.sequence_length
         self.map_missing_unks = self.config.representation.missing_words == "unk"
-        if self.aggregation == "pad":
-            self.desired_vectors_per_doc = self.sequence_length
-        elif self.aggregation == "avg":
-            self.desired_vectors_per_doc = 1
+        if self.aggregation == defs.aggregation.pad:
+            pass
+        elif self.aggregation == defs.aggregation.avg:
+            error("Sequence length of {} incompatible with {} aggregation".format(self.sequence_length, self.aggregation), \
+                  ill_defined(self.sequence_length, can_be=1))
         else:
             error("Undefined aggregation: {}".format(self.aggregation))
         Representation.set_params(self)
@@ -488,7 +489,7 @@ class BagRepresentation(Representation):
 
     def set_params(self):
         self.aggregation = self.config.representation.aggregation
-        self.desired_vectors_per_doc = 1
+        error("Non-unit sequence length {} incompatible with {}".format(self.sequence_length, self.base_name), self.sequence_length)
         self.sequence_length = 1
         self.do_limit = False
         if self.config.representation.limit is not defs.limit.none:
@@ -745,7 +746,7 @@ class DocumentEmbedding(Embedding):
     def aggregate_instance_vectors(self):
         if self.aggregation != defs.alias.none:
             error("Specified {} aggregation with {} representation, but only {} is compatible.".format(self.aggregation, self.name, defs.alias.none))
-        self.desired_vectors_per_doc = 1
+        error("Sequence length {} incompatible with {}".format(self.sequence_length, self.base_name), ill_defined(self.sequence_length, can_be=1))
         return
 
 

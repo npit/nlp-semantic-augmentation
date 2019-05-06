@@ -172,7 +172,7 @@ class Evaluator:
                 pickle.dump(df, f)
 
     # print performance of the latest run
-    def print_performance(self, current_run_descr, fold_index=0):
+    def print_run_performance(self, current_run_descr, fold_index=0):
         info("---------------")
         info("Test results for {}:".format(current_run_descr))
         for rtype in self.preferred_types:
@@ -195,12 +195,14 @@ class Evaluator:
         info("---------------")
 
     # compute scores and append to per-fold lists
-    def add_performance(self, run_type, preds_proba):
+    def evaluate_predictions(self, run_type, preds_proba):
         # loop thresholds & amax, get respective TPs, FPs, etc
         # evaluate metrics there, and multilabel evals with these.
 
+        # sanity
         if self.num_labels != preds_proba.shape[-1]:
             error("Attempted to evaluated {}-dimensional predictions against {} labels".format(preds_proba.shape[-1], self.num_labels))
+
         if self.do_multilabel:
             onehot_gt = one_hot(self.test_labels, self.num_labels)
 
@@ -226,8 +228,8 @@ class Evaluator:
         self.performance[run_type]["accuracy"]["classwise"]["folds"].append(cw_acc)
         self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
 
-    # compute classification baselines
-    def compute_performance(self, predictions):
+    # evaluate predictions and add baselines
+    def evaluate_learning_run(self, predictions):
         # # get multiclass performance
         # for av in ["macro", "micro"]:
         #     auc, ap = self.get_roc(predictions, average=av)
@@ -236,15 +238,15 @@ class Evaluator:
 
         # compute single-label baselines
         # add run performance wrt argmax predictions
-        self.add_performance("run", predictions)
+        self.evaluate_predictions("run", predictions)
         # majority classifier
         maxlabel = get_majority_label(self.test_labels, self.num_labels, self.do_multilabel)
         majpred = np.zeros(predictions.shape, np.float32)
         majpred[:, maxlabel] = 1.0
-        self.add_performance("majority", majpred)
+        self.evaluate_predictions("majority", majpred)
         # random classifier
         randpred = np.random.rand(*predictions.shape)
-        self.add_performance("random", randpred)
+        self.evaluate_predictions("random", randpred)
 
     # applies the threshold to the probabilistic predictions, extracting decision indices
     def apply_decision_threshold(self, proba, thresh):
