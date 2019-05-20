@@ -12,9 +12,13 @@ if len(sys.argv) < 1:
 
 input_path = sys.argv[1]
 input_resource = sys.argv[2]
+try:
+    csv_separator = sys.argv[3]
+except:
+    pass
 print("Pickling {}".format(input_path))
 if input_resource == "glove":
-    data = pandas.read_csv(input_path, index_col=0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
+    data = pandas.read_csv(input_path, index_col=0, header=None, sep=csv_separator, quoting=csv.QUOTE_NONE)
     dim = data.shape[-1]
     outname = "glove_dim{}".format(dim)
 else:

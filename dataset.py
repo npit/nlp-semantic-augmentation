@@ -30,7 +30,7 @@ class Dataset(Serializable):
     train, test = None, None
     multilabel = False
     data_names = ["train-data", "train-labels", "train-label-names",
-                  "test", "test-labels", "test_label-names"]
+                  "test-data", "test-labels", "test_label-names"]
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
 
     def create(config):
@@ -82,7 +82,7 @@ class Dataset(Serializable):
             # get the data but do not preprocess
             self.acquire_data()
             if not self.loaded():
-                error("Failed to download dataset")
+                error("Failed to load dataset")
             self.loaded_index = self.load_flags.index(True)
             # reapply the limit
             self.apply_limit()
@@ -347,7 +347,7 @@ class Dataset(Serializable):
 
     def get_all_raw(self):
         return {"train-data": self.train, "train-labels": self.train_labels, "train-label-names": self.train_label_names,
-                "test": self.test, "test-labels": self.test_labels, "test_label-names": self.test_label_names}
+                "test-data": self.test, "test-labels": self.test_labels, "test_label-names": self.test_label_names}
 
     def get_all_preprocessed(self):
         res = self.get_all_raw()

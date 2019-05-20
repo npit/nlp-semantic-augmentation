@@ -25,6 +25,7 @@ def setup_test_resources(args):
 
     config_file = join(args.test_directory, "test.config.yml")
     os.makedirs(args.test_directory, exist_ok=True)
+    csv_separator = ","
 
     if args.cont:
         print("Resuming testing in directory {}".format(args.test_directory))
@@ -54,7 +55,7 @@ def setup_test_resources(args):
     # make random embedding
     embedding_map = np.random.rand(len(words), embedding_dim)
     pandas.DataFrame(embedding_map, index=words).to_csv(
-        join(raw_data_dir, "representation", "word_embedding.csv"), header=None, sep=" ")
+        join(raw_data_dir, "representation", "word_embedding.csv"), header=None, sep=csv_separator)
 
     # write large-scale yaml config
     with open("example.config.yml") as f:

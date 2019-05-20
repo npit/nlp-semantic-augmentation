@@ -26,7 +26,10 @@ class Representation(Serializable):
             return DocumentEmbedding(config)
         if name == ExistingVectors.name:
             return ExistingVectors(config)
-        # any unknown name is assumed to be pretrained word embeddings
+
+        # any unknown name, if it's an absolute path it's path to existing vectors
+        # if isabs(name
+        # else, is assumed to be an embedding name, i.e. pretrained word embeddings
         return WordEmbedding(config)
 
     @staticmethod
@@ -239,7 +242,7 @@ class Embedding(Representation):
     def read_raw_embedding_mapping(self, path):
         # word - vector correspondence
         try:
-            self.embeddings = pd.read_csv(path, delimiter=" ", header=None, index_col=0)
+            self.embeddings = pd.read_csv(path, sep=self.config.misc.csv_separator, header=None, index_col=0)
         except ParserError as pe:
             error(pe.msg)
         # sanity check on defined dimension
@@ -361,7 +364,8 @@ class Embedding(Representation):
         self.loaded_preprocessed = True
         self.dataset_vectors, self.elements_per_instance, \
             self.undefined_word_index, self.present_term_indexes = [preprocessed[n] for n in self.data_names]
-        debug("Read preprocessed dataset embeddings shapes: {}, {}".format(*list(map(len, self.dataset_vectors))))
+        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
+        error("Read emtpy train or test preprocessed representations!", not all([x.size for x in self.dataset_vectors]))
 
     def set_transform(self, transform):
         """Update representation information as per the input transform"""
@@ -750,6 +754,9 @@ class DocumentEmbedding(Embedding):
         return
 
 
+"""Class to handle loading already extracted features to be evaluated in the learning pipeline.
+The expected format is <dataset_name>.existing.csv
+"""
 class ExistingVectors(Embedding):
     name = "existing"
 
@@ -775,14 +782,16 @@ class ExistingVectors(Embedding):
         self.resource_read_functions.append(self.read_vectors)
         self.resource_handler_functions.append(lambda x: x)
 
+    # read the vectors the dataset is mapped to
     def read_vectors(self, path):
-        self.vectors = pd.read_csv(path, index_col=0, header=None, sep=" ").values
+        self.vectors = pd.read_csv(path, index_col=None, header=None, sep=self.config.misc.csv_separator).values
+        error("Malformed existing vectors loaded: {}".format(self.vectors.shape), not all(self.vectors.shape))
         self.dimension = self.vectors.shape[-1]
 
     def map_text(self, dset):
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
-        info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
+        info("Mapping dataset: {} to {} feature vectors.".format(dset.name, self.name))
         if self.sequence_length * (len(dset.train) + len(dset.test)) != len(self.vectors):
             error("Loaded {} existing vectors for a seqlen of {} with a dataset of {} and {} train/test samples.".\
                   format(len(self.vectors), self.sequence_length, len(dset.train), len(dset.test)))

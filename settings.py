@@ -74,6 +74,7 @@ class Config:
 
     class misc:
         keys = {}
+        csv_separator = ","
 
     class flags:
         skip_deserialization = None
@@ -274,6 +275,7 @@ class Config:
                     self.misc.keys[kname] = kvalue
             self.misc.independent = self.get_value("independent_component", base=misc_opts, default=False)
             self.misc.skip_deserialization = self.get_value("skip_deserialization", base=misc_opts, default=False)
+            self.misc.csv_separator = self.get_value("csv_separator", base=misc_opts, default=",")
 
         if self.has_value("flags"):
             flag_opts = self.conf["flags"]

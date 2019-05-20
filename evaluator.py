@@ -1,3 +1,4 @@
+
 from utils import info, error, warning
 import numpy as np
 import pandas as pd
@@ -20,7 +21,7 @@ class Evaluator:
     stats = ["mean", "var", "std", "folds"]
     run_types = ["random", "majority", "run"]
     multilabel_measures = ["ap", "roc_auc"]
-    classwise_aggregations = ["macro", "micro", "classwise", "weighted"]
+    multiclass_aggregations = ["macro", "micro", "classwise", "weighted"]
 
     # print opts
     print_precision = "{:.03f}"
@@ -58,7 +59,7 @@ class Evaluator:
             self.performance[run_type] = {}
             for measure in self.measures:
                 self.performance[run_type][measure] = {}
-                for aggr in self.classwise_aggregations:
+                for aggr in self.multiclass_aggregations:
                     self.performance[run_type][measure][aggr] = {}
                     for stat in self.stats:
                         self.performance[run_type][measure][aggr][stat] = None
@@ -69,13 +70,13 @@ class Evaluator:
                 self.performance[run_type][measure]["folds"] = []
 
             # remove undefined combos
-            for aggr in [x for x in self.classwise_aggregations if x not in ["macro", "classwise"]]:
+            for aggr in [x for x in self.multiclass_aggregations if x not in ["macro", "classwise"]]:
                 del self.performance[run_type]["accuracy"][aggr]
 
         # print only these, from config
         self.preferred_types = self.config.print.run_types if self.config.print.run_types else self.run_types
         self.preferred_measures = self.config.print.measures if self.config.print.measures else []
-        self.preferred_aggregations = self.config.print.aggregations if self.config.print.aggregations else self.classwise_aggregations
+        self.preferred_aggregations = self.config.print.aggregations if self.config.print.aggregations else self.multiclass_aggregations
         self.preferred_stats = self.config.print.stats if self.config.print.stats else self.stats
 
         # sanity
@@ -85,9 +86,9 @@ class Evaluator:
         undefined = [x for x in self.preferred_measures if x not in self.measures + self.multilabel_measures]
         if undefined:
             error("Undefined measure(s) in: {}, availables are: {}".format(undefined, self.measures + self.multilabel_measures))
-        undefined = [x for x in self.preferred_aggregations if x not in self.classwise_aggregations]
+        undefined = [x for x in self.preferred_aggregations if x not in self.multiclass_aggregations]
         if undefined:
-            error("Undefined aggregation(s) in: {}, availables are: {}".format(undefined, self.classwise_aggregations))
+            error("Undefined aggregation(s) in: {}, availables are: {}".format(undefined, self.multiclass_aggregations))
 
     # aggregated evaluation measure function shortcuts
     def get_pre_rec_f1(self, preds, metric, num_labels, gt=None):
@@ -126,41 +127,30 @@ class Evaluator:
         return cm.diagonal()
 
     # print performance across folds and compute foldwise aggregations
-    def report_results(self, folds, write_folder):
+    def report_overall_results(self, folds, write_folder):
         """Function to report learner results
         """
         info("==============================")
-        info("{} performance {} across all [{}] folds:".format("/".join(self.preferred_types), "/".join(self.preferred_stats), folds))
+        self.show_label_distribution(self.test_labels)
+        info("{} {} performance {} across all [{}] folds:".format("/".join(self.preferred_types), "/".join(self.preferred_measures), "/".join(self.preferred_stats), folds))
         for run_type in self.run_types:
             if not self.do_multilabel:
                 for measure in self.measures:
-                    for aggr in self.classwise_aggregations:
-                        if aggr not in self.performance[run_type][measure] or aggr == "classwise":
+                    for aggr in self.multiclass_aggregations:
+                        if aggr not in self.performance[run_type][measure]:
                             continue
-                        container = self.performance[run_type][measure][aggr]
-                        if not container:
-                            continue
-                        # add fold-aggregating performance information
-                        self.performance[run_type][measure][aggr]["mean"] = np.mean(container["folds"])
-                        self.performance[run_type][measure][aggr]["var"] = np.var(container["folds"])
-                        self.performance[run_type][measure][aggr]["std"] = np.std(container["folds"])
-
+                        self.performance[run_type][measure][aggr] = self.calc_fold_score_stats(self.performance[run_type][measure][aggr])
                         # print the combination, if it's in the prefered stuff to print
                         if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
-                            scores_str = self.get_score_stats(container)
+                            scores_str = self.get_score_stats_string(self.performance[run_type][measure][aggr])
                             info("{:10} {:10} {:10} : {}".format(run_type, aggr, measure, scores_str))
             else:
+                # multilabel setting: different measure, no classwise aggregations
                 for measure in self.multilabel_measures:
-                    container = self.performance[run_type][measure]
-                    if not container:
-                        continue
-                    # add fold-aggregating performance information
-                    self.performance[run_type][measure]["mean"] = np.mean(container["folds"])
-                    self.performance[run_type][measure]["var"] = np.var(container["folds"])
-                    self.performance[run_type][measure]["std"] = np.std(container["folds"])
+                    self.performance[run_type][measure] = self.calc_fold_score_stats(self.performance[run_type][measure])
                     # print, if it's prefered
                     if all([run_type in self.preferred_types, measure in self.preferred_measures]):
-                        scores_str = self.get_score_stats(container)
+                        scores_str = self.get_score_stats_string(container)
                         info("{:10} {:10} : {}".format(run_type, measure, scores_str))
 
         if write_folder is not None:
@@ -180,7 +170,7 @@ class Evaluator:
                 for measure in self.preferred_measures:
                     for aggr in self.preferred_aggregations:
                         # don't print classwise results or unedfined aggregations
-                        if aggr not in self.performance[rtype][measure] or aggr == "classwise":
+                        if aggr not in self.performance[rtype][measure]:
                             continue
                         container = self.performance[rtype][measure][aggr]
                         if not container:
@@ -228,6 +218,21 @@ class Evaluator:
         self.performance[run_type]["accuracy"]["classwise"]["folds"].append(cw_acc)
         self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
 
+    # show labels distribution
+    def show_label_distribution(self, labels=None):
+        if labels is None:
+            labels = self.test_labels
+        # show label distribution
+        hist = {}
+        for lblset in labels:
+            for lbl in lblset:
+                if lbl not in hist:
+                    hist[lbl] = 0
+                hist[lbl] +=1
+        for lbl, count in hist.items():
+            info("Label {} : {}".format(lbl, count))
+
+
     # evaluate predictions and add baselines
     def evaluate_learning_run(self, predictions):
         # # get multiclass performance
@@ -235,6 +240,7 @@ class Evaluator:
         #     auc, ap = self.get_roc(predictions, average=av)
         #     self.performance["run"]["AP"][av] = ap
         #     self.performance["run"]["AUC"][av] = auc
+
 
         # compute single-label baselines
         # add run performance wrt argmax predictions
@@ -256,13 +262,31 @@ class Evaluator:
             decisions.append(idxs)
         return decisions
 
-    def get_score_stats(self, container):
+    # compute statistics across folds
+    def calc_fold_score_stats(self, container):
+        # set foldwise scores to an nparray
+        container["folds"] = np.asarray(container["folds"])
+        for key, func in [("mean", np.mean), ("var", np.var), ("std", np.std)]:
+            container[key] = func(container["folds"], axis=0) 
+        return container
+
+
+    def get_score_stats_string(self, container):
         scores_str = []
         for stat in self.preferred_stats:
             value = container[stat]
-            if type(value) == list:
-                # folds
-                scores_str.append("{" + " ".join(list(map(lambda x: self.print_precision.format(x), value))) + "}")
-            else:
+            try:
+                # iterable scores values
+                iter(value)
+                try:
+                    # single iterables
+                    scores_str.append("{" + " ".join(list(map(lambda x: self.print_precision.format(x), value))) + "}")
+                except:
+                    # 2d iterable
+                    sc = []
+                    for k in value:
+                        sc.append("[{}]".format(" ".join(list(map(lambda x: self.print_precision.format(x), k)))))
+                    scores_str.append("{" + " ".join(sc) + "}")
+            except:
                 scores_str.append(self.print_precision.format(value))
         return " ".join(scores_str)

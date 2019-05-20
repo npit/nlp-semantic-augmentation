@@ -101,7 +101,7 @@ class Learner:
                 else:
                     self.current_run_descr = "(no-validation)"
 
-                # check if the run is completed already, if allowed
+                # check if the run is completed already and load existing results, if allowed
                 if not self.forbid_load:
                     existing_predictions = self.is_already_completed()
                     if existing_predictions is not None:
@@ -116,7 +116,7 @@ class Learner:
                     self.do_test(model)
                     model_paths.append(self.get_current_model_path())
 
-            self.evaluator.report_results(self.folds, self.results_folder)
+            self.evaluator.report_overall_results(self.folds, self.results_folder)
 
     # evaluate a model on the test set
     def do_test(self, model):
