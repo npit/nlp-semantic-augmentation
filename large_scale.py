@@ -263,7 +263,7 @@ def main(config_file="large.config.yml", is_testing_run=False):
                 if venv_dir:
                     f.write("source \"{}/bin/activate\"".format(venv_dir))
                 f.write("cd \"{}\"\n".format(sources_dir))
-                f.write("python3 \"{}\" --config_file \"{}\" && touch \"{}\" && exit 0\n".format(join(sources_dir, "main.py"), conf_path, completed_file))
+                f.write("python3 \"{}\" \"{}\" && touch \"{}\" && exit 0\n".format(join(sources_dir, "main.py"), conf_path, completed_file))
                 f.write("touch '{}' && exit 1\n".format(error_file))
 
             subprocess.run(["/usr/bin/env", "bash", script_path])

@@ -95,18 +95,21 @@ def align_index(input_list, reference):
     for l in input_list:
         if type(l) == list:
             res = align_index(l, reference)
-            output.append(res)
+            output.extend(res)
         else:
             output.append(reference.index(l))
     return np.array_split(np.array(output), len(output))
 
 
-def get_majority_label(inp, num_labels, is_multilabel):
+def get_majority_label(labels, num_labels, is_multilabel):
     """Gets majority (in terms of frequency) label in (potentially multilabel) input
     """
     maxfreq, maxlabel = -1, -1
     for t in range(num_labels):
-        freq = len([1 for x in inp if t in x])
+        if is_multilabel:
+            freq = len([1 for labelset in labels if t in labelset])
+        else:
+            freq = len([1 for label in labels if t ==label])
         if freq > maxfreq:
             maxfreq = freq
             maxlabel = t

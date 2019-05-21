@@ -47,7 +47,7 @@ class Learner:
         self.num_labels = dataset.get_num_labels()
         self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
             list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
-        self.evaluator.set_labels(self.test_labels, self.num_labels)
+        self.evaluator.set_labels(self.test_labels, self.num_labels, self.do_multilabel)
         self.input_dim = representation.get_dimension()
         self.forbid_load = self.config.learner.no_load
         self.sequence_length = self.config.learner.sequence_length
@@ -72,7 +72,7 @@ class Learner:
             error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
 
         # measure sanity checks
-        self.evaluator.check_sanity(self.do_multilabel)
+        self.evaluator.check_sanity()
         info("Created learner: {}".format(self))
 
     def is_already_completed(self):
@@ -173,9 +173,14 @@ class Learner:
                 return deser
             info("Training {} with input data: {} samples, {} labels, on {} stratified folds".format(
                 self.name, self.num_train, self.num_train_labels, self.folds))
-            # for multilabel K-fold, stratification is not available
-            FoldClass = KFold if self.do_multilabel and self.do_folds else StratifiedKFold
-            splitter = FoldClass(self.folds, shuffle=True, random_state=self.seed)
+            # for multilabel K-fold, stratification is not available. Also convert label format.
+            if self.do_multilabel:
+                splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
+                labels_to_split = self.train_labels
+            else:
+                splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
+                # convert to 2D array
+                self.train_labels = np.squeeze(self.train_labels)
 
         if self.do_validate_portion:
             # check if such data exists

@@ -15,6 +15,7 @@ class Evaluator:
     # performance containers
     performance = {}
     cw_performance = {}
+    majority_label = None
 
     # available measures, aggregations and run types
     measures = ["precision", "recall", "f1-score", "accuracy"]
@@ -32,24 +33,27 @@ class Evaluator:
         self.config = config
         self.configure_evaluation_measures()
 
-    def set_labels(self, test_labels, num_labels):
+    def set_labels(self, test_labels, num_labels, do_multilabel):
+        self.do_multilabel = do_multilabel
         self.test_labels = test_labels
+        if not self.do_multilabel:
+            self.test_labels = np.squeeze(np.concatenate(test_labels))
         self.num_labels = num_labels
 
-    def check_sanity(self, do_multilabel):
+
+    def check_sanity(self):
         """Evaluator sanity checking function"""
         # default measures if not preferred
-        self.do_multilabel = do_multilabel
         if not self.preferred_measures:
             self.preferred_measures = self.measures if not do_multilabel else self.multilabel_measures
         else:
             # restrict as per labelling and sanity checks
-            matching_measures = set(self.preferred_measures).intersection(self.measures) if not do_multilabel \
+            matching_measures = set(self.preferred_measures).intersection(self.measures) if not self.do_multilabel \
                 else set(self.preferred_measures).intersection(self.multilabel_measures)
             if not matching_measures:
                 error("Invalid preferred measures: {} for {} setting.".format(
                     self.preferred_measures,
-                    "multilabel" if do_multilabel else "single-label"))
+                    "multilabel" if self.do_multilabel else "single-label"))
             self.preferred_measures = matching_measures
 
     # initialize evaluation containers and preferred evaluation printage
@@ -150,7 +154,7 @@ class Evaluator:
                     self.performance[run_type][measure] = self.calc_fold_score_stats(self.performance[run_type][measure])
                     # print, if it's prefered
                     if all([run_type in self.preferred_types, measure in self.preferred_measures]):
-                        scores_str = self.get_score_stats_string(container)
+                        scores_str = self.get_score_stats_string(self.performance[run_type][measure])
                         info("{:10} {:10} : {}".format(run_type, measure, scores_str))
 
         if write_folder is not None:
@@ -225,10 +229,16 @@ class Evaluator:
         # show label distribution
         hist = {}
         for lblset in labels:
-            for lbl in lblset:
-                if lbl not in hist:
-                    hist[lbl] = 0
-                hist[lbl] +=1
+            if self.do_multilabel:
+                for lbl in lblset:
+                    lbl = int(lbl)
+                    if lbl not in hist:
+                        hist[lbl] = 0
+                    hist[lbl] +=1
+            else:
+                if lblset not in hist:
+                    hist[lblset] = 0
+                hist[lblset] += 1
         for lbl, count in hist.items():
             info("Label {} : {}".format(lbl, count))
 
@@ -246,9 +256,10 @@ class Evaluator:
         # add run performance wrt argmax predictions
         self.evaluate_predictions("run", predictions)
         # majority classifier
-        maxlabel = get_majority_label(self.test_labels, self.num_labels, self.do_multilabel)
+        if self.majority_label is None:
+            self.majority_label = get_majority_label(self.test_labels, self.num_labels, self.do_multilabel)
         majpred = np.zeros(predictions.shape, np.float32)
-        majpred[:, maxlabel] = 1.0
+        majpred[:, self.majority_label] = 1.0
         self.evaluate_predictions("majority", majpred)
         # random classifier
         randpred = np.random.rand(*predictions.shape)

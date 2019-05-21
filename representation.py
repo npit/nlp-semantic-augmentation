@@ -1,7 +1,7 @@
 from os.path import basename, isfile
 import pandas as pd
 from pandas.errors import ParserError
-from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot, well_defined
+from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot, well_defined, ill_defined
 import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
@@ -244,7 +244,7 @@ class Embedding(Representation):
         try:
             self.embeddings = pd.read_csv(path, sep=self.config.misc.csv_separator, header=None, index_col=0)
         except ParserError as pe:
-            error(pe.msg)
+            error("Failed to read {}-delimited raw embedding from {}".format(self.config.misc.csv_separator, path), pe)
         # sanity check on defined dimension
         csv_dimension = self.embeddings.shape[-1]
         if csv_dimension != self.dimension:
@@ -351,6 +351,8 @@ class Embedding(Representation):
         elif self.aggregation == defs.aggregation.avg:
             error("Sequence length of {} incompatible with {} aggregation".format(self.sequence_length, self.aggregation), \
                   ill_defined(self.sequence_length, can_be=1))
+        elif self.aggregation == defs.alias.none:
+            error("The {} representation requires an aggregation method.".format(self.base_name))
         else:
             error("Undefined aggregation: {}".format(self.aggregation))
         Representation.set_params(self)

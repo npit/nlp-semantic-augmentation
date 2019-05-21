@@ -66,9 +66,10 @@ def setup_test_resources(args):
     conf["params"] = {}
 
     conf["params"]["representation"] = {"name": [representation.WordEmbedding.name, representation.BagRepresentation.name, representation.TFIDFRepresentation.name],
-                                        "aggregation": ["avg", "pad", "none"]}
+                                        "aggregation": ["avg", "pad", "none"], "sequence_length": [1, 10]}
     del conf["representation"]["name"]
     del conf["representation"]["aggregation"]
+    del conf["representation"]["sequence_length"]
 
     # drop lida due to colinear results -- should be testing manually
     conf["params"]["transform"] = {"name": [t for t in transform.Transform.get_available() if t != transform.LiDA.base_name] + [alias.none]}
@@ -140,6 +141,13 @@ def write_bad_combos(outfile):
         [["representation", "name"], ["word_embedding"] ],
         [["representation", "aggregation"], "none"]
             ])
+    # aggregation that results in a single vector, with non-unit sequence_length
+    combos.append(
+        [
+        [["representation", "aggregation"], ["avg"] ],
+        [["representation", "sequence_length"], 10]
+            ])
+
     with open(outfile, "w") as f:
         yaml.dump(combos, f)
 
