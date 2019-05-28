@@ -1,43 +1,27 @@
-
+from utils import to_namedtuple
 """
 Definitions file, serving the role of hierarchical constants.
 """
+#def make_def(name, avail_list):
+def make_def(name):
+    avail_list = eval("avail_" + name)
+    return to_namedtuple(ntname=name,
+                         conf_dict= {k:k if k != "avail" else avail_list for k in avail_list + ["avail"]})
 
+avail_aggregation = ["pad", "avg"]
+avail_sequence_length = [ "unit", "non_unit"]
+avail_weights = ["frequencies", "tfidf"]
+avail_disam = ["first", "pos"]
+avail_limit = ["frequency", "top", "none"]
+avail_alias = ["none"]
 
-def avail(cls):
-    ret = [v for (k,v) in dict(vars(cls)).items()  if not k.startswith("__") and not callable(v)] 
-    return ret
+aggregation = make_def("aggregation")
+sequence_length = make_def("sequence_length")
+disam = make_def("disam")
+limit = make_def("limit")
+alias = make_def("alias")
 
-
-class aggregation:
-    pad, avg = "pad", "avg"
-    def avail():
-        return avail(aggregation)
-
-class weights:
-    frequencies, tfidf = "frequencies", "tfidf"
-
-    def avail():
-        return avail(weights)
-
-    def to_string(w):
-        return "w{}".format(w)
-
-
-class semantic:
-
-    class disam:
-        first, pos = "first", "pos"
-
-
-class limit:
-    frequency, top, none = "frequency", "top", "all"
-
-    def avail():
-        return avail(limit)
-
-    def to_string(value):
-        return "ALL" if value is None else "".join(list(map(str, value)))
-
-class alias:
-    none = "none"
+def get_sequence_length_type(inp):
+    if inp == 1:
+        return sequence_length.unit
+    return sequence_length.non_unit

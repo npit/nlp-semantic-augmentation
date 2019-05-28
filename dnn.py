@@ -125,6 +125,7 @@ class DNN(Classifier):
 
 
 class MLP(DNN):
+    """Multi-label NN class"""
     name = "mlp"
 
     def __init__(self, config):

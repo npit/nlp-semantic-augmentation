@@ -1,11 +1,13 @@
 
-from utils import info, error, warning
+import pickle
+from os.path import join
+
 import numpy as np
 import pandas as pd
 from sklearn import metrics
-import pickle
-from os.path import join
-from utils import info, warning, error, one_hot, get_majority_label
+
+from utils import (error, get_majority_label, info, numeric_to_string, one_hot,
+                   warning)
 
 
 class Evaluator:
@@ -26,6 +28,7 @@ class Evaluator:
 
     # print opts
     print_precision = "{:.03f}"
+    do_multilabel = None
 
     # constructor
     def __init__(self, config):
@@ -34,6 +37,7 @@ class Evaluator:
         self.configure_evaluation_measures()
 
     def set_labels(self, test_labels, num_labels, do_multilabel):
+        """Label setter method"""
         self.do_multilabel = do_multilabel
         self.test_labels = test_labels
         if not self.do_multilabel:
@@ -45,7 +49,7 @@ class Evaluator:
         """Evaluator sanity checking function"""
         # default measures if not preferred
         if not self.preferred_measures:
-            self.preferred_measures = self.measures if not do_multilabel else self.multilabel_measures
+            self.preferred_measures = self.measures if not self.do_multilabel else self.multilabel_measures
         else:
             # restrict as per labelling and sanity checks
             matching_measures = set(self.preferred_measures).intersection(self.measures) if not self.do_multilabel \
@@ -174,7 +178,8 @@ class Evaluator:
                         container = self.performance[rtype][measure][aggr]
                         if not container:
                             continue
-                        info(("{}| {} {}: " + self.print_precision).format(rtype, aggr, measure, self.performance[rtype][measure][aggr]["folds"][fold_index]))
+                        str_value = numeric_to_string(self.performance[rtype][measure][aggr]["folds"][fold_index], self.print_precision)
+                        info(("{}| {} {}: {}").format(rtype, aggr, measure, str_value))
             else:
                 for measure in self.multilabel_measures:
                     container = self.performance[rtype][measure]
@@ -217,6 +222,8 @@ class Evaluator:
         self.performance[run_type]["accuracy"]["classwise"]["folds"].append(cw_acc)
         self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
 
+        # compute classwise aggregations
+
     # show labels distribution
     def show_label_distribution(self, labels=None):
         if labels is None:
@@ -234,7 +241,10 @@ class Evaluator:
                 if lblset not in hist:
                     hist[lblset] = 0
                 hist[lblset] += 1
-        for lbl, count in hist.items():
+        info("Label distribution:")
+        sorted_labels = sorted(hist.keys())
+        for lbl in sorted_labels:
+            count = hist[lbl]
             info("Label {} : {}".format(lbl, count))
 
 
@@ -280,19 +290,5 @@ class Evaluator:
     def get_score_stats_string(self, container):
         scores_str = []
         for stat in self.preferred_stats:
-            value = container[stat]
-            try:
-                # iterable scores values
-                iter(value)
-                try:
-                    # single iterables
-                    scores_str.append("{" + " ".join(list(map(lambda x: self.print_precision.format(x), value))) + "}")
-                except:
-                    # 2d iterable
-                    sc = []
-                    for k in value:
-                        sc.append("[{}]".format(" ".join(list(map(lambda x: self.print_precision.format(x), k)))))
-                    scores_str.append("{" + " ".join(sc) + "}")
-            except:
-                scores_str.append(self.print_precision.format(value))
+            scores_str.append(numeric_to_string(container[stat], self.print_precision))
         return " ".join(scores_str)
