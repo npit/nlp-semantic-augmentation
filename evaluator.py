@@ -99,21 +99,16 @@ class Evaluator:
         """Function to compute precision, recall and F1-score"""
         if gt is None:
             gt = self.test_labels
+        # expected column structure is label1 label2 ... labelN microavg macroavg weightedavg
         cr = pd.DataFrame.from_dict(metrics.classification_report(gt, preds, output_dict=True))
-        # get classwise, micro, macro, weighted
-        keys = cr.keys()
-        if len(keys) != num_labels + 3:
-            existing_classes = [int(x) for x in keys[:-3]]
-            warning("No predicted samples for classes: {}".format([x for x in range(num_labels) if x not in existing_classes]))
-            existing_scores = cr.loc[metric].iloc[:-3].as_matrix()
-            cw = np.zeros(num_labels, np.float32)
-            for score_idx, class_number in enumerate(existing_classes):
-                cw[class_number] = existing_scores[score_idx]
-        else:
-            cw = cr.loc[metric].iloc[:num_labels].as_matrix()
-        mi = cr.loc[metric].iloc[-3]
-        ma = cr.loc[metric].iloc[-2]
-        we = cr.loc[metric].iloc[-1]
+        # get classwise, micro, macro, weighted, defaulting non-precited classes to zero values
+        predicted_classes = cr.columns.to_list()[:-3]
+        cw = np.zeros(num_labels, np.float32)
+        for class_index in predicted_classes:
+            cw[int(class_index)] = cr[class_index][metric]
+        mi = cr["micro avg"][metric]
+        ma = cr["macro avg"][metric]
+        we = cr["weighted avg"][metric]
         return cw, mi, ma, we
 
     # get average accuracy
