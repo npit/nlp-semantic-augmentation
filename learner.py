@@ -6,6 +6,10 @@ from evaluator import Evaluator
 from os import makedirs
 
 
+"""
+Abstract class representing a learning model
+"""
+
 class Learner:
 
     save_dir = "models"
@@ -73,6 +77,7 @@ class Learner:
 
         # measure sanity checks
         self.evaluator.check_sanity()
+        error("Input none dimension.", self.input_dim is None)
         info("Created learner: {}".format(self))
 
     def is_already_completed(self):

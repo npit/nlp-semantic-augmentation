@@ -7,6 +7,7 @@ from serializable import Serializable
 from semantic import SemanticResource
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from bag import Bag, TFIDF
+from defs import *
 import defs
 import copy
 
@@ -14,6 +15,9 @@ import copy
 class Representation(Serializable):
     dir_name = "representation"
     loaded_transformed = False
+    compatible_aggregations = []
+    compatible_sequence_lengths = []
+    sequence_length = 1
 
     @staticmethod
     def create(config):
@@ -70,9 +74,20 @@ class Representation(Serializable):
 
     # shortcut for reading configuration values
     def set_params(self):
+        self.aggregation = self.config.representation.aggregation
+        self.aggregation_params = self.config.representation.aggregation_params
+        if self.aggregation not in self.compatible_aggregations:
+            error("{} aggregation incompatible with {}. Compatible ones are: {}!".format(self.aggregation, self.base_name, self.compatible_aggregations))
+
         self.dimension = self.config.representation.dimension
         self.dataset_name = self.config.dataset.name
         self.base_name = self.name
+
+        self.sequence_length = self.config.representation.sequence_length
+        error("Unset sequence length compatibility for representation {}".format(self.base_name), not self.compatible_sequence_lengths)
+        if defs.get_sequence_length_type(self.sequence_length) not in self.compatible_sequence_lengths:
+            error("Incompatible sequence length {} with {}. Compatibles are {}".format(
+                self.sequence_length, self.base_name, self.compatible_sequence_lengths))
 
     @staticmethod
     def generate_name(config):
@@ -219,7 +234,6 @@ class Embedding(Representation):
     embeddings = None
     words_to_numeric_idx = None
     dimension = None
-    sequence_length = None
 
     data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index",
                   "present_term_indexes"]
@@ -343,18 +357,19 @@ class Embedding(Representation):
 
     # shortcut for reading configuration values
     def set_params(self):
-        self.aggregation = self.config.representation.aggregation
-        self.sequence_length = self.config.representation.sequence_length
         self.map_missing_unks = self.config.representation.missing_words == "unk"
-        if self.aggregation == defs.aggregation.pad:
-            pass
-        elif self.aggregation == defs.aggregation.avg:
-            error("Sequence length of {} incompatible with {} aggregation".format(self.sequence_length, self.aggregation), \
-                  ill_defined(self.sequence_length, can_be=1))
-        elif self.aggregation == defs.alias.none:
-            error("The {} representation requires an aggregation method.".format(self.base_name))
-        else:
-            error("Undefined aggregation: {}".format(self.aggregation))
+        # if self.aggregation == defs.aggregation.pad:
+        #     pass
+        # elif self.aggregation == defs.aggregation.avg:
+        #     error("Sequence length of {} incompatible with {} aggregation".format(self.sequence_length, self.aggregation), \
+        #           ill_defined(self.sequence_length, can_be=1))
+        # elif self.aggregation == defs.alias.none:
+        #     error("The {} representation requires an aggregation method.".format(self.base_name))
+        # else:
+        #     error("Undefined aggregation: {}".format(self.aggregation))
+        # self.compatible_aggregations = defs.aggregation.avail + [defs.alias.none]
+        self.compatible_aggregations = defs.aggregation.avail
+        self.compatible_sequence_lengths = defs.sequence_length.avail
         Representation.set_params(self)
 
     def get_all_preprocessed(self):
@@ -494,14 +509,12 @@ class BagRepresentation(Representation):
         Representation.__init__(self)
 
     def set_params(self):
-        self.aggregation = self.config.representation.aggregation
-        error("Non-unit sequence length {} incompatible with {}".format(self.sequence_length, self.base_name), self.sequence_length)
-        self.sequence_length = 1
         self.do_limit = False
         if self.config.representation.limit is not defs.limit.none:
             self.do_limit = True
             self.limit_type, self.limit_number = self.config.representation.limit
-
+        self.compatible_aggregations = [defs.alias.none, None]
+        self.compatible_sequence_lengths = [defs.sequence_length.unit]
         Representation.set_params(self)
 
     @staticmethod
@@ -509,7 +522,7 @@ class BagRepresentation(Representation):
         name = Representation.generate_name(config)
         name_components = []
         if config.representation.limit is not defs.limit.none:
-            name_components.append(defs.limit.to_string(config.representation.limit))
+            name_components.append(config.representation.limit)
         return name + "_".join(name_components)
 
     def set_multiple_config_names(self):
@@ -517,9 +530,9 @@ class BagRepresentation(Representation):
         # + no filtering, if filtered is specified
         filter_vals = [defs.limit.none]
         if self.do_limit:
-            filter_vals.append(defs.limit.to_string(self.config.representation.limit))
+            filter_vals.append(self.config.representation.limit)
         # any combo of weights, since they're all stored
-        weight_vals = defs.weights.avail()
+        weight_vals = defs.weights.avail
         for w in weight_vals:
             for f in filter_vals:
                 conf = copy.copy(self.config)
@@ -536,7 +549,7 @@ class BagRepresentation(Representation):
         # if external term list, add its length to the name
         if self.config.representation.term_list is not None:
             self.name += "_tok_{}".format(basename(self.config.representation.term_list))
-        self.name += defs.limit.to_string(self.config.representation.limit)
+        self.name += self.config.representation.limit
 
     def set_resources(self):
         if self.config.representation.term_list is not None:
@@ -662,7 +675,7 @@ class BagRepresentation(Representation):
         self.present_term_indexes.append(self.bag.get_present_term_indexes())
 
         # set misc required variables
-        self.set_single_elements_per_instance()
+        self.set_constant_elements_per_instance()
 
         # write mapped data
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
@@ -744,16 +757,19 @@ class DocumentEmbedding(Embedding):
                     self.dataset_vectors[dset_idx].append(d2v.infer_vector(doc_words))
             self.dataset_vectors[dset_idx] = np.array(self.dataset_vectors[dset_idx])
 
-        self.set_single_elements_per_instance()
+        self.set_constant_elements_per_instance()
         # write
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def aggregate_instance_vectors(self):
-        if self.aggregation != defs.alias.none:
-            error("Specified {} aggregation with {} representation, but only {} is compatible.".format(self.aggregation, self.name, defs.alias.none))
-        error("Sequence length {} incompatible with {}".format(self.sequence_length, self.base_name), ill_defined(self.sequence_length, can_be=1))
-        return
+        pass
+
+    def set_params(self):
+        # define compatible aggregations
+        self.compatible_aggregations = [defs.alias.none, None]
+        self.compatible_sequence_lengths = [defs.sequence_length.unit]
+        Representation.set_params(self)
 
 
 """Class to handle loading already extracted features to be evaluated in the learning pipeline.
@@ -766,12 +782,6 @@ class ExistingVectors(Embedding):
         self.config = config
         self.name = self.base_name = self.config.representation.name
         Representation.__init__(self)
-
-    def set_params(self):
-        self.sequence_length = self.config.representation.sequence_length
-        self.aggregation = self.config.representation.aggregation
-        self.aggregation_params = self.config.representation.aggregation_params
-        Representation.set_params(self)
 
     def set_resources(self):
         if self.loaded():
@@ -800,10 +810,7 @@ class ExistingVectors(Embedding):
         self.dataset_vectors = [self.vectors[:self.sequence_length * len(dset.train)], self.vectors[:self.sequence_length * len(dset.test)]]
         self.set_constant_elements_per_instance(num=self.sequence_length)
         self.present_term_indexes = []
-
-
         del self.vectors
         # write
         info("Writing dataset mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
-

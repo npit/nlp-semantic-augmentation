@@ -58,9 +58,9 @@ class SemanticResource(Serializable):
         # + no filtering, if filtered is specified
         filter_vals = [defs.limit.none]
         if self.do_limit:
-            filter_vals.append(defs.limit.to_string(self.config.semantic.limit))
+            filter_vals.append(self.config.semantic.limit)
         # any combo of weights, since local and global freqs are stored
-        weight_vals = defs.weights.avail()
+        weight_vals = defs.weights.avail
 
         for w in weight_vals:
             for f in filter_vals:
@@ -181,8 +181,8 @@ class SemanticResource(Serializable):
         if not config.has_semantic():
             return None
         name_components = [config.semantic.name,
-                           defs.weights.to_string(config.semantic.weights),
-                           defs.limit.to_string(config.semantic.limit),
+                           "w{}".format(config.semantic.weights),
+                           config.semantic.limit,
                            "disam{}".format(config.semantic.disambiguation),
                            "_spread{}-{}".format(*config.semantic.spreading_activation)
                            ]

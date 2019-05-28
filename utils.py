@@ -8,15 +8,35 @@ import nltk
 
 num_warnings = 0
 
+# convert a numeric or a set of numerics to string
+def numeric_to_string(value, precision):
+    try:
+        # iterable scores values
+        iter(value)
+        try:
+            # single iterables
+            return "{" + " ".join(list(map(lambda x: precision.format(x), value))) + "}"
+        except:
+            # 2d iterable
+            sc = []
+            for k in value:
+                sc.append("[{}]".format(" ".join(list(map(lambda x: precision.format(x), k)))))
+            return "{" + " ".join(sc) + "}"
+    except:
+        return precision.format(value)
+
+
 # for laconic passing to the error function
-def ill_defined(var, can_be=None, cannot_be=None):
-    return not well_defined(var, can_be, cannot_be)
+def ill_defined(var, can_be=None, cannot_be=None, func=None):
+    return not well_defined(var, can_be, cannot_be, func)
 
 # verifies that the input variable is either None, or conforms to acceptable (can only be such) or problematic (can not equal) values
-def well_defined(var, can_be=None, cannot_be=None):
+def well_defined(var, can_be=None, cannot_be=None, func=None):
     if var is None:
         return True
     error("Specified both acceptable and problematic constraint values in well_defined", can_be is not None and cannot_be is not None)
+    if func:
+        return func(var)
     if can_be:
         return var == can_be
     return var != cannot_be
@@ -93,12 +113,15 @@ def read_lines(path):
 def align_index(input_list, reference):
     output = []
     for l in input_list:
-        if type(l) == list:
+        try:
+            iter(l)
+            # iterable, recurse
             res = align_index(l, reference)
-            output.extend(res)
-        else:
+            output.append(res)
+        except:
             output.append(reference.index(l))
-    return np.array_split(np.array(output), len(output))
+    # return np.array_split(np.array(output), len(output))
+    return output
 
 
 def get_majority_label(labels, num_labels, is_multilabel):
