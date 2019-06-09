@@ -277,7 +277,7 @@ class Config:
 
         self.log_level = self.get_value("log_level", default="info")
 
-        print("Read configuration for run {} from {}".format(self.run_id, input_config))
+        print("Read configuration for run: {} from the file {}".format(self.run_id, input_config))
 
     def has_transform(self):
         return self.transform.name not in [defs.alias.none, None]

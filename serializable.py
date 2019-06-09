@@ -82,33 +82,42 @@ class Serializable:
             if self.loaded():
                 info("Loaded {} info by using name: {}".format(self.name, name))
                 return True
-            return False
+        return False
+
+
+    def add_serialization_source(self, path, reader=read_pickled, handler=lambda x: x):
+        self.data_paths.insert(0, path)
+        self.read_functions.insert(0, reader)
+        self.handler_functions.insert(0, handler)
+
 
     def set_serialization_params(self):
+        self.data_paths = []
+        self.read_functions = []
+        self.handler_functions = []
+        self.load_flags = []
         # setup paths
-        self.set_paths_by_name(self.name, raw_path=self.get_raw_path())
+        self.data_paths = self.get_paths_by_name(self.name, raw_path=self.get_raw_path())
         # alias some paths
         self.serialization_path_preprocessed, self.serialization_path = self.data_paths[:2]
         self.read_functions = [read_pickled, read_pickled, self.fetch_raw]
         self.handler_functions = [self.handle_preprocessed, self.handle_raw_serialized, self.handle_raw]
-
         self.set_additional_serialization_sources()
 
-    def set_additional_serialization_sources(self):
-        pass
-
     # set paths according to serializable name
-    def set_paths_by_name(self, name=None, raw_path=None):
+    def get_paths_by_name(self, name=None, raw_path=None):
         if name is None:
             name = self.name
         if not exists(self.serialization_dir):
             makedirs(self.serialization_dir, exist_ok=True)
         # raw
-        self.serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
+        serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
         # preprocessed
-        self.serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
-        # debug("Path setter returning paths wrt name: {}".format(name))
-        self.data_paths = [self.serialization_path_preprocessed, self.serialization_path, raw_path]
+        serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
+        return [serialization_path_preprocessed, serialization_path, raw_path]
+
+    def set_additional_serialization_sources(self):
+        pass
 
     # attemp to load resource from specified paths
     def attempt_load(self, index):

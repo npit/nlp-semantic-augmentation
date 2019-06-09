@@ -8,6 +8,14 @@ import nltk
 
 num_warnings = 0
 
+# check for zero length on variable input args
+def zero_length(*args):
+    for arg in args:
+        if len(arg) == 0:
+            return True
+    return False
+
+
 # convert a numeric or a set of numerics to string
 def numeric_to_string(value, precision):
     try:
@@ -107,6 +115,9 @@ def read_lines(path):
             lines.append(line.strip())
     return lines
 
+# list flattener
+def flatten(llist):
+    return [value for sublit in llist for value in sublit]
 
 # converts elements of l to the index they appear in the reference
 # flattens, if necessary

@@ -4,8 +4,7 @@ import tqdm
 import numpy as np
 from os import listdir
 from os.path import basename, join
-# from nltk.tokenize import RegexpTokenizer
-from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, shapes_list
+from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, zero_length, flatten
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.model_selection import StratifiedShuffleSplit
 from nltk.corpus import stopwords, reuters
@@ -89,6 +88,17 @@ class Dataset(Serializable):
 
         self.config.dataset.full_name = self.name
         info("Acquired dataset:{}".format(str(self)))
+        # sanity checks
+        # only numeric labels
+        try:
+            for labels in [self.train_labels, self.test_labels]:
+                list(map(int, flatten(labels)))
+        except ValueError as ve:
+            error("Non-numeric label encountered: {}".format(ve))
+        # zero train / test
+        error("Problematic values loaded.", zero_length(self.train, self.test))
+
+
 
     def handle_preprocessed(self, data):
         # info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
@@ -146,6 +156,36 @@ class Dataset(Serializable):
                 name += "_dlim_te{}".format(ltest)
         return name
 
+
+    # apply stratifed  limiting to the data wrt labels
+    def limit_data_stratify(num_limit, data, labels):
+        limit_ratio = num_limit / len(data)
+        splitter = StratifiedShuffleSplit(1, test_size=limit_ratio)
+        splits = list(splitter.split(np.zeros(len(data)), labels))
+        data = [data[n] for n in splits[0][1]]
+        labels = [labels[n] for n in splits[0][1]]
+
+        # fix up any remaining inconsistency
+        while not len({num_limit, len(data), len(labels)}) == 1:
+            # get label, label_indexes tuple list
+            counts = [(x, [i for i in range(len(labels)) if x in labels[i]]) for x in set(flatten(labels))]
+            # get most populous label
+            maxfreq_label, maxfreq_label_idx = max(counts, key=lambda x: len(x[1]))
+            # drop one from it
+            idx = random.choice(maxfreq_label_idx)
+            del data[idx]
+            del labels[idx]
+            # remove by index of index
+            idx_idx = maxfreq_label_idx.index(idx)
+            del maxfreq_label_idx[idx_idx]
+        return data, labels
+
+    def limit_data_simple(num_limit, data, labels):
+        idxs = random.sample(list(range(len(data))), num_limit)
+        data = [data[i] for i in idxs]
+        labels = [labels[i] for i in idxs]
+        return data, labels
+
     def apply_data_limit(self, name):
         ltrain, ltest = self.config.dataset.data_limit
         if ltrain:
@@ -155,18 +195,13 @@ class Dataset(Serializable):
                     error("Attempted to data-limit {} train items to {}".format(len(self.train), ltrain))
                 try:
                     # use stratification
-                    ratio = ltrain / len(self.train)
-                    splitter = StratifiedShuffleSplit(1, test_size=ratio)
-                    splits = list(splitter.split(np.zeros(len(self.train)), self.train_labels))
-                    self.train = [self.train[n] for n in splits[0][1]]
-                    self.train_labels = [self.train_labels[n] for n in splits[0][1]]
+                    self.train, self.train_labels = Dataset.limit_data_stratify(ltrain, self.train, self.train_labels)
                     info("Limited {} loaded data to {} train items.".format(self.base_name, len(self.train)))
                 except ValueError as ve:
                     warning(ve)
                     warning("Resorting to non-stratified limiting")
-                    self.train = self.train[:ltrain]
-                    self.train_labels = self.train_labels[:ltrain]
-                if not len(set([ltrain, len(self.train), len(self.train_labels)])) == 1:
+                    self.train, self.train_labels = Dataset.limit_data_simple(ltrain, self.train, self.train_labels)
+                if not len({ltrain, len(self.train), len(self.train_labels)}) == 1:
                     error("Inconsistent limiting in train data.")
         if ltest:
             name += "_dlim_te{}".format(ltest)
@@ -175,18 +210,13 @@ class Dataset(Serializable):
                     error("Attempted to data-limit {} test items to {}".format(len(self.test), ltest))
                 try:
                     # use stratification
-                    ratio = ltest / len(self.test)
-                    splitter = StratifiedShuffleSplit(1, test_size=ratio)
-                    splits = list(splitter.split(np.zeros(len(self.test)), self.test_labels))
-                    self.test = [self.test[n] for n in splits[0][1]]
-                    self.test_labels = [self.test_labels[n] for n in splits[0][1]]
+                    self.test, self.test_labels = Dataset.limit_data_stratify(ltest, self.test, self.test_labels)
                     info("Limited {} loaded data to {} test items.".format(self.base_name, len(self.test)))
                 except ValueError as ve:
                     warning(ve)
                     warning("Resorting to non-stratified limiting")
-                    self.test = self.test[:ltest]
-                    self.test_labels = self.test_labels[:ltest]
-                if not len(set([ltest, len(self.test), len(self.test_labels)])) == 1:
+                    self.test, self.test_labels = Dataset.limit_data_simple(ltest, self.test, self.test_labels)
+                if not len({ltest, len(self.test), len(self.test_labels)}) == 1:
                     error("Inconsistent limiting in test data.")
         return name
 
@@ -205,11 +235,11 @@ class Dataset(Serializable):
         if c_lim is not None:
             name += "_clim_{}".format(c_lim)
             if self.train:
-                if c_lim > self.num_labels:
-                    error("Attempted to limit {} classes to {}".format(self.num_labels, c_lim))
+                if c_lim >= self.num_labels:
+                    error("Specified non-sensical class limit from {} classes to {}.".format(self.num_labels, c_lim))
                 # data have been loaded -- apply limit
                 retained_classes = random.sample(list(range(self.num_labels)), c_lim)
-                info("Limiting to the {} classes: {}".format(c_lim, retained_classes))
+                info("Limiting to the {}/{} classes: {}".format(c_lim, self.num_labels, retained_classes))
                 if self.multilabel:
                     debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_labels)), max(map(len, self.test_labels))))
                 self.train, self.train_labels = self.restrict_to_classes(self.train, self.train_labels, retained_classes)
@@ -235,7 +265,7 @@ class Dataset(Serializable):
             self.base_name = Dataset.generate_name(self.config)
             name = self.apply_class_limit(self.base_name)
             self.name = self.apply_data_limit(name)
-            self.set_paths_by_name(self.name, self.get_raw_path())
+            self.set_serialization_params()
         if self.train:
             # serialize the limited version
             write_pickled(self.serialization_path, self.get_all_raw())
@@ -371,6 +401,7 @@ class Dataset(Serializable):
     def __str__(self):
         return "{}, train/test {}, num labels: {}".format(self.base_name, len(self.train), len(self.test), self.num_labels)
 
+
 class TwentyNewsGroups(Dataset):
     name = "20newsgroups"
     language = "english"
@@ -381,8 +412,8 @@ class TwentyNewsGroups(Dataset):
             return None
         info("Downloading {} via sklearn".format(self.name))
 
-        train = fetch_20newsgroups(data_home=join(self.config.folders.raw_data, "sklearn"), subset='train', shuffle=True, random_state=self.config.get_seed())
-        test = fetch_20newsgroups(data_home=join(self.config.folders.raw_data, "sklearn"), subset='test', shuffle=True, random_state=self.config.get_seed())
+        train = fetch_20newsgroups(data_home=join(self.config.folders.raw_data, "sklearn"), subset='train')
+        test = fetch_20newsgroups(data_home=join(self.config.folders.raw_data, "sklearn"), subset='test')
         return [train, test]
 
     def handle_raw(self, raw_data):
@@ -565,7 +596,7 @@ class ManualDataset(Dataset):
         self.train, self.train_labels = [], []
         self.test, self.test_labels = [], []
 
-        unique_labels = {"train":set(), "test": set()}
+        unique_labels = {"train": set(), "test": set()}
         for obj in data["train"]:
             self.train.append(obj["text"])
             lbls = obj["labels"]
@@ -601,8 +632,8 @@ class ManualDataset(Dataset):
 
     def get_name(self):
         # get only the filename
-        return os.path.basename(self.name)
+        return basename(self.name)
 
     def get_base_name(self):
         # get only the base filename
-        return os.path.basename(self.base_name)
+        return basename(self.base_name)

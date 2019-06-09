@@ -117,7 +117,7 @@ class Learner:
                     model = self.train_model(trainval_idx)
 
                 # test the model
-                with tictoc("Testing {} on data: {}.".format(self.current_run_descr, self.num_test_labels)):
+                with tictoc("Testing {} on {} instances.".format(self.current_run_descr, self.num_test_labels)):
                     self.do_test(model)
                     model_paths.append(self.get_current_model_path())
 
@@ -127,6 +127,7 @@ class Learner:
     def do_test(self, model):
         print_results = self.do_folds and self.config.print.folds or not self.folds
         test_data = self.process_input(self.test)
+        info("Test data {}".format(test_data.shape))
         predictions = self.test_model(test_data, model)
         # get baseline performances
         self.evaluator.evaluate_learning_run(predictions)

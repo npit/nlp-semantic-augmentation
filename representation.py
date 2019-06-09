@@ -67,10 +67,8 @@ class Representation(Serializable):
         self.serialization_path_finalized = "{}/{}.aggregated_{}.finalized_{}.pickle".format(
             self.serialization_dir, self.name, aggr, finalized_id)
 
-        # fill in at the desired order (finalized, transformed, aggregated
-        self.data_paths = [self.serialization_path_finalized, self.serialization_path_aggregated] + self.data_paths
-        self.read_functions = [read_pickled] * 2 + self.read_functions
-        self.handler_functions = [self.handle_finalized, self.handle_aggregated] + self.handler_functions
+        self.add_serialization_source(self.serialization_path_aggregated, handler=self.handle_aggregated)
+        self.add_serialization_source(self.serialization_path_finalized, handler=self.handle_finalized)
 
     # shortcut for reading configuration values
     def set_params(self):
@@ -549,7 +547,8 @@ class BagRepresentation(Representation):
         # if external term list, add its length to the name
         if self.config.representation.term_list is not None:
             self.name += "_tok_{}".format(basename(self.config.representation.term_list))
-        self.name += self.config.representation.limit
+        if not defs.is_none(self.config.representation.limit):
+            self.name += self.config.representation.limit
 
     def set_resources(self):
         if self.config.representation.term_list is not None:

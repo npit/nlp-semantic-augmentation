@@ -257,6 +257,9 @@ class Evaluator:
         #     self.performance["run"]["AUC"][av] = auc
 
 
+        if len(predictions) != len(self.test_labels):
+            error("Inconsistent shapes of predictions: {} and labels: {} lengths during evaluation"
+                  .format(len(predictions), len(self.test_labels)))
         # compute single-label baselines
         # add run performance wrt argmax predictions
         self.evaluate_predictions("run", predictions)
