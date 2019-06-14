@@ -113,6 +113,8 @@ print:
   run_types: [run]
   # stats aggregating fold values
   stats: ["mean", "var"]
+  # instance / labelwise error stats
+  error_analysis: False
 
 folders:
   # run folder

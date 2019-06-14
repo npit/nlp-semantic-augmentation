@@ -31,6 +31,8 @@ class Config:
         aggregations = None
         folds = None
         measures = None
+        error_analysis = None
+        top_k = 3
 
     class representation:
         name = None
@@ -260,6 +262,8 @@ class Config:
             self.print.folds = self.get_value("folds", base=print_opts, default=False)
             self.print.training_progress = self.get_value("training_progress", base=print_opts, default=False)
             self.print.stats = self.get_value("stats", base=print_opts)
+            self.print.error_analysis = self.get_value("error_analysis", base=print_opts, default=True)
+            self.print.top_k = self.get_value("top_k", base=print_opts, default=3, expected_type=int)
 
         if self.has_value("misc"):
             misc_opts = self.conf["misc"]

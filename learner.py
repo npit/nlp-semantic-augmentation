@@ -23,7 +23,6 @@ class Learner:
         """
         # initialize evaluation
         self.evaluator = Evaluator(self.config)
-        pass
 
     # input preproc
     def process_input(self, data):

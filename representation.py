@@ -162,16 +162,6 @@ class Representation(Serializable):
     def get_dimension(self):
         return self.dimension
 
-    # mark word-index relations for stat computation, add unk if needed
-    def handle_raw_serialized(self, raw_serialized):
-        """Read csv mapping in a pickled format
-        """
-        # process as dataframe
-        self.words_to_numeric_idx = {}
-        self.embeddings = raw_serialized
-        for w in self.embeddings.index.tolist():
-            self.words_to_numeric_idx[w] = len(self.words_to_numeric_idx)
-
     def handle_raw(self, raw_data):
         pass
 
@@ -232,6 +222,7 @@ class Embedding(Representation):
     embeddings = None
     words_to_numeric_idx = None
     dimension = None
+    embedding_vocabulary_index = {}
 
     data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index",
                   "present_term_indexes"]
@@ -252,6 +243,20 @@ class Embedding(Representation):
             info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
 
     def read_raw_embedding_mapping(self, path):
+        # check if there's a vocabulary file
+        try:
+            raise FileNotFoundError
+            warning("Partial map text is todo,")
+            vocab_path = path + ".vocab"
+            with open(vocab_path ) as f:
+                lines = [x.strip() for x in f.readlines()]
+                for word in [x for x in lines if x]:
+                    self.embedding_vocabulary_index[word] = len(self.embedding_vocabulary_index)
+            info("Read embedding vocabulary from path {}".format(vocab_path))
+            return
+        except FileNotFoundError:
+            pass
+
         # word - vector correspondence
         try:
             self.embeddings = pd.read_csv(path, sep=self.config.misc.csv_separator, header=None, index_col=0)
@@ -402,11 +407,25 @@ class WordEmbedding(Embedding):
     def get_raw_path(self):
         return "{}/{}_dim{}.pickle".format(self.raw_data_dir, self.base_name, self.dimension)
 
+
+    def map_text_partial_load(self, dset):
+        # iterate over files. match existing words
+        # map embedding vocab indexes to files and word positions in that file
+        # iterate sequentially the csv with batch loading
+        error("Partial map text is todo,")
+
     # transform input texts to embeddings
     def map_text(self, dset):
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
         info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
+
+        # if there's a vocabulary file read or precomputed, utilize partial loading of the underlying csv
+        # saves a lot of memory
+        if self.embedding_vocabulary_index:
+            self.map_text_partial_load(dset)
+            return
+
         text_bundles = dset.train, dset.test
         self.dataset_vectors = [[], []]
         self.present_term_indexes = [[], []]
@@ -417,6 +436,7 @@ class WordEmbedding(Embedding):
         if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
             warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
             self.embeddings.loc[self.unknown_word_token] = np.zeros(self.dimension)
+
 
         # loop over input text bundles (e.g. train & test)
         for dset_idx in range(len(text_bundles)):
