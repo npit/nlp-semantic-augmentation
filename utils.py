@@ -101,8 +101,11 @@ def one_hot(labels, num_labels):
 
 
 def shapes_list(thelist):
-    return [x.shape for x in thelist]
+    return [get_shape(x) for x in thelist]
 
+def get_shape(element):
+    """numpy shape fetcher, handling empty inputs"""
+    return element.shape if len(element) > 0 else ()
 
 def lens_list(thelist):
     return [len(x) for x in thelist]
@@ -209,7 +212,7 @@ def debug2(msg):
 
 def warning(msg):
     logger = logging.getLogger()
-    logger.warning(msg)
+    logger.warning("[!] " + msg)
 
 
 # read pickled data

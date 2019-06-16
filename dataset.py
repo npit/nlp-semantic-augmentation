@@ -96,7 +96,7 @@ class Dataset(Serializable):
         except ValueError as ve:
             error("Non-numeric label encountered: {}".format(ve))
         # zero train / test
-        error("Problematic values loaded.", zero_length(self.train, self.test))
+        # error("Problematic values loaded.", zero_length(self.train, self.test))
 
 
 

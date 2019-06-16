@@ -39,30 +39,35 @@ class DNN(Classifier):
         self.callbacks = []
         [makedirs(x, exist_ok=True) for x in [self.results_folder, self.models_folder]]
 
-        # model saving with early stoppingtch_si
         self.model_path = self.get_current_model_path()
-        weights_path = self.model_path
 
-        # weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
-        self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
-                                                     save_best_only=self.validation_exists,
-                                                     save_weights_only=False,
-                                                     mode='auto', period=1)
-        self.callbacks.append(self.model_saver)
-        if self.early_stopping_patience and self.validation_exists:
-            self.early_stopping = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=self.early_stopping_patience, verbose=0,
-                                                          mode='auto', baseline=None, restore_best_weights=False)
-            self.callbacks.append(self.early_stopping)
+        if self.use_validation_for_training:
+            # model saving with early stoppingtch_si
+            weights_path = self.model_path
 
-        # stop on NaN
-        self.nan_terminator = callbacks.TerminateOnNaN()
-        self.callbacks.append(self.nan_terminator)
-        # learning rate modifier at loss function plateaus
-        if self.validation_exists:
+            # weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
+            self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
+                                                         save_best_only=self.validation_exists,
+                                                         save_weights_only=False,
+                                                         mode='auto', period=1)
+            self.callbacks.append(self.model_saver)
+
+            if self.early_stopping_patience:
+                self.early_stopping = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=self.early_stopping_patience, verbose=0,
+                                                              mode='auto', baseline=None, restore_best_weights=False)
+                self.callbacks.append(self.early_stopping)
+
+            # learning rate modifier at loss function plateaus
             self.lr_reducer = callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1,
                                                           patience=10, verbose=0, mode='auto',
                                                           min_delta=0.0001, cooldown=0, min_lr=0)
             self.callbacks.append(self.lr_reducer)
+
+
+        # stop on NaN
+        self.nan_terminator = callbacks.TerminateOnNaN()
+        self.callbacks.append(self.nan_terminator)
+
         # logging
         train_csv_logfile = join(self.results_folder, basename(self.get_current_model_path()) + "train.csv")
         self.csv_logger = callbacks.CSVLogger(train_csv_logfile, separator=',', append=False)

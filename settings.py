@@ -122,7 +122,7 @@ class Config:
     # logging initialization
     def setup_logging(self):
         os.makedirs(self.log_dir, exist_ok=True)
-        formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
+        formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)7s | %(message)s')
 
         # console handler
         handler = logging.StreamHandler()

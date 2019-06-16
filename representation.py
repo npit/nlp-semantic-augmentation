@@ -1,7 +1,7 @@
 from os.path import basename, isfile
 import pandas as pd
 from pandas.errors import ParserError
-from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot, well_defined, ill_defined
+from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list, read_lines, one_hot, well_defined, ill_defined, get_shape
 import numpy as np
 from serializable import Serializable
 from semantic import SemanticResource
@@ -311,10 +311,10 @@ class Embedding(Representation):
         aggregation_stats = [0, 0]
 
         for dset_idx in range(len(self.dataset_vectors)):
-            info("Aggregating embedding vectors for collection {}/{} with shape {}".format(
-                 dset_idx + 1, len(self.dataset_vectors), self.dataset_vectors[dset_idx].shape))
-
             aggregated_dataset_vectors = np.ndarray((0, self.dimension), np.float32)
+            info("Aggregating embedding vectors for collection {}/{} with shape {}".format(
+                 dset_idx + 1, len(self.dataset_vectors), get_shape(self.dataset_vectors[dset_idx])))
+
             new_numel_per_instance = []
             curr_idx = 0
             for inst_idx, inst_len in enumerate(self.elements_per_instance[dset_idx]):
@@ -356,7 +356,7 @@ class Embedding(Representation):
             # report stats
             if self.aggregation == "pad":
                 info("Truncated {:.3f}% and padded {:.3f} % items.".format(*[x / len(self.dataset_vectors[dset_idx]) * 100 for x in aggregation_stats]))
-            info("Aggregated shapes: {}".format(shapes_list(self.dataset_vectors)))
+        info("Aggregated shapes: {}".format(shapes_list(self.dataset_vectors)))
 
     # shortcut for reading configuration values
     def set_params(self):
@@ -385,7 +385,7 @@ class Embedding(Representation):
         self.dataset_vectors, self.elements_per_instance, \
             self.undefined_word_index, self.present_term_indexes = [preprocessed[n] for n in self.data_names]
         debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
-        error("Read emtpy train or test preprocessed representations!", not all([x.size for x in self.dataset_vectors]))
+        #error("Read empty train or test preprocessed representations!", not all([x.size for x in self.dataset_vectors]))
 
     def set_transform(self, transform):
         """Update representation information as per the input transform"""
@@ -489,7 +489,8 @@ class WordEmbedding(Embedding):
                     self.elements_per_instance[dset_idx].append(num_embeddings)
                     self.present_term_indexes[dset_idx].append(present_index)
 
-            self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values
+            if len(self.dataset_vectors[dset_idx]) > 0:
+                self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values
             self.print_word_stats(hist, hist_missing)
 
         # write
@@ -497,14 +498,17 @@ class WordEmbedding(Embedding):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def print_word_stats(self, hist, hist_missing):
-        terms_hit, hit_sum = len([v for v in hist if hist[v] > 0]), sum(hist.values())
-        terms_missed, miss_sum = len([v for v in hist_missing if hist_missing[v] > 0]), \
-                                 sum(hist_missing.values())
-        total_term_sum = sum(list(hist.values()) + list(hist_missing.values()))
-        debug("{:.3f} % terms in the vocabulary appear at least once, which corresponds to a total of {:.3f} % terms in the text".
-              format(terms_hit / len(hist) * 100, hit_sum / total_term_sum * 100))
-        debug("{:.3f} % terms in the vocabulary never appear, i.e. a total of {:.3f} % terms in the text".format(
-            terms_missed / len(self.vocabulary) * 100, miss_sum / total_term_sum * 100))
+        try:
+            terms_hit, hit_sum = len([v for v in hist if hist[v] > 0]), sum(hist.values())
+            terms_missed, miss_sum = len([v for v in hist_missing if hist_missing[v] > 0]), \
+                                    sum(hist_missing.values())
+            total_term_sum = sum(list(hist.values()) + list(hist_missing.values()))
+            debug("{:.3f} % terms in the vocabulary appear at least once, which corresponds to a total of {:.3f} % terms in the text".
+                format(terms_hit / len(hist) * 100, hit_sum / total_term_sum * 100))
+            debug("{:.3f} % terms in the vocabulary never appear, i.e. a total of {:.3f} % terms in the text".format(
+                terms_missed / len(self.vocabulary) * 100, miss_sum / total_term_sum * 100))
+        except ZeroDivisionError:
+            warning("No samples!")
 
     def __init__(self, config):
         self.config = config

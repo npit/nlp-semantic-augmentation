@@ -1,4 +1,4 @@
-from utils import error, info, read_pickled, tictoc, write_pickled, one_hot
+from utils import error, info, read_pickled, tictoc, write_pickled, one_hot, warning
 from sklearn.model_selection import KFold, StratifiedKFold, StratifiedShuffleSplit
 import numpy as np
 from os.path import join, dirname, exists, basename
@@ -17,6 +17,8 @@ class Learner:
     fold_index = 0
     evaluator = None
     sequence_length = None
+
+    test_instance_indexes = None
 
     def __init__(self):
         """Generic learner constructor
@@ -50,7 +52,6 @@ class Learner:
         self.num_labels = dataset.get_num_labels()
         self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
             list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
-        self.evaluator.set_labels(self.test_labels, self.num_labels, self.do_multilabel)
         self.input_dim = representation.get_dimension()
         self.forbid_load = self.config.learner.no_load
         self.sequence_length = self.config.learner.sequence_length
@@ -61,7 +62,8 @@ class Learner:
         self.validation_portion = self.config.train.validation_portion
         self.do_folds = self.folds and self.folds > 1
         self.do_validate_portion = self.validation_portion is not None and self.validation_portion > 0.0
-        self.validation_exists = self.do_folds or self.do_validate_portion
+        self.validation_exists = (self.do_folds or self.do_validate_portion)
+        self.use_validation_for_training = self.validation_exists and self.test_data_available()
         self.early_stopping_patience = self.config.train.early_stopping_patience
 
         self.seed = self.config.get_seed()
@@ -74,17 +76,21 @@ class Learner:
         if self.do_folds and self.do_validate_portion:
             error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
 
-        # measure sanity checks
-        self.evaluator.check_sanity()
+        # configure and sanity-check evaluator
+        self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
+
         error("Input none dimension.", self.input_dim is None)
         info("Created learner: {}".format(self))
 
     def is_already_completed(self):
         predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
         if exists(predictions_file):
-            info("Reading existing predictions: {}".format(predictions_file))
+            warning("Reading existing predictions from: {}".format(predictions_file))
             return read_pickled(predictions_file)
-        return None
+        return None, None
+
+    def test_data_available(self):
+        return self.test.size > 0
 
     # perfrom a train-test loop
     def do_traintest(self):
@@ -100,17 +106,31 @@ class Learner:
                 self.fold_index = fold_index
                 if self.do_folds:
                     self.current_run_descr = "fold {}/{}".format(fold_index + 1, self.folds)
+                    validation_description = "folds={}".format(self.folds)
                 elif self.do_validate_portion:
                     self.current_run_descr = "{}-val split".format(self.validation_portion)
+                    validation_description = "validation portion={}".format(self.validation_portion)
                 else:
                     self.current_run_descr = "(no-validation)"
+                    validation_description = "<none>"
 
                 # check if the run is completed already and load existing results, if allowed
                 if not self.forbid_load:
-                    existing_predictions = self.is_already_completed()
+                    existing_predictions, test_instance_indexes = self.is_already_completed()
                     if existing_predictions is not None:
-                        self.evaluator.evaluate_learning_run(existing_predictions)
+                        if not self.use_validation_for_training:
+                            labels = np.concatenate(self.train_labels)[test_instance_indexes]
+                            self.evaluator.configure(labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
+                        self.evaluator.evaluate_learning_run(existing_predictions, instance_indexes=test_instance_indexes)
                         continue
+                # if no test data is available, use the validation data
+                if not self.use_validation_for_training:
+                    train_idx, val_idx = trainval_idx
+                    self.test, self.test_labels = self.train[val_idx], self.train_labels[val_idx]
+                    self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
+                    self.test_instance_indexes = val_idx
+                    trainval_idx = (train_idx, [])
+
                 # train the model
                 with tictoc("Training run {} on train/val data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
                     model = self.train_model(trainval_idx)
@@ -120,21 +140,30 @@ class Learner:
                     self.do_test(model)
                     model_paths.append(self.get_current_model_path())
 
-            self.evaluator.report_overall_results(self.folds, self.results_folder)
+                if not self.use_validation_for_training:
+                    self.test, self.test_labels = [], []
+                    self.test_instance_indexes = None
+
+
+            if not self.use_validation_for_training:
+                # pass the entire training labels
+                self.evaluator.configure(self.train_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
+            self.evaluator.report_overall_results(validation_description, self.results_folder)
 
     # evaluate a model on the test set
     def do_test(self, model):
         print_results = self.do_folds and self.config.print.folds or not self.folds
         test_data = self.process_input(self.test)
         info("Test data {}".format(test_data.shape))
+        error("No test data supplied!", len(test_data) == 0)
         predictions = self.test_model(test_data, model)
         # get baseline performances
-        self.evaluator.evaluate_learning_run(predictions)
+        self.evaluator.evaluate_learning_run(predictions, self.test_instance_indexes)
         if print_results:
             self.evaluator.print_run_performance(self.current_run_descr, self.fold_index)
         # write fold predictions
         predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
-        write_pickled(predictions_file, predictions)
+        write_pickled(predictions_file, [predictions, self.test_instance_indexes])
 
     # get training and validation data chunks, given the input indexes
     def get_trainval_data(self, trainval_idx):

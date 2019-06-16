@@ -90,8 +90,13 @@ learner:
 
 
 
+# training settings 
 train:
   epochs: 40
+  # if test data is supplied, trainset is split to folds / val. portion
+  # the val. data is used to augment training, if supported by the learner
+  # mean performance across folds is reported.
+  # if test data is NOT supplied, the validation portion is held out for testing only
   folds: 5
   validation_portion: 0.1
   early_stopping_patience: 20

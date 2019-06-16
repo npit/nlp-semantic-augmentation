@@ -15,12 +15,13 @@ class Evaluator:
     """
 
     # performance containers, in the format type-measure-aggregation-stat
-    performance = {}
+    performance = None
     cw_performance = {}
     majority_label = None
 
     # predictions storage
     predictions = None
+    predictions_instance_indexes = None
 
     # available measures, aggregations and run types
     singlelabel_measures = ["precision", "recall", "f1-score", "accuracy"]
@@ -47,14 +48,20 @@ class Evaluator:
         self.config = config
         # minor inits
         self.predictions = {rt: [] for rt in self.run_types}
+        self.predictions_instance_indexes = []
 
-    def set_labels(self, test_labels, num_labels, do_multilabel):
+    def configure(self, test_labels, num_labels, do_multilabel, use_validation_for_training):
         """Label setter method"""
         self.do_multilabel = do_multilabel
-        self.test_labels = test_labels
-        if not self.do_multilabel:
-            self.test_labels = np.squeeze(np.concatenate(test_labels))
         self.num_labels = num_labels
+        self.use_validation_for_training = use_validation_for_training
+        if len(test_labels) > 0:
+            self.test_labels = test_labels
+            # squeeze to ndarray if necessary
+            if not self.do_multilabel and type(test_labels) == list:
+                self.test_labels = np.squeeze(np.concatenate(test_labels))
+
+        self.check_sanity()
 
     def check_sanity(self):
         """Evaluator sanity checking function"""
@@ -67,7 +74,7 @@ class Evaluator:
         self.preferred_aggregations = self.config.print.aggregations if self.config.print.aggregations else self.multiclass_aggregations
         self.preferred_stats = self.config.print.stats if self.config.print.stats else self.stats
         self.top_k = self.config.print.top_k
-        error("Invalid value for top-k printing: {}".format(self.top_k), self.top_k > 0)
+        error("Invalid value for top-k printing: {}".format(self.top_k), self.top_k <= 0)
 
         # all measures, if no subset is preferred
         if not self.preferred_measures:
@@ -86,14 +93,18 @@ class Evaluator:
     # initialize evaluation containers and preferred evaluation printage
     def configure_evaluation_measures(self):
         """Method to initialize evaluation measure containers"""
+        if self.performance is not None:
+            return
+
+        self.performance = {}
         for run_type in self.run_types:
             self.performance[run_type] = {}
             for measure in self.measures:
                 self.performance[run_type][measure] = {}
                 if self.do_multilabel:
                     for stat in self.stats:
-                        self.performance[run_type][measure] = {}
-                        self.performance[run_type][measure]["folds"] = []
+                        self.performance[run_type][measure][stat] = None
+                    self.performance[run_type][measure]["folds"] = []
                 else:
                     for aggr in self.multiclass_aggregations:
                         self.performance[run_type][measure][aggr] = {}
@@ -159,14 +170,16 @@ class Evaluator:
             info("{} : {}".format(header, scores_str))
 
     # print performance across folds and compute foldwise aggregations
-    def report_overall_results(self, folds, write_folder):
+    def report_overall_results(self, validation_description, write_folder):
         """Function to report learner results
         """
         info("==============================")
         self.show_label_distribution(self.test_labels)
         self.analyze_overall_errors()
 
-        info("{} {} performance {} across all [{}] folds:".format("/".join(self.preferred_types), "/".join(self.preferred_measures), "/".join(self.preferred_stats), folds))
+        info("{} {} performance {} with a validation setting of [{}]".format("/".join(self.preferred_types),
+                                                                  "/".join(self.preferred_measures),
+                                                                  "/".join(self.preferred_stats), validation_description))
         info("==============================")
         for run_type in self.run_types:
             for measure in self.measures:
@@ -282,12 +295,13 @@ class Evaluator:
             info("Label {} : {}".format(lbl, count))
 
     # evaluate predictions and add baselines
-    def evaluate_learning_run(self, predictions):
+    def evaluate_learning_run(self, predictions, instance_indexes=None):
         # # get multiclass performance
         # for av in ["macro", "micro"]:
         #     auc, ap = self.get_roc(predictions, average=av)
         #     self.performance["run"]["AP"][av] = ap
         #     self.performance["run"]["AUC"][av] = auc
+
 
         if len(predictions) != len(self.test_labels):
             error("Inconsistent shapes of predictions: {} and labels: {} lengths during evaluation"
@@ -296,7 +310,7 @@ class Evaluator:
         # add run performance wrt argmax predictions
         self.evaluate_predictions("run", predictions)
         # majority classifier
-        if self.majority_label is None:
+        if self.majority_label is None or not self.use_validation_for_training:
             self.majority_label = get_majority_label(self.test_labels, self.num_labels, self.do_multilabel)
         majpred = np.zeros(predictions.shape, np.float32)
         majpred[:, self.majority_label] = 1.0
@@ -304,6 +318,11 @@ class Evaluator:
         # random classifier
         randpred = np.random.rand(*predictions.shape)
         self.evaluate_predictions("random", randpred)
+
+
+        if instance_indexes is None:
+            instance_indexes = np.asarray(list(range(len(self.test_labels))), np.int32)
+        self.predictions_instance_indexes.append(instance_indexes)
 
         self.predictions["run"].append(predictions)
         self.predictions["random"].append(randpred)
@@ -332,6 +351,19 @@ class Evaluator:
             scores_str.append(numeric_to_string(container[stat], self.print_precision))
         return " ".join(scores_str)
 
+
+
+    def consolidate_folded_test_results(self):
+        num_total_train = len(set(np.concatenate(self.predictions_instance_indexes)))
+
+        for run_type in self.predictions:
+            for p, preds in enumerate(self.predictions[run_type]):
+                full_preds = np.zeros((num_total_train, self.num_labels), np.float32)
+                full_preds[:] = np.nan
+                idxs = self.predictions_instance_indexes[p]
+                full_preds[idxs] = preds
+                self.predictions[run_type][p] = full_preds
+
     # analyze overall error of the run
     def analyze_overall_errors(self, top_k=3):
         """Method to generate an error analysis over folds
@@ -348,15 +380,25 @@ class Evaluator:
 
         - print top / bottom K
         """
-        res = {"instances": {}, "labels": {}}
+
+
 
         if not self.do_multilabel:
+            res = {"instances": {}, "labels": {}}
+
+            if not self.use_validation_for_training:
+                # instances vary across folds -- consolidate
+                self.consolidate_folded_test_results()
+
             for run_type in self.predictions:
                 # instance-wise
                 aggregate = np.zeros((len(self.test_labels),), np.float32)
                 for preds in self.predictions[run_type]:
                     # get true / false predictions
-                    correct_preds = np.where(np.equal(np.argmax(preds, axis=1), self.test_labels))
+                    non_nan_idx = np.where(np.any(~np.isnan(preds), axis=1))
+                    preds = preds[non_nan_idx]
+                    true_labels = self.test_labels[non_nan_idx]
+                    correct_preds = np.where(np.equal(np.argmax(preds, axis=1), true_labels))
                     aggregate[correct_preds] += 1
                 # average
                 aggregate /= len(self.predictions[run_type])
@@ -390,10 +432,12 @@ class Evaluator:
         for run_type in self.run_types:
             # print in format instance1, instance2, ...
             for an_type in self.error_analysis_types:
-                info("accuracy {}: {:7} instances: ({}): ({})".format(run_type, an_type, " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["instances"][run_type][an_type]),
-                                                                      " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["instances"][run_type][an_type])))
+                indexes = " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["instances"][run_type][an_type])
+                scores = " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["instances"][run_type][an_type])
+                info("{:10} {:8} {:7} {:10} | ({}) ({})".format("accuracy", run_type, an_type, "instances", indexes, scores))
+
             for measure in self.performance[run_type]:
-                info("{:10} {}: {:7} labels: ({}): ({})".format(measure, run_type, an_type, " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["labels"][run_type][measure][an_type]),
+                info("{:10} {:8} {:7} {:10} | ({}) ({})".format(measure, run_type, an_type, "labels", " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["labels"][run_type][measure][an_type]),
                                                                 " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["labels"][run_type][measure][an_type])))
 
     # analyze error wrt selected parameters
