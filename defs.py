@@ -24,7 +24,7 @@ alias = make_def("alias")
 weights = make_def("weights")
 
 def is_none(elem):
-    return elem == '' or elem is None or elem == alias.none
+    return elem == '' or elem is None or elem == alias.none or not elem
 
 def get_sequence_length_type(inp):
     if inp == 1:

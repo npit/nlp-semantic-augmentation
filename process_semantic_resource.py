@@ -119,8 +119,8 @@ def produce_semantic_neighbourhood(config_file):
     """
     try:
         config = settings.Config(config_file)
-        config.flags.independent_component = True
-        config.flags.skip_deserialization = True
+        config.misc.independent_component = True
+        config.misc.skip_deserialization = True
         config.semantic.spreading_activation = config.semantic.spreading_activation[0], 0.5
         semres = semantic.SemanticResource.create(config)
     except:

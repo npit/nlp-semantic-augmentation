@@ -19,13 +19,13 @@ class Config:
     conf = {}
     run_id = None
 
-    class dataset:
+    class dataset_conf:
         name = None
         prepro = None
         data_limit = [None, None]
         class_limit = None
 
-    class print:
+    class print_conf:
         run_types = None
         stats = None
         aggregations = None
@@ -34,22 +34,22 @@ class Config:
         error_analysis = None
         top_k = 3
 
-    class representation:
+    class representation_conf:
         name = None
         dimension = None
         term_list = None
         aggregation = None
 
-    class transform:
+    class transform_conf:
         dimension = None
         name = None
 
-    class semantic:
+    class semantic_conf:
         name = None
         enrichment = None
         weights = None
 
-    class learner:
+    class learner_conf:
         name = None
 
         # clusterers
@@ -61,29 +61,37 @@ class Config:
         sequence_length = None
         noload = False
 
-    class folders:
+    class folders_conf:
         run = None
         results = None
         serialization = None
+        raw_data = None
         logs = None
 
-    class train:
+    class train_conf:
         epochs = None
         folds = None
         early_stopping_patience = None
         validation_portion = None
         batch_size = None
 
-    class misc:
+    class misc_conf:
         keys = {}
         csv_separator = ","
-
-    class flags:
-        skip_deserialization = None
         independent_component = None
+        skip_deserialization = None
 
     def __init__(self, conf_file):
         "Configuration object constructor"
+        self.dataset = Config.dataset_conf()
+        self.representation = Config.representation_conf()
+        self.transform = Config.transform_conf()
+        self.semantic = Config.semantic_conf()
+        self.learner = Config.learner_conf()
+        self.train = Config.train_conf()
+        self.misc = Config.misc_conf()
+        self.print = Config.print_conf()
+        self.folders = Config.folders_conf()
         self.initialize(conf_file)
 
     def has_data_limit(self):
@@ -100,9 +108,8 @@ class Config:
 
     def initialize(self, configuration):
         self.read_config(configuration)
+        self.make_directories()
         # copy configuration to run folder
-        if not exists(self.folders.run):
-            os.makedirs(self.folders.run, exist_ok=True)
         if type(configuration) == str:
             config_copy = join(self.folders.run, os.path.basename(configuration))
             if not exists(config_copy):
@@ -110,6 +117,11 @@ class Config:
 
         self.setup_logging()
         self.setup_seed()
+
+    def make_directories(self):
+        os.makedirs(self.folders.run, exist_ok=True)
+        os.makedirs(self.folders.raw_data, exist_ok=True)
+        os.makedirs(self.folders.serialization, exist_ok=True)
 
     # get option
     def option(self, name):
@@ -206,7 +218,7 @@ class Config:
         self.representation.sequence_length = self.get_value("sequence_length", default=1, base=representation_information)
         self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)
         self.representation.term_list = self.get_value("term_list", base=representation_information)
-        self.representation.limit = self.get_value("limit", base=representation_information, default=defs.limit.none)
+        self.representation.limit = self.get_value("limit", base=representation_information, default=[])
 
         if self.has_value("transform"):
             transform_opts = self.conf["transform"]
@@ -220,12 +232,12 @@ class Config:
             self.semantic.enrichment = self.get_value("enrichment", base=semantic_opts, default=None)
             self.semantic.disambiguation = semantic_opts["disambiguation"]
             self.semantic.weights = semantic_opts["weights"]
-            self.semantic.limit = self.get_value("limit", base=semantic_opts, default=None, expected_type=list)
+            self.semantic.limit = self.get_value("limit", base=semantic_opts, default=[], expected_type=list)
             # context file only relevant on semantic embedding disamgibuation
             self.semantic.context_file = self.get_value("context_file", base=semantic_opts)
             self.semantic.context_aggregation = self.get_value("context_aggregation", base=semantic_opts)
             self.semantic.context_threshold = self.get_value("context_threshold", base=semantic_opts)
-            self.semantic.spreading_activation = self.get_value("spreading_activation", base=semantic_opts, expected_type=list)
+            self.semantic.spreading_activation = self.get_value("spreading_activation", base=semantic_opts, expected_type=list, default=[])
 
         need(self.has_value("learner"), "Need learner information")
         learner_opts = self.conf["learner"]
@@ -273,11 +285,6 @@ class Config:
             self.misc.independent = self.get_value("independent_component", base=misc_opts, default=False)
             self.misc.skip_deserialization = self.get_value("skip_deserialization", base=misc_opts, default=False)
             self.misc.csv_separator = self.get_value("csv_separator", base=misc_opts, default=",")
-
-        if self.has_value("flags"):
-            flag_opts = self.conf["flags"]
-            self.flags.independent = self.get_value("independent_component", base=flag_opts, default=False)
-            self.misc.skip_deserialization = self.get_value("skip_deserialization", base=flag_opts, default=False)
 
         self.log_level = self.get_value("log_level", default="info")
 

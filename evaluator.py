@@ -429,14 +429,14 @@ class Evaluator:
             return
         info("Fold-average top-{} instances/labels:".format(self.top_k))
         info("---------------------------")
-        for run_type in self.run_types:
+        for run_type in self.preferred_types:
             # print in format instance1, instance2, ...
             for an_type in self.error_analysis_types:
                 indexes = " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["instances"][run_type][an_type])
                 scores = " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["instances"][run_type][an_type])
                 info("{:10} {:8} {:7} {:10} | ({}) ({})".format("accuracy", run_type, an_type, "instances", indexes, scores))
 
-            for measure in self.performance[run_type]:
+            for measure in [x for x in self.performance[run_type] if x in self.preferred_measures]:
                 info("{:10} {:8} {:7} {:10} | ({}) ({})".format(measure, run_type, an_type, "labels", " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["labels"][run_type][measure][an_type]),
                                                                 " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["labels"][run_type][measure][an_type])))
 
@@ -450,5 +450,4 @@ class Evaluator:
         if not self.do_multilabel:
             # label-wise
             pass
-        # import ipdb; ipdb.set_trace()
         scores = sorted(self.performance[run_type][measure][aggregation])

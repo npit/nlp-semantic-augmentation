@@ -16,6 +16,7 @@ import yaml
 import requests
 
 import defs
+from defs import is_none
 import copy
 
 
@@ -33,7 +34,6 @@ class SemanticResource(Serializable):
     concept_context_word_threshold = None
 
     reference_concepts = None
-    do_limit = False
 
     disambiguation = None
     pos_tag_mapping = {}
@@ -41,7 +41,7 @@ class SemanticResource(Serializable):
 
     do_cache = True
 
-    data_names = ["concept_weights", "concept_weights", "reference_concepts"]
+    data_names = ["concept_weights", "concept_tfidf_weights", "reference_concepts"]
 
     @staticmethod
     def get_available():
@@ -57,14 +57,14 @@ class SemanticResource(Serializable):
         semantic_names = []
         # + no filtering, if filtered is specified
         filter_vals = [defs.limit.none]
-        if self.do_limit:
+        if not is_none(self.config.semantic.limit):
             filter_vals.append(self.config.semantic.limit)
         # any combo of weights, since local and global freqs are stored
         weight_vals = defs.weights.avail
 
         for w in weight_vals:
             for f in filter_vals:
-                conf = copy.copy(self.config)
+                conf = copy.deepcopy(self.config)
                 conf.semantic.weights = w
                 conf.semantic.limit = f
                 candidate_name = self.generate_name(conf)
@@ -75,13 +75,15 @@ class SemanticResource(Serializable):
 
     def __init__(self):
         self.base_name = self.name
-        if not self.config.flags.skip_deserialization:
+        if not self.config.misc.skip_deserialization:
             Serializable.__init__(self, self.dir_name)
+            self.set_serialization_params()
 
         self.set_parameters()
-        if not self.config.flags.skip_deserialization:
+        if not self.config.misc.skip_deserialization:
             self.acquire_data()
         # restore correct config
+        self.set_parameters()
         self.set_name()
         info("Restored semantic name to : {}".format(self.name))
 
@@ -154,15 +156,14 @@ class SemanticResource(Serializable):
 
     # preprocessed data getter
     def get_all_preprocessed(self):
-        return {"concept_weights": self.concept_freqs, "concept_weights": self.global_freqs,
+        return {"concept_weights": self.concept_freqs, "concept_tfidf_weights": self.global_freqs,
                 "reference_concepts": self.reference_concepts}
 
     def lookup(self, candidate):
         error("Attempted to lookup from the base class")
 
     def set_parameters(self):
-        if self.config.semantic.limit is not defs.limit.none:
-            self.do_limit = True
+        if not is_none(self.config.semantic.limit):
             self.limit_type, self.limit_number = self.config.semantic.limit
 
         self.semantic_weights = self.config.semantic.weights
@@ -182,14 +183,15 @@ class SemanticResource(Serializable):
             return None
         name_components = [config.semantic.name,
                            "w{}".format(config.semantic.weights),
-                           config.semantic.limit,
-                           "disam{}".format(config.semantic.disambiguation),
-                           "_spread{}-{}".format(*config.semantic.spreading_activation)
+                           "".join(map(str,config.semantic.limit)),
+                           "" if is_none(config.semantic.disambiguation) else "disam{}".format(config.semantic.disambiguation),
+                           "" if is_none(config.semantic.spreading_activation) else "_spread{}".format("-".join(map(str,config.semantic.spreading_activation)))
                            ]
-        if include_dataset and not config.flags.independent_component:
+        if include_dataset and not config.misc.independent_component:
             # include the dataset in the sem. resource name
-            name_components = [config.dataset.full_name] + name_components
-        return "_".join(name_components)
+            name_components = [config.dataset
+                               .full_name] + name_components
+        return "_".join(filter(lambda x: x != '', name_components))
 
     # make name string from components
     def set_name(self):
@@ -199,9 +201,9 @@ class SemanticResource(Serializable):
     # apply disambiguation to choose a single semantic unit from a collection of such
     def disambiguate(self, concepts, word_information, override=None):
         disam = self.disambiguation if not override else override
-        if disam == defs.semantic.disam.first:
+        if disam == defs.disam.first:
             return [concepts[0]]
-        elif disam == defs.semantic.disam.pos:
+        elif disam == defs.disam.pos:
             # take part-of-speech tags into account
             word, word_pos = word_information
             word_pos = word_pos[:2]
@@ -257,7 +259,7 @@ class SemanticResource(Serializable):
                 info("Skipping mapping text due to preprocessed data already loaded.")
                 return
             # if loaded non-filtered data and limiting is applied
-            if self.do_limit:
+            if not is_none(self.config.semantic.limit):
                 if self.limit_type == defs.limit.top and len(self.reference_concepts) < self.limit_number:
                     # apply filtering with the bag object
                     bag = Bag()
@@ -293,7 +295,7 @@ class SemanticResource(Serializable):
         info("Extracting {}-{} semantic information from the training dataset".format(self.name, self.semantic_weights))
         bag_train.set_term_weighting_function(self.get_concept)
         bag_train.set_term_delineation_function(self.get_term_delineation)
-        if self.do_limit:
+        if not is_none(self.config.semantic.limit):
             bag_train.set_term_filtering(self.limit_type, self.limit_number)
         bag_train.set_term_extraction_function(lambda x: x)
         bag_train.map_collection(dataset.train)
@@ -323,8 +325,7 @@ class SemanticResource(Serializable):
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.concept_freqs, self.global_freqs, self.reference_concepts \
-                = [preprocessed[x] for x in self.data_names]
+        self.concept_freqs, self.global_freqs, self.reference_concepts = [preprocessed[x] for x in self.data_names]
         debug("Read preprocessed concept docs shapes: {}, {}".format(*list(map(len, self.concept_freqs))))
 
     def get_term_delineation(self, document_text):
@@ -613,7 +614,7 @@ class Framenet(SemanticResource):
         # http://www.nltk.org/howto/framenet.html
         word, word_pos = candidate
         # in framenet, pos-disambiguation is done via the lookup
-        if self.disambiguation == defs.semantic.disam.pos:
+        if self.disambiguation == defs.disam.pos:
             frames = self.lookup_with_POS(candidate)
         else:
             frames = fn.frames_by_lemma(word)
@@ -635,7 +636,7 @@ class Framenet(SemanticResource):
         frames = fn.frames_by_lemma(word)
         if not frames:
             return None
-        return self.disambiguate(frames, candidate, override=defs.semantic.disam.first)
+        return self.disambiguate(frames, candidate, override=defs.disam.first)
 
     def get_related_frames(self, frame):
         # get just parents

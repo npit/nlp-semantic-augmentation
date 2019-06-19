@@ -90,7 +90,6 @@ class Serializable:
         self.read_functions.insert(0, reader)
         self.handler_functions.insert(0, handler)
 
-
     def set_serialization_params(self):
         self.data_paths = []
         self.read_functions = []
