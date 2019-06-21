@@ -1,5 +1,5 @@
-from learner import Learner
-from utils import tictoc, write_pickled, info, error, read_pickled, one_hot, ill_defined
+from learning.learner import Learner
+from utils import error, one_hot, ill_defined
 import numpy as np
 from sklearn.naive_bayes import GaussianNB
 
@@ -64,4 +64,3 @@ class NaiveBayes(SKLClassifier):
         if dataset.is_multilabel():
             error("Cannot apply {} to multilabel data.".format(self.name))
         SKLClassifier.make(self, representation, dataset)
-

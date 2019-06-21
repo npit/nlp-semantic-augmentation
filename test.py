@@ -7,7 +7,7 @@ import yaml
 from utils import write_pickled, warning, nltk_download
 import argparse
 
-import representation
+from representation import word_embedding, bag_representation
 import semantic
 import transform
 from defs import alias
@@ -65,7 +65,7 @@ def setup_test_resources(args):
     # insert available configurations
     conf["params"] = {}
 
-    conf["params"]["representation"] = {"name": [representation.WordEmbedding.name, representation.BagRepresentation.name, representation.TFIDFRepresentation.name],
+    conf["params"]["representation"] = {"name": [word_embedding.WordEmbedding.name, bag_representation.BagRepresentation.name, bag_representation.TFIDFRepresentation.name],
                                         "aggregation": ["avg", "pad", "none"], "sequence_length": [1, 10]}
     del conf["representation"]["name"]
     del conf["representation"]["aggregation"]
@@ -79,9 +79,9 @@ def setup_test_resources(args):
     conf["params"]["semantic"] = {"name": [semantic.Wordnet.name, alias.none]}
     del conf["semantic"]["name"]
 
-    conf["params"]["learner"] = {"name": ["mlp"], "hidden_dim": [64], "layers": [2]}
+    conf["params"]["learning"] = {"name": ["mlp"], "hidden_dim": [64], "layers": [2]}
     for x in ["name", "hidden_dim", "layers"]:
-        del conf["learner"][x]
+        del conf["learning"][x]
 
 
     # set static parameters
@@ -99,7 +99,7 @@ def setup_test_resources(args):
     conf["train"]["validation_portion"] = None
 
     conf["print"]["run_types"] = ["run", "majority"]
-    conf["learner"]["no_load"] = True
+    conf["learning"]["no_load"] = True
 
     # write incompatible combinations
     write_bad_combos(config_file + ".bad_combos")
@@ -126,13 +126,13 @@ def write_bad_combos(outfile):
     # lstms without pad
     combos.append(
         [
-        [["learner", "name"], "lstm"],
+        [["learning", "name"], "lstm"],
         [["representation", "aggregation"], ["avg", "none"]]
             ])
     # pad with no lstms
     combos.append(
         [
-        [["learner", "name"], ["mlp", "kmeans", "naive_bayes"] ],
+        [["learning", "name"], ["mlp", "kmeans", "naive_bayes"] ],
         [["representation", "aggregation"], "pad"]
             ])
     # WEs with no aggregation

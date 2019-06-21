@@ -40,6 +40,7 @@ class Evaluator:
     # error analysis
     error_analysis = None
     error_analysis_types = ["top", "bottom"]
+    label_distribution = None
     top_k = 3
 
     # constructor
@@ -49,6 +50,7 @@ class Evaluator:
         # minor inits
         self.predictions = {rt: [] for rt in self.run_types}
         self.predictions_instance_indexes = []
+        self.label_distribution = {}
 
     def configure(self, test_labels, num_labels, do_multilabel, use_validation_for_training):
         """Label setter method"""
@@ -171,7 +173,7 @@ class Evaluator:
 
     # print performance across folds and compute foldwise aggregations
     def report_overall_results(self, validation_description, write_folder):
-        """Function to report learner results
+        """Function to report learning results
         """
         info("==============================")
         self.show_label_distribution(self.test_labels)
@@ -204,6 +206,7 @@ class Evaluator:
                         # if all([run_type in self.preferred_types, measure in self.preferred_measures]):
                         #     scores_str = self.get_score_stats_string(self.performance[run_type][measure])
                         #     info("{:10} {:10} : {}".format(run_type, measure, scores_str))
+            info("------------------------------")
 
         if write_folder is not None:
             # write the results in csv in the results directory
@@ -272,27 +275,34 @@ class Evaluator:
             self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
 
     # show labels distribution
-    def show_label_distribution(self, labels=None):
-        if labels is None:
-            labels = self.test_labels
-        # show label distribution
-        hist = {}
-        for lblset in labels:
-            if self.do_multilabel:
-                for lbl in lblset:
-                    lbl = int(lbl)
-                    if lbl not in hist:
-                        hist[lbl] = 0
-                    hist[lbl] += 1
-            else:
-                if lblset not in hist:
-                    hist[lblset] = 0
-                hist[lblset] += 1
-        info("Label distribution:")
-        sorted_labels = sorted(hist.keys())
-        for lbl in sorted_labels:
-            count = hist[lbl]
-            info("Label {} : {}".format(lbl, count))
+    def show_label_distribution(self, labels=None, do_show=True):
+        if not self.label_distribution:
+            if labels is None:
+                labels = self.test_labels
+            # calc label distribution
+            for lblset in labels:
+                if self.do_multilabel:
+                    for lbl in lblset:
+                        lbl = int(lbl)
+                        if lbl not in self.label_distribution:
+                            self.label_distribution[lbl] = 0
+                        self.label_distribution[lbl] += 1
+                else:
+                    label = lblset
+                    try:
+                        label = lblset[0]
+                    except:
+                        pass
+                    if label not in self.label_distribution:
+                        self.label_distribution[label] = 0
+                    self.label_distribution[label] += 1
+        if do_show:
+            info("Label distribution:")
+            sorted_labels = sorted(self.label_distribution.keys())
+            for lbl in sorted_labels:
+                maj = " - [majority]" if lbl == self.majority_label else ""
+                count = self.label_distribution[lbl]
+                info("Label {} : {}{}".format(lbl, count, maj))
 
     # evaluate predictions and add baselines
     def evaluate_learning_run(self, predictions, instance_indexes=None):
@@ -310,8 +320,9 @@ class Evaluator:
         # add run performance wrt argmax predictions
         self.evaluate_predictions("run", predictions)
         # majority classifier
-        if self.majority_label is None or not self.use_validation_for_training:
-            self.majority_label = get_majority_label(self.test_labels, self.num_labels, self.do_multilabel)
+        if self.majority_label is None:
+            self.majority_label = get_majority_label(self.test_labels, self.num_labels)
+            info("Majority label: {}".format(self.majority_label))
         majpred = np.zeros(predictions.shape, np.float32)
         majpred[:, self.majority_label] = 1.0
         self.evaluate_predictions("majority", majpred)
@@ -436,9 +447,9 @@ class Evaluator:
                 scores = " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["instances"][run_type][an_type])
                 info("{:10} {:8} {:7} {:10} | ({}) ({})".format("accuracy", run_type, an_type, "instances", indexes, scores))
 
-            for measure in [x for x in self.performance[run_type] if x in self.preferred_measures]:
-                info("{:10} {:8} {:7} {:10} | ({}) ({})".format(measure, run_type, an_type, "labels", " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["labels"][run_type][measure][an_type]),
-                                                                " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["labels"][run_type][measure][an_type])))
+                for measure in [x for x in self.performance[run_type] if x in self.preferred_measures]:
+                    info("{:10} {:8} {:7} {:10} | ({}) ({})".format(measure, run_type, an_type, "labels", " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["labels"][run_type][measure][an_type]),
+                                                                    " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["labels"][run_type][measure][an_type])))
 
     # analyze error wrt selected parameters
     def analyze_errors(self, run_type, measure, aggregation):

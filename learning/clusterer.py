@@ -1,4 +1,4 @@
-from learner import Learner
+from learning.learner import Learner
 from utils import debug, error
 import numpy as np
 from sklearn.cluster import KMeans

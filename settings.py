@@ -188,9 +188,12 @@ class Config:
     def read_config(self, input_config):
         # read yml file
         if type(input_config) == str:
-            # it's a yaml file
-            with open(input_config) as f:
-                self.conf = yaml.load(f, Loader=yaml.SafeLoader)
+            try:
+                # it's a yaml file
+                with open(input_config) as f:
+                    self.conf = yaml.load(f, Loader=yaml.SafeLoader)
+            except yaml.parser.ParserError as p:
+                error("Failed to parse input config file: {}".format(input_config))
         elif type(input_config) == dict:
             self.conf = input_config
 
@@ -239,7 +242,7 @@ class Config:
             self.semantic.context_threshold = self.get_value("context_threshold", base=semantic_opts)
             self.semantic.spreading_activation = self.get_value("spreading_activation", base=semantic_opts, expected_type=list, default=[])
 
-        need(self.has_value("learner"), "Need learner information")
+        need(self.has_value("learner"), "Need learning information")
         learner_opts = self.conf["learner"]
         self.learner.name = learner_opts["name"]
         self.learner.hidden_dim = learner_opts["hidden_dim"]

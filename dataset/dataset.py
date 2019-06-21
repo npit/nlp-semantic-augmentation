@@ -4,7 +4,8 @@ import tqdm
 import numpy as np
 from os import listdir
 from os.path import basename, join
-from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, zero_length, flatten
+from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, flatten
+from defs import is_none
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.model_selection import StratifiedShuffleSplit
 from nltk.corpus import stopwords, reuters
@@ -12,7 +13,7 @@ from nltk.stem import WordNetLemmatizer, PorterStemmer
 from nltk.tokenize import word_tokenize, sent_tokenize
 import string
 import nltk
-from semantic import Wordnet
+from semantic.wordnet import Wordnet
 
 from serializable import Serializable
 
@@ -31,16 +32,6 @@ class Dataset(Serializable):
     data_names = ["train-data", "train-labels", "train-label-names",
                   "test-data", "test-labels", "test_label-names"]
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
-
-    def create(config):
-        name = config.dataset.name
-        if name == TwentyNewsGroups.name:
-            return TwentyNewsGroups(config)
-        elif name == Reuters.name:
-            return Reuters(config)
-        else:
-            # default to manually-defined dataset
-            return ManualDataset(config)
 
     @staticmethod
     def generate_name(config):
@@ -119,7 +110,7 @@ class Dataset(Serializable):
     def get_raw_path(self):
         error("Need to override raw path datasea getter for {}".format(self.name))
 
-    def fetch_raw(self):
+    def fetch_raw(self, dummy_input):
         error("Need to override raw data fetcher for {}".format(self.name))
 
     def handle_raw(self, raw_data):
@@ -263,8 +254,12 @@ class Dataset(Serializable):
     def apply_limit(self):
         if self.config.has_limit():
             self.base_name = Dataset.generate_name(self.config)
-            name = self.apply_class_limit(self.base_name)
-            self.name = self.apply_data_limit(name)
+            name = self.base_name
+            if not is_none(self.config.dataset.class_limit):
+                name = self.apply_class_limit(self.base_name)
+            if not is_none(self.config.dataset.data_limit):
+                name = self.apply_data_limit(name)
+            self.name = name
             self.set_serialization_params()
         if self.train:
             # serialize the limited version
@@ -399,241 +394,4 @@ class Dataset(Serializable):
         return res
 
     def __str__(self):
-        return "{}, train/test {}, num labels: {}".format(self.base_name, len(self.train), len(self.test), self.num_labels)
-
-
-class TwentyNewsGroups(Dataset):
-    name = "20newsgroups"
-    language = "english"
-
-    def fetch_raw(self, dummy_input):
-        # only applicable for raw dataset
-        if self.name != self.base_name:
-            return None
-        info("Downloading {} via sklearn".format(self.name))
-
-        train = fetch_20newsgroups(data_home=join(self.config.folders.raw_data, "sklearn"), subset='train')
-        test = fetch_20newsgroups(data_home=join(self.config.folders.raw_data, "sklearn"), subset='test')
-        return [train, test]
-
-    def handle_raw(self, raw_data):
-
-        # results are sklearn bunches
-        # map to train/test/categories
-        train, test = raw_data
-        info("Got {} and {} train / test samples".format(len(train.data), len(test.data)))
-        self.train, self.test = train.data, test.data
-        self.train_labels, self.test_labels = np.array_split(train.target, len(train.target)), np.array_split(test.target, len(test.target))
-        self.train_label_names = train.target_names
-        self.test_label_names = test.target_names
-        self.num_labels = len(self.train_label_names)
-        # write serialized data
-        write_pickled(self.serialization_path, self.get_all_raw())
-        self.loaded_raw = True
-
-    def __init__(self, config):
-        self.config = config
-        self.base_name = self.name
-        Dataset.__init__(self)
-        self.multilabel = False
-
-    # raw path setter
-    def get_raw_path(self):
-        # dataset is downloadable
-        pass
-
-
-class Reuters(Dataset):
-    name = "reuters"
-    language = "english"
-
-    def __init__(self, config):
-        self.config = config
-        self.multilabel = True
-        self.base_name = self.name
-        Dataset.__init__(self)
-
-    def fetch_raw(self, dummy_input):
-        # only applicable for raw dataset
-        if self.name != self.base_name:
-            return None
-        info("Downloading raw {} dataset".format(self.name))
-        if not self.nltk_dataset_resource_exists(Reuters.name):
-            nltk_download(self.config, "reuters")
-        # get ids
-        categories = reuters.categories()
-        self.num_labels = len(categories)
-        self.train_label_names, self.test_label_names = [], []
-        # train / test labels
-        samples = {}
-        train_docs, test_docs = [], []
-        doc2labels = {}
-
-        # get content
-        for cat_index, cat in enumerate(categories):
-            samples[cat] = [0, 0]
-
-            # get all docs in that category
-            for doc in reuters.fileids(cat):
-                # document to label mappings
-                if doc not in doc2labels:
-                    # not encountered: init document label list
-                    doc2labels[doc] = []
-                    if doc.startswith("training"):
-                        train_docs.append(doc)
-                    else:
-                        test_docs.append(doc)
-                # count samples
-                if doc.startswith("training"):
-                    samples[cat][0] += 1
-                else:
-                    samples[cat][1] += 1
-                # append the label
-                doc2labels[doc].append(cat_index)
-
-        doc2labels, label_set = self.delete_no_sample_labels(samples, doc2labels)
-
-        self.train, self.test = [], []
-        self.train_labels, self.test_labels = [], []
-        # assign label lists
-        for doc in train_docs:
-            self.train.append(reuters.raw(doc))
-            self.train_labels.append(doc2labels[doc])
-        for doc in test_docs:
-            self.test.append(reuters.raw(doc))
-            self.test_labels.append(doc2labels[doc])
-
-        self.train_label_names, self.test_label_names = label_set, label_set
-        info("Loaded {} train & {} test instances.".format(len(self.train), len(self.test)))
-        return self.get_all_raw()
-
-    # delete undersampled classes
-    def delete_no_sample_labels(self, samples, doc2labels):
-        # This reports different smaples: https://martin-thoma.com/nlp-reuters/
-        labels2delete = []
-        for label in samples:
-            if any([x == 0 for x in samples[label]]):
-                warning("Will remove label {} with samples: {}".format(label, samples[label]))
-                labels2delete.append(label)
-        if labels2delete:
-            warning("Removing {} labels due to no train/test samples: {}".format(len(labels2delete), labels2delete))
-            docs2delete = []
-            for doc in doc2labels:
-                new_labels = [l for l in doc2labels[doc] if l not in labels2delete]
-                if not new_labels:
-                    docs2delete.append(doc)
-                doc2labels[doc] = new_labels
-            for doc in docs2delete:
-                del doc2labels[doc]
-        return doc2labels, list(samples.keys())
-
-    def handle_raw(self, raw_data):
-        # serialize
-        write_pickled(self.serialization_path, raw_data)
-        self.loaded_raw = True
-        pass
-
-    # raw path getter
-    def get_raw_path(self):
-        # dataset is downloadable
-        return None
-
-
-class ManualDataset(Dataset):
-    """ Class to import a dataset from a folder.
-
-    Expected format in the yml config:
-    name: path/to/dataset_name.json
-
-    In the above path, define dataset json as:
-    {
-        data:
-            train:
-                 [
-                     {
-                        text: "this is the document text"
-                        labels: [0,2,3]
-                     },
-                     ...
-                 ],
-            test: [...]
-        num_labels: 10
-        label_names: ['cat', 'dog', ...]
-        language: english
-    }
-    """
-
-    def __init__(self, config):
-        self.config = config
-        self.name = self.base_name = basename(config.dataset.name)
-        Dataset.__init__(self)
-
-    def get_all_raw(self):
-        data = Dataset.get_all_raw(self)
-        data["language"] = self.language
-        data["multilabel"] = self.is_multilabel()
-        return data
-
-    # raw path getter
-    def get_raw_path(self):
-        return self.config.dataset.name
-
-    def fetch_raw(self, raw_data_path):
-        # no limited dataset
-        if self.name != self.base_name:
-            return None
-
-        with open(raw_data_path) as f:
-            raw_data = json.load(f)
-        return raw_data
-
-    def handle_raw(self, raw_data):
-        max_num_instance_labels = 0
-        self.num_labels = raw_data["num_labels"]
-        self.language = raw_data["language"]
-        data = raw_data["data"]
-
-        self.train, self.train_labels = [], []
-        self.test, self.test_labels = [], []
-
-        unique_labels = {"train": set(), "test": set()}
-        for obj in data["train"]:
-            self.train.append(obj["text"])
-            lbls = obj["labels"]
-            self.train_labels.append(lbls)
-            unique_labels["train"].update(lbls)
-            max_num_instance_labels = len(lbls) if len(lbls) > max_num_instance_labels else max_num_instance_labels
-        for obj in data["test"]:
-            self.test.append(obj["text"])
-            self.test_labels.append(obj["labels"])
-            unique_labels["test"].update(obj["labels"])
-
-        if "label_names" in raw_data:
-            self.train_label_names = raw_data["label_names"]["train"]
-            self.test_label_names = raw_data["label_names"]["test"]
-        else:
-            self.train_label_names, self.test_label_names = \
-                [list(map(str, sorted(unique_labels[tt]))) for tt in ["train", "test"]]
-        if max_num_instance_labels > 1:
-            self.multilabel = True
-        # write serialized data
-        write_pickled(self.serialization_path, self.get_all_raw())
-
-    def handle_raw_serialized(self, deserialized_data):
-        Dataset.handle_raw_serialized(self, deserialized_data)
-        self.language = deserialized_data["language"]
-        self.multilabel = deserialized_data["multilabel"]
-
-    def handle_serialized(self, deserialized_data):
-        self.handle_raw_serialized(self, deserialized_data)
-
-    def handle_preprocessed(self, deserialized_data):
-        Dataset.handle_preprocessed(self, deserialized_data)
-
-    def get_name(self):
-        # get only the filename
-        return basename(self.name)
-
-    def get_base_name(self):
-        # get only the base filename
-        return basename(self.base_name)
+        return "{}, train/test {}/{}, num labels: {}".format(self.base_name, len(self.train), len(self.test), self.num_labels)

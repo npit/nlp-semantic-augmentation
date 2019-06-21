@@ -3,9 +3,9 @@ import tqdm
 import yaml
 import argparse
 from nltk.corpus import wordnet as wn
+from semantic.semantic_resource import SemanticResource
 import dataset
 import settings
-import semantic
 from utils import to_namedtuple, info, setup_simple_logging
 
 """
@@ -122,7 +122,7 @@ def produce_semantic_neighbourhood(config_file):
         config.misc.independent_component = True
         config.misc.skip_deserialization = True
         config.semantic.spreading_activation = config.semantic.spreading_activation[0], 0.5
-        semres = semantic.SemanticResource.create(config)
+        semres = SemanticResource.create(config)
     except:
         print("Problematic configuration in {}".format(config_file))
 

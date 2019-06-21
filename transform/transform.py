@@ -1,4 +1,4 @@
-from utils import error, info, shapes_list, write_pickled, debug
+from utils import error, info, shapes_list, write_pickled
 import numpy as np
 from sklearn.decomposition import TruncatedSVD, LatentDirichletAllocation
 from sklearn.mixture import GaussianMixture
@@ -25,23 +25,6 @@ class Transform(Serializable):
     process_func_test = None
     is_supervised = None
     term_components = None
-
-    @staticmethod
-    def create(representation):
-        config = representation.config
-        name = config.transform.name
-        if name == LSA.base_name:
-            return LSA(representation)
-        if name == KMeansClustering.base_name:
-            return KMeansClustering(representation)
-        if name == GMMClustering.base_name:
-            return GMMClustering(representation)
-        if name == LiDA.base_name:
-            return LiDA(representation)
-        if name == LDA.base_name:
-            return LDA(representation)
-        # any unknown name is assumed to be pretrained embeddings
-        error("Undefined feature transformation: {}, available ones are {}".format(name, Transform.get_available()))
 
 
     @staticmethod
@@ -151,111 +134,3 @@ class Transform(Serializable):
             error("{} result contains nan elements in :{}".format(self.name, nans))
 
 
-class LSA(Transform):
-    """Latent Semantic Analysis decomposition.
-
-    Based on the truncated SVD implementation of sklearn.
-    """
-    base_name = "lsa"
-
-    def __init__(self, representation):
-        """LSA constructor"""
-        Transform.__init__(self, representation)
-        self.transformer = TruncatedSVD(self.dimension)
-        self.process_func_train = self.transformer.fit_transform
-        self.process_func_test = self.transformer.transform
-
-
-class GMMClustering(Transform):
-    """Gausian Mixture Model clustering
-
-    Uses the Gaussian mixture implementation of sklearn.
-    """
-    base_name = "gmm"
-
-    def __init__(self, representation):
-        """GMM-clustering constructor"""
-        Transform.__init__(self, representation)
-        self.transformer = GaussianMixture(self.dimension)
-        self.process_func_train = self.fit_predict_proba
-        self.process_func_test = self.transformer.predict_proba
-
-    def fit_predict_proba(self, data):
-        self.transformer = self.transformer.fit(data)
-        return self.process_func_test(data)
-
-    def get_term_representations(self):
-        """Return term-based, rather than document-based representations
-        """
-        return self.transformer.means_
-
-
-class KMeansClustering(Transform):
-    """KMeans clustering
-
-    Uses the KMeans implementation of sklearn.
-    """
-    base_name = "kmeans"
-
-    def __init__(self, representation):
-        """Kmeans-clustering constructor"""
-        Transform.__init__(self, representation)
-        self.transformer = KMeans(self.dimension)
-        self.process_func_train = self.fit
-        self.process_func_test = self.do_transform
-
-    def fit(self, data):
-        self.transformer = self.transformer.fit(data)
-        return self.do_transform(data)
-
-    def do_transform(self, data):
-        res = self.transformer.transform(data)
-        return res
-
-    def get_term_representations(self):
-        """Return term-based, rather than document-based representations
-        """
-        return self.transformer.cluster_centers_
-
-
-class LiDA(Transform):
-    """Linear Discriminant Analysis transformation
-
-    Uses the LiDA implementation of sklearn.
-    """
-    base_name = "lida"
-
-    def __init__(self, representation):
-        """LiDA constructor"""
-        Transform.__init__(self, representation)
-        self.transformer = LinearDiscriminantAnalysis(n_components=self.dimension)
-        self.is_supervised = True
-        self.process_func_train = self.transformer.fit_transform
-        self.process_func_test = self.transformer.transform
-
-    def check_compatibility(self, dataset, repres):
-        if dataset.is_multilabel():
-            error("{} transform is not compatible with multi-label data.".format(self.base_name))
-        if not (self.dimension < dataset.get_num_labels() - 1):
-            error("The {} projection dimension ({}) needs to be less than the dataset classes minus one ({} -1 = {})".\
-                  format(self.base_name, self.dimension, dataset.get_num_labels(), dataset.get_num_labels() - 1))
-
-    def get_term_representations(self):
-        """Return term-based, rather than document-based representations
-        """
-        return self.transformer.means_
-
-
-class LDA(Transform):
-    """Latent Dirichlet Allocation transformation
-
-    Uses the LDA implementation of sklearn.
-    """
-    base_name = "lda"
-
-    def __init__(self, config):
-        self.config = config
-        Transform.__init__(self, config)
-        self.transformer = LatentDirichletAllocation(n_components=self.dimension, random_state=self.config.get_seed())
-        self.process_func_train = self.transformer.fit_transform
-        self.process_func_test = self.transformer.transform

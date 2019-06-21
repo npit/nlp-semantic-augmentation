@@ -1,8 +1,8 @@
-from utils import error, info, read_pickled, tictoc, write_pickled, one_hot, warning
+from utils import error, info, read_pickled, tictoc, write_pickled, one_hot, warning, get_majority_label
 from sklearn.model_selection import KFold, StratifiedKFold, StratifiedShuffleSplit
 import numpy as np
 from os.path import join, dirname, exists, basename
-from evaluator import Evaluator
+from learning.evaluator import Evaluator
 from os import makedirs
 
 
@@ -21,7 +21,7 @@ class Learner:
     test_instance_indexes = None
 
     def __init__(self):
-        """Generic learner constructor
+        """Generic learning constructor
         """
         # initialize evaluation
         self.evaluator = Evaluator(self.config)
@@ -75,12 +75,20 @@ class Learner:
         # sanity checks
         if self.do_folds and self.do_validate_portion:
             error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
+        if not (self.validation_exists or self.test_data_available()):
+            error("No test data or cross/portion-validation setting specified.")
 
         # configure and sanity-check evaluator
         self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
+        if not self.use_validation_for_training:
+            # calculate the majority label from the training data
+            self.evaluator.majority_label = get_majority_label(self.train_labels, self.num_labels)
+            info("Majority label: {}".format(self.evaluator.majority_label))
+            self.evaluator.show_label_distribution(labels=self.train_labels, do_show=False)
+
 
         error("Input none dimension.", self.input_dim is None)
-        info("Created learner: {}".format(self))
+        info("Created learning: {}".format(self))
 
     def is_already_completed(self):
         predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")

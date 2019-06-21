@@ -2,6 +2,7 @@ from utils import error, tictoc, debug, info
 import defs
 import tqdm
 import numpy as np
+from scipy.sparse import csr_matrix
 
 
 class Bag:
@@ -16,6 +17,9 @@ class Bag:
     filter_quantity = None
     term_delineation_func = None
 
+    term_index_map = None
+    sparse = None
+
     @staticmethod
     def delineate_words(collection):
         return [word_info for word_info in collection]
@@ -26,6 +30,7 @@ class Bag:
 
     def __init__(self):
         self.term_list = []
+        self.term_index_map = {}
         self.global_weights = {}
         self.use_fixed_term_list = False
         # non-fixed term list as the default
@@ -128,7 +133,7 @@ class Bag:
             weights_dict[item] += weight
         return weights_dict
 
-    # checks wether the term is valid to be included in the bag
+    # greenlight func: checks if term is in the existing list
     def check_term_in_list(self, term):
         # if a term list has been supplied, only use terms in it
         return term in self.term_list
@@ -136,21 +141,28 @@ class Bag:
     # processes an term of an instance, producing pairs of vector_index and frequency_count
     # Applied for a non-fixed term list, returning the term itself
     def unit_term_weighting(self, term):
-        if self.term_greenlight_func(term):
-            return {term: 1}
-        return {}
+        return {term: 1}
+
+    # generic wrapper for getting term weights
+    def get_term_weights(self, term):
+        # greenlight with the selected greenlighting function
+        if not self.term_greenlight_func(term):
+            return {}
+        # get weight wrt the selected weighting function
+        return self.term_weighting_func(term)
 
     def map_collection(self, text_collection):
         # present word tracking only available for the default (word-wise) delineation
         do_track_present_terms = False if self.term_delineation_func != Bag.delineate_words else True
+        num_docs = len(text_collection)
 
         # collection-wise information
         self.weights, self.present_terms, self.present_term_indexes = [], [], []
 
         # global term-wise frequencies
-        with tqdm.tqdm(desc="Creating bow vectors", total=len(text_collection), ascii=True, ncols=100, unit="collection") as pbar:
+        with tqdm.tqdm(desc="Creating bow vectors", total=num_docs, ascii=True, ncols=100, unit="collection") as pbar:
             for t, word_info_list in enumerate(text_collection):
-                pbar.set_description("Text {}/{}".format(t + 1, len(text_collection)))
+                pbar.set_description("Text {}/{}".format(t + 1, num_docs))
                 pbar.update()
                 text_term_freqs = {}
                 present_terms = []
@@ -159,7 +171,7 @@ class Bag:
                 # iterate
                 for term in term_list:
                     # process term, and produce weight information of the processed result
-                    term_weights = self.term_weighting_func(term)
+                    term_weights = self.get_term_weights(term)
                     # if the word produced weights, add it to the present words
                     if not term_weights:
                         continue
@@ -184,12 +196,36 @@ class Bag:
 
         # apply filtering, if selected
         self.filter_terms()
-        info("Mapped the collection to frequencies of {} terms.".format(len(self.term_list)))
+
+        with tictoc("Building term index and switching to integer mapping", announce=False):
+            # map terms to term list index
+            for term in self.term_list:
+                if term not in self.term_index_map:
+                    self.term_index_map[term] = self.term_list.index(term)
+                term_index = self.term_index_map[term]
+                # update global freqs to integer index keys
+                if term in self.global_weights:
+                    self.global_weights[term_index] = self.global_weights[term]
+                    del self.global_weights[term]
+            row_index, col_index, data = [], [], []
+            # update per-doc freqs to integer index keys
+            for d, doc_dict in enumerate(self.weights):
+                for term in doc_dict:
+                    term_index = self.term_index_map[term]
+                    row_index.append(d)
+                    col_index.append(term_index)
+                    data.append(doc_dict[term])
+            # make sparse
+            self.sparse = csr_matrix((data, (row_index, col_index)), shape=(num_docs, len(self.term_list)), dtype=np.float32)
+            # remove term-based dictionary
+            del self.weights
+
+        info("Mapped the collection to frequencies of {} {} terms.".format(len(self.term_list), "specified" if self.use_fixed_term_list else "discovered"))
 
     # getters
     # #####################
     def get_weights(self):
-        return self.weights
+        return self.sparse
 
     def get_global_weights(self):
         return self.global_weights
@@ -203,14 +239,10 @@ class Bag:
     def get_term_list(self):
         return self.term_list
 
-    @staticmethod
-    def generate_dense(weights, term_list):
-        for dset_idx in range(len(weights)):
-            container = np.zeros((0, len(term_list)), np.float32)
-            for doc_idx, doc_dict in enumerate(weights[dset_idx]):
-                container = np.append(container, np.asarray([[doc_dict[s] if s in doc_dict else 0 for s in term_list]], np.float32), axis=0)
-            weights[dset_idx] = container
-        return weights
+    def get_dense(self, input_sparse=None):
+        if input_sparse is None:
+            input_sparse = self.sparse
+        return input_sparse.toarray() if input_sparse is not None else None
 
 
 class TFIDF(Bag):
@@ -227,9 +259,8 @@ class TFIDF(Bag):
         with tictoc("TFIDF normalization"):
             if input_data is not None:
                 # just process the input
-                self.weights, self.global_weights = input_data
+                self.sparse, self.global_weights, self.term_list = input_data
             # normalize
-            for vector_idx in range(len(self.weights)):
-                for term_key in self.weights[vector_idx]:
-                    self.weights[vector_idx][term_key] = \
-                        self.weights[vector_idx][term_key] / self.global_weights[term_key]
+            for indexes in zip(*self.sparse.nonzero()):
+                # last index supposed to be the term list index
+                self.sparse[indexes] /= self.global_weights[indexes[-1]]

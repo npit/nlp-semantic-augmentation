@@ -101,7 +101,11 @@ def one_hot(labels, num_labels):
 
 
 def shapes_list(thelist):
-    return [get_shape(x) for x in thelist]
+    try:
+        return [get_shape(x) for x in thelist]
+    except:
+        # non-ndarray case
+        return [len(x) for x in thelist]
 
 def get_shape(element):
     """numpy shape fetcher, handling empty inputs"""
@@ -138,18 +142,23 @@ def align_index(input_list, reference):
     return output
 
 
-def get_majority_label(labels, num_labels, is_multilabel):
+def get_majority_label(labels, num_labels):
     """Gets majority (in terms of frequency) label in (potentially multilabel) input
     """
     maxfreq, maxlabel = -1, -1
-    for t in range(num_labels):
-        if is_multilabel:
+    try:
+        for t in range(num_labels):
             freq = len([1 for labelset in labels if t in labelset])
-        else:
-            freq = len([1 for label in labels if t ==label])
-        if freq > maxfreq:
-            maxfreq = freq
-            maxlabel = t
+            if freq > maxfreq:
+                maxfreq = freq
+                maxlabel = t
+    except TypeError:
+        # non-iterable labels
+        for t in range(num_labels):
+            freq = len([1 for label in labels if t == label])
+            if freq > maxfreq:
+                maxfreq = freq
+                maxlabel = t
     return maxlabel
 
 

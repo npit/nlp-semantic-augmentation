@@ -1,13 +1,13 @@
 #! /home/nik/work/iit/submissions/NLE-special/venv/bin/python3.6
 import warnings
-from dataset import Dataset
-from representation import Representation
-from semantic import SemanticResource
-from transform import Transform
+from dataset import instantiator as dset_instantiator
+from representation import instantiator as rep_instantiator
+from semantic import instantiator as sem_instantiator
+from transform.transform import Transform
 from settings import Config
 import argparse
 from utils import info, warning, num_warnings, tictoc
-from instantiator import instantiate_learner
+from learning import instantiator as lrn_instantiator
 warnings.simplefilter(action='ignore', category=FutureWarning)
 print("Imports done.")
 
@@ -22,13 +22,13 @@ def main(config_file):
     with tictoc("Total run"):
         # datasets loading & preprocessing
         info("===== DATASET =====")
-        dataset = Dataset.create(config)
+        dataset = dset_instantiator.create(config)
         dataset.preprocess()
 
         # check for existing & precomputed transformed representations
         info("===== REPRESENTATION =====")
         # setup the representation
-        representation = Representation.create(config)
+        representation = rep_instantiator.create(config)
 
         transform = None
         if config.has_transform():
@@ -57,7 +57,7 @@ def main(config_file):
         semantic = None
         if config.has_semantic():
             info("===== SEMANTIC =====")
-            semantic = SemanticResource.create(config)
+            semantic = sem_instantiator.create(config)
             semantic.map_text(representation, dataset)
             semantic.generate_vectors()
             representation.set_semantic(semantic)
@@ -65,7 +65,7 @@ def main(config_file):
         # learning
         info("===== LEARNING =====")
         # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
-        learner = instantiate_learner(config)
+        learner = lrn_instantiator.create(config)
         learner.make(representation, dataset)
         learner.do_traintest()
 

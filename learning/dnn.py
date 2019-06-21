@@ -1,14 +1,15 @@
-from os.path import join, exists, basename
+from os.path import join, basename
 from sklearn.exceptions import UndefinedMetricWarning
 import warnings
 from os import makedirs
 import numpy as np
-from classifier import Classifier
+from learning.classifier import Classifier
 from keras.models import Sequential
 from keras.layers import Activation, Dense, Dropout
 from keras.layers import LSTM as keras_lstm
 from keras import callbacks
-from utils import info, debug, error, write_pickled, one_hot
+from utils import info, debug, error, write_pickled
+
 # from keras import backend
 # import tensorflow as tf
 
@@ -172,7 +173,7 @@ class LSTM(DNN):
         self.layers = self.config.learner.num_layers
         self.sequence_length = self.config.learner.sequence_length
         if self.sequence_length is None:
-            error("Undefined learner sequence length, but required for {}.".format(self.name))
+            error("Undefined learning sequence length, but required for {}.".format(self.name))
         DNN.__init__(self)
 
     # make network
@@ -198,10 +199,10 @@ class LSTM(DNN):
             error("[{}] not compatible with unit instance indexes: {}.".format(self.name, unit_instance_indexes))
         # sequence length data / label matching
         if self.num_train != self.num_train_labels and (self.num_train != self.sequence_length * self.num_train_labels):
-            error("Irreconcilable lengths of training data and labels: {}, {} with learner sequence length of {}.".
+            error("Irreconcilable lengths of training data and labels: {}, {} with learning sequence length of {}.".
                   format(self.num_train, self.num_train_labels, self.sequence_length))
         if self.num_test != self.num_test_labels and (self.num_test != self.sequence_length * self.num_test_labels):
-            error("Irreconcilable lengths of test data and labels: {}, {} with learner sequence length of {}.".
+            error("Irreconcilable lengths of test data and labels: {}, {} with learning sequence length of {}.".
                   format(self.num_test, self.num_test_labels, self.sequence_length))
 
     # fetch sequence lstm fold data
