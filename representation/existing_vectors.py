@@ -43,7 +43,6 @@ class ExistingVectors(Embedding):
                   format(len(self.vectors), self.sequence_length, len(dset.train), len(dset.test)))
         self.dataset_vectors = [self.vectors[:self.sequence_length * len(dset.train)], self.vectors[:self.sequence_length * len(dset.test)]]
         self.set_constant_elements_per_instance(num=self.sequence_length)
-        self.present_term_indexes = []
         del self.vectors
         # write
         info("Writing dataset mapping to {}".format(self.serialization_path_preprocessed))

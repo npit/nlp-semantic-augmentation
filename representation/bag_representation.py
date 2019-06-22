@@ -13,8 +13,7 @@ class BagRepresentation(Representation):
     term_list = None
     do_limit = None
 
-    data_names = ["dataset_vectors", "elements_per_instance", "term_list",
-                  "present_term_indexes"]
+    data_names = ["dataset_vectors", "elements_per_instance", "term_list"]
 
     def __init__(self, config):
         self.config = config
@@ -85,7 +84,7 @@ class BagRepresentation(Representation):
 
     def get_all_preprocessed(self):
         return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
-                "term_list": self.term_list, "present_term_indexes": self.present_term_indexes}
+                "term_list": self.term_list}
 
     # sparse to dense
     def compute_dense(self):
@@ -108,8 +107,7 @@ class BagRepresentation(Representation):
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         # intead of undefined word index, get the term list
-        self.dataset_vectors, self.dataset_words, self.term_list, self.present_term_indexes = \
-            [preprocessed[n] for n in self.data_names]
+        self.dataset_vectors, self.dataset_words, self.term_list = [preprocessed[n] for n in self.data_names]
         # set misc required variables
         self.elements_per_instance = [[1 for _ in ds] for ds in self.dataset_vectors]
 
@@ -129,8 +127,7 @@ class BagRepresentation(Representation):
         self.dimension = transform.get_dimension()
 
         data = transform.get_all_preprocessed()
-        self.dataset_vectors, self.elements_per_instance, self.term_list, self.present_term_indexes = \
-            [data[n] for n in self.data_names]
+        self.dataset_vectors, self.elements_per_instance, self.term_list = [data[n] for n in self.data_names]
         self.loaded_transformed = True
 
     def accomodate_dimension_change(self):
@@ -170,7 +167,6 @@ class BagRepresentation(Representation):
 
         self.dataset_words = [self.term_list, None]
         self.dataset_vectors = []
-        self.present_term_indexes = []
 
         # train
         self.bag_train = self.bag_class()
@@ -179,7 +175,6 @@ class BagRepresentation(Representation):
             self.bag_train.set_term_filtering(self.limit_type, self.limit_number)
         self.bag_train.map_collection(dset.train)
         self.dataset_vectors.append(self.bag_train.get_weights())
-        self.present_term_indexes.append(self.bag_train.get_present_term_indexes())
         if self.do_limit:
             self.term_list = self.bag_train.get_term_list()
             self.term_index = {k: v for (k, v) in self.term_index.items() if k in self.term_list}
@@ -193,7 +188,6 @@ class BagRepresentation(Representation):
         self.bag_test.set_term_list(self.term_list)
         self.bag_test.map_collection(dset.test)
         self.dataset_vectors.append(self.bag_test.get_weights())
-        self.present_term_indexes.append(self.bag_test.get_present_term_indexes())
 
         # set misc required variables
         self.set_constant_elements_per_instance()

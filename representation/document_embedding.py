@@ -52,7 +52,6 @@ class DocumentEmbedding(Embedding):
         d2v = self.fit_doc2vec(word_lists[0], dset.train_labels)
 
         text_bundles = dset.train, dset.test
-        self.present_term_indexes = []
         self.dataset_vectors = [[], []]
 
         # loop over input text bundles (e.g. train & test)

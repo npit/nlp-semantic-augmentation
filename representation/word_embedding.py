@@ -36,7 +36,6 @@ class WordEmbedding(Embedding):
             # make empty features
             with tqdm.tqdm("Bulding embedding / dataset vocabulary mapping for text bundle {}/{}".format(dset_idx + 1, len(text_bundles)),
                            total=num_docs, ascii=True) as pbar:
-                self.present_term_indexes[dset_idx] = [[] for _ in docs]
                 for file_idx, word_info_list in enumerate(text_bundles[dset_idx]):
                     for word_idx, word_info in enumerate(word_info_list):
                         word = word_info[0]
@@ -44,7 +43,6 @@ class WordEmbedding(Embedding):
                         word_stats.update_word_stats(word, word_in_vocab)
                         if word_in_vocab:
                             # word exists in the embeddings vocabulary
-                            self.present_term_indexes[dset_idx][file_idx].append(word_idx)
                             vocab_index = self.embedding_vocabulary_index[word]
                             if vocab_index not in vocab_to_dataset:
                                 vocab_to_dataset[vocab_index] = []
@@ -85,7 +83,6 @@ class WordEmbedding(Embedding):
             return
         info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
 
-        self.present_term_indexes = [[], []]
         self.dataset_vectors = [[], []]
         self.elements_per_instance = [[], []]
         self.vocabulary = dset.vocabulary
@@ -115,19 +112,14 @@ class WordEmbedding(Embedding):
                     word_list = [wp[0] for wp in doc_wp_list]
                     # debug("Text {}/{} with {} words".format(j + 1, num_documents, len(word_list)))
                     # check present & missing words
-                    missing_index, present_terms, present_index, present_map = [], [], [], {}
+                    present_map = {}
                     for w, word in enumerate(word_list):
                         word_in_embedding_vocab = word in self.embeddings.index
                         word_stats.update_word_stats(word, word_in_embedding_vocab)
-                        if not word_in_embedding_vocab:
-                            missing_index.append(w)
-                        else:
-                            present_terms.append(word)
-                            present_index.append(w)
                         present_map[word] = word_in_embedding_vocab
 
                     # handle missing
-                    word_list = present_terms if not self.map_missing_unks else \
+                    word_list = [w for w in word_list if present_map[w]] if not self.map_missing_unks else \
                         [w if present_map[w] else self.unknown_word_token for w in word_list]
 
                     error("No words present in document.", len(word_list) == 0)
@@ -140,7 +132,6 @@ class WordEmbedding(Embedding):
                     num_embeddings = len(text_embeddings)
                     error("No embeddings generated for text", num_embeddings == 0)
                     self.elements_per_instance[dset_idx].append(num_embeddings)
-                    self.present_term_indexes[dset_idx].append(present_index)
 
             if len(self.dataset_vectors[dset_idx]) > 0:
                 self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values

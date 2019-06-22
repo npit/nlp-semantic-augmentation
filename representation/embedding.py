@@ -16,8 +16,7 @@ class Embedding(Representation):
     dimension = None
     embedding_vocabulary_index = {}
 
-    data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index",
-                  "present_term_indexes"]
+    data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index"]
 
 
     # region # serializable overrides
@@ -35,13 +34,12 @@ class Embedding(Representation):
 
     def get_all_preprocessed(self):
         return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
-                "undefined_word_index": None, "present_term_indexes": self.present_term_indexes}
+                "undefined_word_index": None}
 
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.dataset_vectors, self.elements_per_instance, \
-        self.undefined_word_index, self.present_term_indexes = [preprocessed[n] for n in self.data_names]
+        self.dataset_vectors, self.elements_per_instance, self.undefined_word_index = [preprocessed[n] for n in self.data_names]
         debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
         #error("Read empty train or test preprocessed representations!", not all([x.size for x in self.dataset_vectors]))
 
@@ -166,7 +164,7 @@ class Embedding(Representation):
         self.dimension = transform.get_dimension()
 
         data = transform.get_all_preprocessed()
-        self.dataset_vectors, self.elements_per_instance, self.undefined_word_index, \
-        self.present_term_indexes = [data[n] for n in self.data_names]
+        self.dataset_vectors, self.elements_per_instance, self.undefined_word_index = \
+            [data[n] for n in self.data_names]
         self.loaded_transformed = True
 

@@ -152,12 +152,9 @@ class Bag:
         return self.term_weighting_func(term)
 
     def map_collection(self, text_collection):
-        # present word tracking only available for the default (word-wise) delineation
-        do_track_present_terms = False if self.term_delineation_func != Bag.delineate_words else True
         num_docs = len(text_collection)
-
         # collection-wise information
-        self.weights, self.present_terms, self.present_term_indexes = [], [], []
+        self.weights = []
 
         # global term-wise frequencies
         with tqdm.tqdm(desc="Creating bow vectors", total=num_docs, ascii=True, ncols=100, unit="collection") as pbar:
@@ -165,19 +162,15 @@ class Bag:
                 pbar.set_description("Text {}/{}".format(t + 1, num_docs))
                 pbar.update()
                 text_term_freqs = {}
-                present_terms = []
                 # delineate and extract terms of interest
                 term_list = [self.term_extraction_func(x) for x in self.term_delineation_func(word_info_list)]
                 # iterate
                 for term in term_list:
                     # process term, and produce weight information of the processed result
                     term_weights = self.get_term_weights(term)
-                    # if the word produced weights, add it to the present words
+                    # if the word produced weights, add it
                     if not term_weights:
                         continue
-                    # add the term as a valid / present one
-                    if do_track_present_terms:
-                        present_terms.append(term)
                     # accumulate the term-weight results
                     for item, weight in term_weights.items():
                         # use item index as the key
@@ -186,9 +179,6 @@ class Bag:
                 # completed document parsing
                 # add required results
                 self.weights.append(text_term_freqs)
-                if do_track_present_terms:
-                    self.present_term_indexes.append([term_list.index(p) for p in present_terms])
-                    self.present_terms.append(len(present_terms))
             # completed collection parsing - wrap up
             if not self.use_fixed_term_list:
                 # if we computed the term list, store it
@@ -229,12 +219,6 @@ class Bag:
 
     def get_global_weights(self):
         return self.global_weights
-
-    def get_present_term_indexes(self):
-        return self.present_term_indexes
-
-    def get_present_terms(self):
-        return self.present_terms
 
     def get_term_list(self):
         return self.term_list

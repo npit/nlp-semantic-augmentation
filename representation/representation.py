@@ -94,9 +94,6 @@ class Representation(Serializable):
     def get_dimension(self):
         return self.dimension
 
-    def get_present_term_indexes(self):
-        return self.present_term_indexes
-
     def get_vectors(self):
         return self.dataset_vectors
 
