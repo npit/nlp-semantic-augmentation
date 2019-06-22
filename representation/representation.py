@@ -23,6 +23,7 @@ class Representation(Serializable):
         return [cls.name for cls in Representation.__subclasses__()]
 
     def __init__(self, can_fail_loading=True):
+        """Constructor"""
         self.set_params()
         self.set_name()
         Serializable.__init__(self, self.dir_name)
@@ -38,6 +39,9 @@ class Representation(Serializable):
         # fetch the required data
         self.acquire_data()
 
+
+    # region # serializable overrides
+
     # add exra representations-specific serialization paths
     def set_additional_serialization_sources(self):
         # compute names
@@ -51,6 +55,54 @@ class Representation(Serializable):
 
         self.add_serialization_source(self.serialization_path_aggregated, handler=self.handle_aggregated)
         self.add_serialization_source(self.serialization_path_finalized, handler=self.handle_finalized)
+
+    def handle_aggregated(self, data):
+        self.handle_preprocessed(data)
+        self.loaded_aggregated = True
+        debug("Read aggregated dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
+
+    def handle_finalized(self, data):
+        self.handle_preprocessed(data)
+        self.loaded_finalized = True
+        self.dimension = data["dataset_vectors"][0].shape[-1]
+        debug("Read finalized dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
+
+    def handle_raw(self, raw_data):
+        pass
+
+    def fetch_raw(self, path):
+        # assume embeddings are dataframes
+        return None
+
+    def preprocess(self):
+        pass
+
+    def loaded_enriched(self):
+        return self.loaded_finalized
+    # endregion
+
+    # region # getter functions
+    def get_zero_pad_element(self):
+        return np.zeros((1, self.dimension), np.float32)
+
+    def get_vocabulary_size(self):
+        return len(self.dataset_words[0])
+
+    def get_data(self):
+        return self.dataset_vectors
+
+    def get_dimension(self):
+        return self.dimension
+
+    def get_present_term_indexes(self):
+        return self.present_term_indexes
+
+    def get_vectors(self):
+        return self.dataset_vectors
+
+    def get_elements_per_instance(self):
+        return self.elements_per_instance
+    # endregion
 
     # shortcut for reading configuration values
     def set_params(self):
@@ -81,6 +133,10 @@ class Representation(Serializable):
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion
     def set_semantic(self, semantic):
+        """
+        Attach semantic component to the representation
+        :param semantic: the dense semantic vectors
+        """
         if self.loaded_finalized:
             info("Skipping embeddings finalizing, since finalized data was already loaded.")
             return
@@ -118,53 +174,8 @@ class Representation(Serializable):
             self.dimension = final_dim
             write_pickled(self.serialization_path_finalized, self.get_all_preprocessed())
 
-    def handle_aggregated(self, data):
-        self.handle_preprocessed(data)
-        self.loaded_aggregated = True
-        debug("Read aggregated dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
-
-    def handle_finalized(self, data):
-        self.handle_preprocessed(data)
-        self.loaded_finalized = True
-        self.dimension = data["dataset_vectors"][0].shape[-1]
-        debug("Read finalized dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
-
-    def get_zero_pad_element(self):
-        return np.zeros((1, self.dimension), np.float32)
-
-    def get_vocabulary_size(self):
-        return len(self.dataset_words[0])
-
     def has_word(self, word):
         return word in self.embeddings.index
-
-    def get_data(self):
-        return self.dataset_vectors
-
-    def get_dimension(self):
-        return self.dimension
-
-    def handle_raw(self, raw_data):
-        pass
-
-    def fetch_raw(self, path):
-        # assume embeddings are dataframes
-        return None
-
-    def preprocess(self):
-        pass
-
-    def loaded_enriched(self):
-        return self.loaded_finalized
-
-    def get_present_term_indexes(self):
-        return self.present_term_indexes
-
-    def get_vectors(self):
-        return self.dataset_vectors
-
-    def get_elements_per_instance(self):
-        return self.elements_per_instance
 
     def match_labels_to_instances(self, dset_idx, gt, do_flatten=True, binarize_num_labels=None):
         """Expand, if needed, ground truth samples for multi-vector instances

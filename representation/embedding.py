@@ -4,6 +4,7 @@ from utils import error, info, debug, get_shape, shapes_list
 import numpy as np
 import pandas as pd
 from pandas.errors import ParserError
+from os.path import exists
 
 
 class Embedding(Representation):
@@ -18,9 +19,8 @@ class Embedding(Representation):
     data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index",
                   "present_term_indexes"]
 
-    def save_raw_embedding_weights(self, weights):
-        error("{} is for pretrained embeddings only.".format(self.name))
 
+    # region # serializable overrides
     def set_resources(self):
         csv_mapping_name = "{}/{}.csv".format(self.raw_data_dir, self.base_name)
         self.resource_paths.append(csv_mapping_name)
@@ -33,17 +33,33 @@ class Embedding(Representation):
             self.resource_always_load_flag.append(True)
             info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
 
+    def get_all_preprocessed(self):
+        return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
+                "undefined_word_index": None, "present_term_indexes": self.present_term_indexes}
+
+    # mark preprocessing
+    def handle_preprocessed(self, preprocessed):
+        self.loaded_preprocessed = True
+        self.dataset_vectors, self.elements_per_instance, \
+        self.undefined_word_index, self.present_term_indexes = [preprocessed[n] for n in self.data_names]
+        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
+        #error("Read empty train or test preprocessed representations!", not all([x.size for x in self.dataset_vectors]))
+
+    # endregion
+
+    def save_raw_embedding_weights(self, weights):
+        error("{} is for pretrained embeddings only.".format(self.name))
+
     def read_raw_embedding_mapping(self, path):
-        # check if there's a vocabulary file
+        # check if there's a vocabulary file and map token to its position in the embedding list
         try:
-            raise FileNotFoundError
-            warning("Partial map text is todo,")
             vocab_path = path + ".vocab"
-            with open(vocab_path ) as f:
+            with open(vocab_path) as f:
                 lines = [x.strip() for x in f.readlines()]
                 for word in [x for x in lines if x]:
                     self.embedding_vocabulary_index[word] = len(self.embedding_vocabulary_index)
-            info("Read embedding vocabulary from path {}".format(vocab_path))
+            info("Read {}-long embedding vocabulary from path {}".format(len(self.embedding_vocabulary_index), vocab_path))
+            self.embeddings_path = path
             return
         except FileNotFoundError:
             pass
@@ -75,18 +91,6 @@ class Embedding(Representation):
     # compute dense elements
     def compute_dense(self):
         pass
-        # if self.loaded_finalized:
-        #     debug("Will not compute dense, since finalized data were loaded")
-        #     return
-        # if self.loaded_transformed:
-        #     debug("Will not compute dense, since transformed data were loaded")
-        #     return
-
-        # info("Embeddings are already dense.")
-        # # instance vectors are already dense - just make dataset-level ndarrays
-        # for dset_idx in range(len(self.dataset_vectors)):
-        #     self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values
-        #     info("Computed dense shape for {}-sized dataset {}/{}: {}".format(len(self.dataset_vectors[dset_idx]), dset_idx + 1, len(self.dataset_vectors), self.dataset_vectors[dset_idx].shape))
 
     # prepare embedding data to be ready for classification
     def aggregate_instance_vectors(self):
@@ -96,7 +100,7 @@ class Embedding(Representation):
         if self.loaded_aggregated or self.loaded_finalized:
             debug("Skipping representation aggregation.")
             return
-        info("Aggregating embeddings to single-vector-instances via the {} method.".format(self.aggregation))
+        info("Aggregating embeddings to single-vector-instances via the [{}] method.".format(self.aggregation))
         # use words per document for the aggregation, aggregating function as an argument
         # stats
         aggregation_stats = [0, 0]
@@ -152,31 +156,9 @@ class Embedding(Representation):
     # shortcut for reading configuration values
     def set_params(self):
         self.map_missing_unks = self.config.representation.missing_words == "unk"
-        # if self.aggregation == defs.aggregation.pad:
-        #     pass
-        # elif self.aggregation == defs.aggregation.avg:
-        #     error("Sequence length of {} incompatible with {} aggregation".format(self.sequence_length, self.aggregation), \
-        #           ill_defined(self.sequence_length, can_be=1))
-        # elif self.aggregation == defs.alias.none:
-        #     error("The {} representation requires an aggregation method.".format(self.base_name))
-        # else:
-        #     error("Undefined aggregation: {}".format(self.aggregation))
-        # self.compatible_aggregations = defs.aggregation.avail + [defs.alias.none]
         self.compatible_aggregations = defs.aggregation.avail
         self.compatible_sequence_lengths = defs.sequence_length.avail
         Representation.set_params(self)
-
-    def get_all_preprocessed(self):
-        return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
-                "undefined_word_index": None, "present_term_indexes": self.present_term_indexes}
-
-    # mark preprocessing
-    def handle_preprocessed(self, preprocessed):
-        self.loaded_preprocessed = True
-        self.dataset_vectors, self.elements_per_instance, \
-        self.undefined_word_index, self.present_term_indexes = [preprocessed[n] for n in self.data_names]
-        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
-        #error("Read empty train or test preprocessed representations!", not all([x.size for x in self.dataset_vectors]))
 
     def set_transform(self, transform):
         """Update representation information as per the input transform"""

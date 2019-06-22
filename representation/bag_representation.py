@@ -22,6 +22,7 @@ class BagRepresentation(Representation):
         Representation.__init__(self)
 
     def set_params(self):
+        # bag term limiting
         self.do_limit = False
         if not is_none(self.config.representation.limit):
             self.do_limit = True
@@ -39,6 +40,9 @@ class BagRepresentation(Representation):
         return name + "_".join(name_components)
 
     def set_multiple_config_names(self):
+        """
+        Declare which configurations match the current one as suitable to be loaded
+        """
         names = []
         # + no filtering, if filtered is specified
         filter_vals = [defs.limit.none]
