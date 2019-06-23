@@ -100,12 +100,10 @@ class WordEmbedding(Embedding):
             warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
             self.embeddings.loc[self.unknown_word_token] = np.zeros(self.dimension)
 
-
         # loop over input text bundles (e.g. train & test)
         for dset_idx, docs in enumerate(text_bundles):
             num_docs = len(docs)
-            with tictoc("Embedding mapping for text bundle {}/{}".format(dset_idx + 1, num_docs)):
-                info("Mapping text bundle {}/{}: {} texts".format(dset_idx + 1, len(text_bundles), num_docs))
+            with tictoc("Embedding mapping for text bundle {}/{}, with {} texts".format(dset_idx + 1, len(text_bundles), num_docs)):
                 word_stats = WordEmbeddingStats(self.vocabulary, self.embeddings.index)
                 for j, doc_wp_list in enumerate(text_bundles[dset_idx]):
                     # drop POS

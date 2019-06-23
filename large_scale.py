@@ -276,7 +276,7 @@ def main(config_file="large.config.yml", is_testing_run=False):
         # read experiment results
         exp_res_file = join(experiment_dir, "results", "results.pickle")
         with open(exp_res_file, "rb") as f:
-            res_data = pickle.load(f)
+            res_data = pickle.load(f)["results"]
         results[run_id] = res_data
 
     # messages = []

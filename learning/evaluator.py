@@ -6,8 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn import metrics
 
-from utils import (error, get_majority_label, info, numeric_to_string, one_hot,
-                   warning)
+from utils import (error, get_majority_label, info, numeric_to_string, one_hot, warning)
 
 
 class Evaluator:
@@ -16,12 +15,12 @@ class Evaluator:
 
     # performance containers, in the format type-measure-aggregation-stat
     performance = None
-    cw_performance = {}
     majority_label = None
 
     # predictions storage
     predictions = None
     predictions_instance_indexes = None
+    confusion_matrices = None
 
     # available measures, aggregations and run types
     singlelabel_measures = ["precision", "recall", "f1-score", "accuracy"]
@@ -39,7 +38,7 @@ class Evaluator:
 
     # error analysis
     error_analysis = None
-    error_analysis_types = ["top", "bottom"]
+    error_print_types = None
     label_distribution = None
     top_k = 3
 
@@ -49,6 +48,7 @@ class Evaluator:
         self.config = config
         # minor inits
         self.predictions = {rt: [] for rt in self.run_types}
+        self.confusion_matrices = {rt: [] for rt in self.run_types}
         self.predictions_instance_indexes = []
         self.label_distribution = {}
 
@@ -211,10 +211,13 @@ class Evaluator:
         if write_folder is not None:
             # write the results in csv in the results directory
             # entries in a run_type - measure configuration list are the foldwise scores, followed by the mean
-            df = pd.DataFrame.from_dict(self.performance)
+            write_dict = {k: v for (k, v) in self.performance.items()}
+            write_dict["error_analysis"] = self.error_analysis
+            write_dict["confusion_matrices"] = self.confusion_matrices
+            df = pd.DataFrame.from_dict(write_dict)
             df.to_csv(join(write_folder, "results.txt"))
             with open(join(write_folder, "results.pickle"), "wb") as f:
-                pickle.dump(df, f)
+                pickle.dump({"results":df, "error_analysis": self.error_analysis, "confusion_matrix": self.confusion_matrices}, f)
 
     # print performance of the latest run
     def print_run_performance(self, current_run_descr, fold_index=0):
@@ -268,6 +271,7 @@ class Evaluator:
                 self.performance[run_type][measure]["macro"]["folds"].append(ma)
                 self.performance[run_type][measure]["micro"]["folds"].append(mi)
                 self.performance[run_type][measure]["weighted"]["folds"].append(ws)
+                self.confusion_matrices[run_type].append(metrics.confusion_matrix(self.test_labels, preds_amax, range(self.num_labels)))
 
             # get accuracies
             acc, cw_acc = self.compute_accuracy(preds_amax), self.compute_classwise_accuracy(preds_amax)
@@ -330,7 +334,6 @@ class Evaluator:
         randpred = np.random.rand(*predictions.shape)
         self.evaluate_predictions("random", randpred)
 
-
         if instance_indexes is None:
             instance_indexes = np.asarray(list(range(len(self.test_labels))), np.int32)
         self.predictions_instance_indexes.append(instance_indexes)
@@ -376,7 +379,7 @@ class Evaluator:
                 self.predictions[run_type][p] = full_preds
 
     # analyze overall error of the run
-    def analyze_overall_errors(self, top_k=3):
+    def analyze_overall_errors(self):
         """Method to generate an error analysis over folds
         - label-wise ranking: extract best/worst labels, average across instances
         - instance-wise ranking: extract best/worst instances, average across labels
@@ -391,9 +394,6 @@ class Evaluator:
 
         - print top / bottom K
         """
-
-
-
         if not self.do_multilabel:
             res = {"instances": {}, "labels": {}}
 
@@ -415,10 +415,9 @@ class Evaluator:
                 aggregate /= len(self.predictions[run_type])
                 # sort scores and instance indexes
                 ranked_scores_idxs = sorted(list(zip(aggregate, list(range(len(aggregate))))), key=lambda x: x[0], reverse=True)
-                res["instances"][run_type] = {"top": ranked_scores_idxs[:top_k], "bottom": ranked_scores_idxs[-top_k:]}
+                res["instances"][run_type] = ranked_scores_idxs
 
                 # label-wise
-                lbl_top = min(top_k, self.num_labels)
                 res["labels"][run_type] = {}
                 for measure in self.measures:
                     scores_cw = self.performance[run_type][measure]['classwise']['folds']
@@ -426,7 +425,7 @@ class Evaluator:
                     scores_cw = sum(scores_cw) / len(scores_cw)
                     # rank
                     ranked_scores_idxs = sorted(list(zip(scores_cw, list(range(len(scores_cw))))), key=lambda x: x[0], reverse=True)
-                    res["labels"][run_type][measure] = {"top": ranked_scores_idxs[:lbl_top], "bottom": ranked_scores_idxs[-lbl_top:]}
+                    res["labels"][run_type][measure] = ranked_scores_idxs
         else:
             pass
 
@@ -438,27 +437,23 @@ class Evaluator:
         """
         if not self.config.print.error_analysis:
             return
-        info("Fold-average top-{} instances/labels:".format(self.top_k))
+        info("Fold-average top-{} instances:".format(self.top_k))
         info("---------------------------")
         for run_type in self.preferred_types:
             # print in format instance1, instance2, ...
-            for an_type in self.error_analysis_types:
-                indexes = " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["instances"][run_type][an_type])
-                scores = " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["instances"][run_type][an_type])
-                info("{:10} {:8} {:7} {:10} | ({}) ({})".format("accuracy", run_type, an_type, "instances", indexes, scores))
+            # print the below error / stat visualization
+            print_types = {"top": lambda x: x[:self.top_k], "bottom": lambda x: x[-self.top_k:]}
+            for print_type, func in print_types.items():
+                indexes = " ".join("{:.0f}".format(x[1]) for x in func(self.error_analysis["instances"][run_type]))
+                scores = " ".join("{:1.3f}".format(x[0]) for x in func(self.error_analysis["instances"][run_type]))
+                info("{:10} {:8} {:7} {:10} | ({}) ({})".format("accuracy", run_type, print_type, "instances", indexes, scores))
 
+        lbl_top = min(self.top_k, self.num_labels)
+        info("Fold-average top-{} labels:".format(lbl_top))
+        for run_type in self.preferred_types:
+            print_types = {"top": lambda x: x[:lbl_top], "bottom": lambda x: x[-lbl_top:]}
+            for print_type, func in print_types.items():
                 for measure in [x for x in self.performance[run_type] if x in self.preferred_measures]:
-                    info("{:10} {:8} {:7} {:10} | ({}) ({})".format(measure, run_type, an_type, "labels", " ".join("{:.0f}".format(x[1]) for x in self.error_analysis["labels"][run_type][measure][an_type]),
-                                                                    " ".join("{:1.3f}".format(x[0]) for x in self.error_analysis["labels"][run_type][measure][an_type])))
-
-    # analyze error wrt selected parameters
-    def analyze_errors(self, run_type, measure, aggregation):
-        """Method to generate an error analysis
-        - rank labels / instances
-        - print top / bottom K
-        """
-        # instance-wise
-        if not self.do_multilabel:
-            # label-wise
-            pass
-        scores = sorted(self.performance[run_type][measure][aggregation])
+                    info("{:10} {:8} {:7} {:10} | ({}) ({})".format(measure, run_type, print_type, "labels",
+                                                                    " ".join("{:.0f}".format(x[1]) for x in func(self.error_analysis["labels"][run_type][measure])),
+                                                                    " ".join("{:1.3f}".format(x[0]) for x in func(self.error_analysis["labels"][run_type][measure]))))
