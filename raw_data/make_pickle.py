@@ -13,10 +13,10 @@ if len(sys.argv) < 1:
 input_path = sys.argv[1]
 input_resource = sys.argv[2]
 print("Pickling {}".format(input_path))
-if input_resource == "glove":
+if input_resource == "glove-like":
     data = pandas.read_csv(input_path, index_col = 0, header=None, sep=" ", quoting=csv.QUOTE_NONE)
     dim = data.shape[-1]
-    outname = "glove_dim{}".format(dim)
+    outname = os.path.splitext(os.path.basename(input_path))[0]
 else:
     print("Don't know how to pickle that.")
     exit(1)

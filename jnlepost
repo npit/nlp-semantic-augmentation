@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+
+import numpy as np
+import sys
+from os.path import join
+import pickle
+from matplotlib import pyplot as plt
+from sklearn import metrics
+
+""" Does post-processing analysis for the jnle revision, ie prints confusion matrix and top instances/labels"""
+
+
+def heatmap(arr, outpath):
+    plt.figure()
+    plt.imshow(arr, cmap='plasma')
+    plt.colorbar()
+    plt.savefig(outpath)
+
+
+def minmax_instances_labels(predictions, performance):
+    res = {"instances": [], "labels": []}
+
+    # instance-wise
+    aggregate = np.zeros((len(test_labels),), np.float32)
+    for preds in predictions:
+        # get true / false predictions
+        non_nan_idx = np.where(np.any(~np.isnan(preds), axis=1))
+        print("nonnan len",len(non_nan_idx[0]))
+        preds = preds[non_nan_idx]
+        true_labels = test_labels[non_nan_idx]
+        correct_preds = np.where(np.equal(np.argmax(preds, axis=1), true_labels))
+        aggregate[correct_preds] += 1
+    # average
+    aggregate /= len(predictions)
+    # sort scores and instance indexes
+    ranked_scores_idxs = sorted(list(zip(aggregate, list(range(len(aggregate))))), key=lambda x: x[0], reverse=True)
+    res["instances"] = ranked_scores_idxs
+
+    # label-wise
+    res["labels"] = {}
+    for measure in ["f1-score"]:
+        scores_cw = performance['run']['f1-score']['classwise']['folds']
+        # average accross folds
+        scores_cw = sum(scores_cw) / len(scores_cw)
+        # rank
+        ranked_scores_idxs = sorted(list(zip(scores_cw, list(range(len(scores_cw))))), key=lambda x: x[0], reverse=True)
+        res["labels"][measure] = ranked_scores_idxs
+
+    # print
+    topk=10
+    # print in format instance1, instance2, ...
+    # print the below error / stat visualization
+    print_types = {"top": lambda x: x[:topk], "bottom": lambda x: x[-topk:]}
+    for print_type, func in print_types.items():
+        indexes = " ".join("{:.0f}".format(x[1]) for x in func(res["instances"]))
+        scores = " ".join("{:1.3f}".format(x[0]) for x in func(res["instances"]))
+        print("{:10} {:7} {:10} | ({}) ({})".format("accuracy", print_type, "instances", indexes, scores))
+
+    lbl_top = topk
+    print_types = {"top": lambda x: x[:lbl_top], "bottom": lambda x: x[-lbl_top:]}
+    measure = "f1-score"
+    for print_type, func in print_types.items():
+        print("{:10} {:7} {:10} | ({}) ({})".format(measure, print_type, "labels",
+                                                        " ".join("{:.0f}".format(x[1]) for x in func(res["labels"][measure])),
+                                                        " ".join("{:1.3f}".format(x[0]) for x in func(res["labels"][measure]))))
+
+if __name__ == "__main__":
+    datasets = {"20ng":    "/home/nik/software/sematext-jnle/serialization/datasets/20newsgroups.preprocessed.pickle",
+                "reuters": "/home/nik/software/sematext-jnle/serialization/datasets/reuters.preprocessed.pickle"}
+
+    try:
+        base_dataset = sys.argv[1]
+        results_folder = sys.argv[2]
+    except IndexError:
+        print("arg error")
+        exit(1)
+
+    dset = datasets[base_dataset]
+    with open(dset, "rb") as f:
+        test_labels = pickle.load(f)[4]
+
+    res_path = join(results_folder, "results.pickle")
+    with open(res_path, "rb") as f:
+        res = pickle.load(f)
+    performance = res["results"]
+    predictions = []
+    try:
+        cmat_folds = res["confusion"]["run"]
+        print("Loaded precomputed confusion matrix")
+    except:
+        cmat_folds = []
+
+    # gather foldwise results
+    for fold in range(5):
+        print("Fold", fold)
+        preds_path = join(results_folder, "mlp_fold{}.predictions.pickle".format(fold))
+        with open(preds_path,"rb") as f:
+            preds = pickle.load(f)
+        if len(preds) != len(test_labels):
+            print("Error preds / lbls shape ", len(preds), len(test_labels))
+            exit(1)
+
+        if not cmat_folds:
+            # generate conf. matrix on the fly
+            cmat = metrics.confusion_matrix(test_labels, preds)
+            print("Generated confusion matrix on the fly")
+        predictions.append(preds)
+    cmat = np.mean(cmat_folds, axis=0)
+    heatmap(cmat, res_path + ".fold{}.confusion.png".format(fold))
+    minmax_instances_labels(predictions, performance)

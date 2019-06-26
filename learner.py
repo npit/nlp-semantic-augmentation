@@ -35,6 +35,7 @@ class DNN:
     do_validate_portion = False
     early_stopping = None
 
+    confusion_matrices = None
     model_paths = []
 
     def create(config):
@@ -48,6 +49,7 @@ class DNN:
 
     def __init__(self):
         self.configure_evaluation_measures()
+        self.confusion_matrices = {r:[] for r in self.run_types}
         pass
 
     # initialize evaluation containers and preferred evaluation printage
@@ -355,7 +357,7 @@ class DNN:
         df = pd.DataFrame.from_dict(self.performance)
         df.to_csv(join(self.results_folder, "results.txt"))
         with open(join(self.results_folder, "results.pickle"), "wb") as f:
-            pickle.dump(df, f)
+            pickle.dump({"results":df, "confusion": self.confusion_matrices}, f)
 
 
     # evaluate a model on the test set
@@ -457,6 +459,7 @@ class DNN:
             self.performance[type][measure]["macro"]["folds"].append(ma)
             self.performance[type][measure]["micro"]["folds"].append(mi)
             self.performance[type][measure]["weighted"]["folds"].append(ws)
+        self.confusion_matrices[type].append(metrics.confusion_matrix(self.test_labels, preds))
 
     # print performance of the latest run
     def print_performance(self):

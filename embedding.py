@@ -127,7 +127,10 @@ class Embedding(Serializable):
             for dset_idx in range(len(self.dataset_embeddings)):
                 aggregated_doc_vectors = []
                 for doc_dict in self.dataset_embeddings[dset_idx]:
-                    aggregated_doc_vectors.append(np.mean(doc_dict.values, axis=0))
+                    if type(doc_dict) == np.ndarray:
+                        aggregated_doc_vectors.append(np.mean(doc_dict, axis=0))
+                    else:
+                        aggregated_doc_vectors.append(np.mean(doc_dict.values, axis=0))
                 self.dataset_embeddings[dset_idx] = np.concatenate(aggregated_doc_vectors).reshape(
                     len(aggregated_doc_vectors), self.embedding_dim)
         elif self.aggregation[0] == "pad":
