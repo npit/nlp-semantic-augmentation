@@ -11,13 +11,29 @@ import shutil
 
 
 class Config:
-    log_dir = "logs"
     seed_file = "seed.txt"
     # logger_name = "root"
     logger = None
     seed = None
     conf = {}
     run_id = None
+
+    def  get_copy(self):
+        """Get a copy of the config object
+
+        This omits the logger object, which causes problems to the copying procedure."""
+        c = Config()
+        c.dataset = self.dataset
+        c.representation = self.representation
+        c.transform = self.transform
+        c.semantic = self.semantic
+        c.learner = self.learner
+        c.train = self.train
+        c.misc = self.misc
+        c.print = self.print
+        c.folders = self.folders
+
+        return c
 
     class dataset_conf:
         name = None
@@ -26,6 +42,7 @@ class Config:
         class_limit = None
 
     class print_conf:
+        log_dir = None
         run_types = None
         stats = None
         aggregations = None
@@ -76,12 +93,13 @@ class Config:
         batch_size = None
 
     class misc_conf:
+        seed = None
         keys = {}
         csv_separator = ","
         independent_component = None
         skip_deserialization = None
 
-    def __init__(self, conf_file):
+    def __init__(self, conf_file=None):
         "Configuration object constructor"
         self.dataset = Config.dataset_conf()
         self.representation = Config.representation_conf()
@@ -92,7 +110,8 @@ class Config:
         self.misc = Config.misc_conf()
         self.print = Config.print_conf()
         self.folders = Config.folders_conf()
-        self.initialize(conf_file)
+        if conf_file is not None:
+            self.initialize(conf_file)
 
     def has_data_limit(self):
         return self.dataset.data_limit is not None and any([x is not None for x in self.dataset.data_limit])
@@ -102,9 +121,6 @@ class Config:
 
     def has_limit(self):
         return self.has_data_limit() or self.has_class_limit()
-
-    def get_run_id(self):
-        return self.run_id
 
     def initialize(self, configuration):
         self.read_config(configuration)
@@ -133,14 +149,14 @@ class Config:
 
     # logging initialization
     def setup_logging(self):
-        os.makedirs(self.log_dir, exist_ok=True)
+        os.makedirs(self.print.log_dir, exist_ok=True)
         formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)7s | %(message)s')
 
         # console handler
         handler = logging.StreamHandler()
         handler.setFormatter(formatter)
 
-        lvl = logging._nameToLevel[self.log_level.upper()]
+        lvl = logging._nameToLevel[self.print.log_level.upper()]
         # logger = logging.getLogger(self.logger_name)
         logger = logging.getLogger()
         logger.setLevel(lvl)
@@ -196,12 +212,6 @@ class Config:
                 error("Failed to parse input config file: {}".format(input_config))
         elif type(input_config) == dict:
             self.conf = input_config
-
-        # setup run id
-        if self.explicit_run_id():
-            self.run_id = self.conf["run_id"]
-        else:
-            self.run_id = "run_" + utils.datetime_str()
 
         # read dataset options
         need(self.has_value("dataset"), "Need dataset information")
@@ -279,6 +289,8 @@ class Config:
             self.print.stats = self.get_value("stats", base=print_opts)
             self.print.error_analysis = self.get_value("error_analysis", base=print_opts, default=True)
             self.print.top_k = self.get_value("top_k", base=print_opts, default=3, expected_type=int)
+            self.print.log_level = self.get_value("log_level", base=print_opts, default="info")
+            self.print.log_dir = self.get_value("log_dir", base=print_opts, default="logs")
 
         if self.has_value("misc"):
             misc_opts = self.conf["misc"]
@@ -288,8 +300,8 @@ class Config:
             self.misc.independent = self.get_value("independent_component", base=misc_opts, default=False)
             self.misc.skip_deserialization = self.get_value("skip_deserialization", base=misc_opts, default=False)
             self.misc.csv_separator = self.get_value("csv_separator", base=misc_opts, default=",")
+            self.misc.run_id = self.get_value("run_id", base=misc_opts, default="run_" + utils.datetime_str())
 
-        self.log_level = self.get_value("log_level", default="info")
 
         print("Read configuration for run: {} from the file {}".format(self.run_id, input_config))
 
@@ -304,9 +316,6 @@ class Config:
 
     def get_train_params(self):
         return self.conf["train"]
-
-    def explicit_run_id(self):
-        return self.has_value("run_id")
 
     def get_value(self, name, default=None, base=None, expected_type=None):
         if base is None:
