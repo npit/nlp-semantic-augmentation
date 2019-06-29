@@ -37,7 +37,7 @@ class DNN:
 
     confusion_matrices = None
     model_paths = []
-    test_validation = False
+    use_validation_for_testing = True
 
     def create(config):
         name = config.learner.name
@@ -140,31 +140,33 @@ class DNN:
         # model saving with early stoppingtch_si
         self.model_path = self.get_current_model_path()
         weights_path = self.model_path
+        self.model_saver = None
 
 
-        # weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
-        self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
-                                                   save_best_only=self.validation_exists, save_weights_only=False,
-                                                   mode='auto', period=1)
-        self.callbacks.append(self.model_saver)
-        if self.early_stopping_patience and self.validation_exists:
-            self.early_stopping = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=self.early_stopping_patience, verbose=0,
-                                                      mode='auto', baseline=None, restore_best_weights=False)
-            self.callbacks.append(self.early_stopping)
+        if not self.use_validation_for_testing:
+            # weights_path = os.path.join(models_folder,"{}_fold_{}_".format(self.name, self.fold_index) + "ep_{epoch:02d}_valloss_{val_loss:.2f}.hdf5")
+            self.model_saver = callbacks.ModelCheckpoint(weights_path, monitor='val_loss', verbose=0,
+                                                    save_best_only=self.validation_exists, save_weights_only=False,
+                                                    mode='auto', period=1)
+            self.callbacks.append(self.model_saver)
+            if self.early_stopping_patience and self.validation_exists:
+                self.early_stopping = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=self.early_stopping_patience, verbose=0,
+                                                        mode='auto', baseline=None, restore_best_weights=False)
+                self.callbacks.append(self.early_stopping)
 
-        # stop on NaN
-        self.nan_terminator = callbacks.TerminateOnNaN()
-        self.callbacks.append(self.nan_terminator)
-        # learning rate modifier at loss function plateaus
-        if self.validation_exists:
-            self.lr_reducer = callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1,
-                                                              patience=10, verbose=0, mode='auto',
-                                                              min_delta=0.0001, cooldown=0, min_lr=0)
-            self.callbacks.append(self.lr_reducer)
+            # learning rate modifier at loss function plateaus
+            if self.validation_exists:
+                self.lr_reducer = callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1,
+                                                                patience=10, verbose=0, mode='auto',
+                                                                min_delta=0.0001, cooldown=0, min_lr=0)
+                self.callbacks.append(self.lr_reducer)
         # logging
         train_csv_logfile = join(self.results_folder, basename(self.get_current_model_path()) + "train.csv")
         self.csv_logger = callbacks.CSVLogger(train_csv_logfile, separator=',', append=False)
         self.callbacks.append(self.csv_logger)
+        # stop on NaN
+        self.nan_terminator = callbacks.TerminateOnNaN()
+        self.callbacks.append(self.nan_terminator)
         return self.callbacks
 
     # to preliminary work
@@ -263,20 +265,25 @@ class DNN:
                 if not self.forbid_load:
                     existing_predictions = self.already_completed()
                     if existing_predictions is not None:
+                        if len(self.test_labels) == 0:
+                            self.test_labels = self.train_labels[trainval_idx[-1]]
                         self.compute_performance(existing_predictions)
                         continue
                 # train the model
                 with tictoc("Training run {} on train/val data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
+                    if len(self.test) == 0:
+                        self.test = self.train[trainval_idx[1]]
+                        self.test_labels = self.train_labels[trainval_idx[1]]
+                        self.num_test_labels = len(self.test_labels)
+                        trainval_idx = trainval_idx[0], []
+                        self.use_validation_for_testing = True
                     model = self.train_model2(trainval_idx)
                 # test the model
-                if self.test_validation:
-                    self.test = self.train[trainval_idx[1]]
-                    self.test_labels = self.train_labels[trainval_idx[1]]
-                    self.num_test_labels = len(self.test_labels)
                 with tictoc("Testing {} on data: {}.".format(self.current_run_descr, self.num_test_labels)):
                     self.do_test(model)
-                    model_paths.append(self.model_saver.filepath)
-                    if self.test_validation:
+                    if self.model_saver is not None:
+                        model_paths.append(self.model_saver.filepath)
+                    if self.use_validation_for_testing:
                         self.test = []
                         self.test_labels = []
 
@@ -312,16 +319,10 @@ class DNN:
 
     # train a model on training & validation data portions
     def train_model2(self, trainval_idx):
-        if len(self.test) > 0:
-            # labels
-            train_labels, val_labels = [
-                to_categorical(labels, num_classes=self.num_labels) if len(labels) > 0 else np.empty((0,)) for labels in \
-                                        [self.train_labels[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
-        else:
-            self.test_validation = True
-            # use all
-            train_labels = to_categorical(self.train_labels, num_classes=self.num_labels)
-            trainval_idx = np.asarray(list(range(len(self.train)))), []
+        # labels
+        train_labels, val_labels = [
+            to_categorical(labels, num_classes=self.num_labels) if len(labels) > 0 else np.empty((0,)) for labels in \
+                                    [self.train_labels[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
         # data
         if self.num_train != self.num_train_labels:
             trainval_idx = self.expand_index_to_sequence(trainval_idx)
@@ -334,6 +335,8 @@ class DNN:
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
         if val_datalabels is not None:
             debug("Using validation shapes: {} {}".format(*[v.shape if v is not None else "none" for v in  val_datalabels]))
+        else:
+            debug('Will NOT use validation for training.')
         model.fit(train_data, train_labels,
                     batch_size=self.batch_size,
                     epochs=self.epochs,
