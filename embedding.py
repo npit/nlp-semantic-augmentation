@@ -1,4 +1,4 @@
-from os.path import join, dirname
+from os.path import join, dirname, basename
 import pandas as pd
 from dataset import Dataset
 from utils import error, tictoc, info, debug, read_pickled, write_pickled, warning, shapes_list
@@ -29,7 +29,7 @@ class Embedding(Serializable):
 
     def set_params(self):
         self.embedding_dim = self.config.embedding.dimension
-        self.dataset_name = self.config.dataset.name
+        self.dataset_name = basename(self.config.dataset.name)
         self.aggregation = self.config.embedding.aggregation
         self.base_name = self.name
         self.sequence_length = self.config.embedding.sequence_length
@@ -131,8 +131,11 @@ class Embedding(Serializable):
                         aggregated_doc_vectors.append(np.mean(doc_dict, axis=0))
                     else:
                         aggregated_doc_vectors.append(np.mean(doc_dict.values, axis=0))
-                self.dataset_embeddings[dset_idx] = np.concatenate(aggregated_doc_vectors).reshape(
-                    len(aggregated_doc_vectors), self.embedding_dim)
+                if not aggregated_doc_vectors:
+                    self.dataset_embeddings[dset_idx] = np.ndarray((0, self.embedding_dim),np.float32)
+                else:
+                    self.dataset_embeddings[dset_idx] = np.concatenate(aggregated_doc_vectors).reshape(
+                        len(aggregated_doc_vectors), self.embedding_dim)
         elif self.aggregation[0] == "pad":
             num = self.sequence_length
             filter = self.aggregation[1]
@@ -331,12 +334,15 @@ class VectorEmbedding(Embedding):
         write_pickled(missing_filename, self.missing)
 
     def print_word_stats(self, hist, hist_missing):
-        num_words_hit, num_hit = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
-        num_words_miss, num_miss = len(hist_missing.keys()), sum(hist_missing.values())
-        num_total = sum(list(hist.values()) + list(hist_missing.values()))
+        try:
+            num_words_hit, num_hit = sum([1 for v in hist if hist[v] > 0]), sum(hist.values())
+            num_words_miss, num_miss = len(hist_missing.keys()), sum(hist_missing.values())
+            num_total = sum(list(hist.values()) + list(hist_missing.values()))
 
-        debug("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit/num_total*100, num_total, num_words_hit))
-        debug("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss/num_total*100, num_total, num_words_miss))
+            debug("Found {} instances or {:.3f} % of total {}, for {} words.".format(num_hit, num_hit/num_total*100, num_total, num_words_hit))
+            debug("Missed {} instances or {:.3f} % of total {}, for {} words.".format(num_miss, num_miss/num_total*100, num_total, num_words_miss))
+        except:
+            pass
 
 
     def __init__(self, config):

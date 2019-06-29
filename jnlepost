@@ -1,31 +1,88 @@
 #!/usr/bin/env python3
-
+import collections
 import numpy as np
 import sys
-from os.path import join
+from os.path import join, basename, split, dirname
 import pickle
 from matplotlib import pyplot as plt
 from sklearn import metrics
 
 """ Does post-processing analysis for the jnle revision, ie prints confusion matrix and top instances/labels"""
 
+outputfolder = "/home/nik/work/submissions/NLE-special/tex/confmatrices"
 
-def heatmap(arr, outpath):
+def get_config_name(path):
+    return split(split(split(path)[0])[0])[-1]
+
+def heatmap(arr, base_outpath, labelnames):
+    # labelnames = list(range(len(labelnames)))
+    confname = get_config_name(base_outpath)
+    print("Using config name:", confname)
+    # regular cmat
+    colormap = "viridis"
+
     plt.figure()
-    plt.imshow(arr, cmap='plasma')
+
+    outpath = join(outputfolder, confname + ".png")
+
+    plt.imshow(arr, cmap=colormap)
     plt.colorbar()
+    plt.gca().set_xticks(range(len(labelnames)))
+    plt.gca().set_xticklabels(labelnames)
+    plt.gca().set_yticks(range(len(labelnames)))
+    plt.gca().set_yticklabels(labelnames)
+    plt.setp(plt.gca().get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor")
+
+    # plt.axis('off')
+    # plt.tick_params(
+    #     axis='x',          # changes apply to the x-axis
+    #     which='both',      # both major and minor ticks are affected
+    #     bottom=False,      # ticks along the bottom edge are off
+    #     top=False,         # ticks along the top edge are off
+    #     labelbottom=False)
+
+
     plt.savefig(outpath)
+    plt.clf()
+    print("Wrote {}".format(outpath))
+    # also save cmat
+    with open(outpath + ".pkl", "wb") as f:
+        pickle.dump(arr, f)
+
+    # diagonal-removed cmat
+    outpath = join(outputfolder, confname + "_nodiag.png")
+    for i in range(len(arr)):
+        arr[i, i] = 0
+    print(arr.shape)
+    plt.figure()
+    plt.imshow(arr, cmap=colormap)
+    plt.colorbar()
+    plt.gca().set_xticks(range(len(labelnames)))
+    plt.gca().set_xticklabels(labelnames)
+    plt.gca().set_yticks(range(len(labelnames)))
+    plt.gca().set_yticklabels(labelnames)
+    plt.setp(plt.gca().get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor")
+
+    plt.savefig(outpath)
+    print("Wrote {}".format(outpath))
+    # also save cmat
+    with open(outpath + ".pkl", "wb") as f:
+        pickle.dump(arr, f)
 
 
-def minmax_instances_labels(predictions, performance):
+def minmax_instances_labels(predictions, performance, num_test_labels, configname):
     res = {"instances": [], "labels": []}
+    res_nosort = {"instances": [], "labels": []}
 
     # instance-wise
     aggregate = np.zeros((len(test_labels),), np.float32)
     for preds in predictions:
         # get true / false predictions
         non_nan_idx = np.where(np.any(~np.isnan(preds), axis=1))
-        print("nonnan len",len(non_nan_idx[0]))
+        if len(non_nan_idx[0]) != num_test_labels:
+            print("num test error")
+            import ipdb; ipdb.set_trace()
+            exit(1)
         preds = preds[non_nan_idx]
         true_labels = test_labels[non_nan_idx]
         correct_preds = np.where(np.equal(np.argmax(preds, axis=1), true_labels))
@@ -35,38 +92,72 @@ def minmax_instances_labels(predictions, performance):
     # sort scores and instance indexes
     ranked_scores_idxs = sorted(list(zip(aggregate, list(range(len(aggregate))))), key=lambda x: x[0], reverse=True)
     res["instances"] = ranked_scores_idxs
+    res_nosort["instances"] = aggregate
 
     # label-wise
     res["labels"] = {}
     for measure in ["f1-score"]:
         scores_cw = performance['run']['f1-score']['classwise']['folds']
+        scores_cw = [s[lbl_indexes] for s in scores_cw]
         # average accross folds
         scores_cw = sum(scores_cw) / len(scores_cw)
         # rank
         ranked_scores_idxs = sorted(list(zip(scores_cw, list(range(len(scores_cw))))), key=lambda x: x[0], reverse=True)
-        res["labels"][measure] = ranked_scores_idxs
+        res["labels"] = ranked_scores_idxs
+        res_nosort["labels"] = scores_cw
 
-    # print
-    topk=10
-    # print in format instance1, instance2, ...
-    # print the below error / stat visualization
-    print_types = {"top": lambda x: x[:topk], "bottom": lambda x: x[-topk:]}
-    for print_type, func in print_types.items():
-        indexes = " ".join("{:.0f}".format(x[1]) for x in func(res["instances"]))
-        scores = " ".join("{:1.3f}".format(x[0]) for x in func(res["instances"]))
-        print("{:10} {:7} {:10} | ({}) ({})".format("accuracy", print_type, "instances", indexes, scores))
+    baseoutpath = join(outputfolder, configname + ".rankings")
+    # print figures as vertical heatmaps
+    for what in ["labels", "instances"]:
+        plt.figure()
+        plt.bar(range(len(res_nosort[what])), res_nosort[what])
+        # if what == "instances":
+        #     plt.bar(range(len(res_nosort[what])), res_nosort[what])
+        #     # plt.scatter(range(len(res_nosort[what])), res_nosort[what])
+        # else:
+        #     plt.plot(res_nosort[what])
+        outpath = "{}.{}.plot.png".format(baseoutpath, what)
+        plt.savefig(outpath)
+        print("Wrote", outpath)
 
-    lbl_top = topk
-    print_types = {"top": lambda x: x[:lbl_top], "bottom": lambda x: x[-lbl_top:]}
-    measure = "f1-score"
-    for print_type, func in print_types.items():
-        print("{:10} {:7} {:10} | ({}) ({})".format(measure, print_type, "labels",
-                                                        " ".join("{:.0f}".format(x[1]) for x in func(res["labels"][measure])),
-                                                        " ".join("{:1.3f}".format(x[0]) for x in func(res["labels"][measure]))))
+        show_width = 200 if what == "instances" else 1
+        expanded = np.repeat(np.expand_dims(res_nosort[what], axis=0), show_width, axis=0)
+        plt.figure()
+        plt.imshow(expanded)
+        plt.gca().set_yticks([])
+        outpath = "{}.{}.heatmap.png".format(baseoutpath, what)
+        plt.savefig(outpath)
+        print("Wrote", outpath)
+
+    print()
+
+
+    # # print
+    # topk=10
+    # # print in format instance1, instance2, ...
+    # # print the below error / stat visualization
+    # print_types = {"top": lambda x: x[:topk], "bottom": lambda x: x[-topk:]}
+    # for print_type, func in print_types.items():
+    #     indexes = " ".join("{:.0f}".format(x[1]) for x in func(res["instances"]))
+    #     scores = " ".join("{:1.3f}".format(x[0]) for x in func(res["instances"]))
+    #     print("{:10} {:7} {:10} | ({}) ({})".format("accuracy", print_type, "instances", indexes, scores))
+
+    # lbl_top = topk
+    # print_types = {"top": lambda x: x[:lbl_top], "bottom": lambda x: x[-lbl_top:]}
+    # measure = "f1-score"
+    # for print_type, func in print_types.items():
+    #     print("{:10} {:7} {:10} | ({}) ({})".format(measure, print_type, "labels",
+    #                                                     " ".join("{:.0f}".format(x[1]) for x in func(res["labels"])),
+    #                                                     " ".join("{:1.3f}".format(x[0]) for x in func(res["labels"]))))
+
+
 
 if __name__ == "__main__":
     datasets = {"20ng":    "/home/nik/software/sematext-jnle/serialization/datasets/20newsgroups.preprocessed.pickle",
                 "reuters": "/home/nik/software/sematext-jnle/serialization/datasets/reuters.preprocessed.pickle"}
+    sem = {"20ng":    "/home/nik/software/sematext-jnle/serialization/semantic/20newsgroups_wordnet_tfidf_all_disamfirst.preprocessed.pickle",
+                "reuters": "/home/nik/software/sematext-jnle/serialization/semantic/reuters_wordnet_tfidf_all_disampos_spread3-0.6.preprocessed.pickle"}
+
 
     try:
         base_dataset = sys.argv[1]
@@ -77,34 +168,62 @@ if __name__ == "__main__":
 
     dset = datasets[base_dataset]
     with open(dset, "rb") as f:
-        test_labels = pickle.load(f)[4]
+        dataset = pickle.load(f)
+        labelnames = dataset[2]
+
+        full_test_labels = dataset[4]
+
+    # labels histogram
+    thresh = 20
+    hist = sorted(collections.Counter(full_test_labels).items(), key=lambda x: x[1], reverse=True)
+    full_labelset = sorted(set(full_test_labels))
+    labelset = [x[0] for x in hist if x[1] > thresh]
+    inst_indexes = [i for i in range(len(full_test_labels)) if full_test_labels[i] in labelset]
+    lbl_indexes = np.asarray([i for i in range(len(full_labelset)) if full_labelset[i] in labelset])
+    test_labels = full_test_labels[inst_indexes]
+    # labelnames = [labelnames[x] for x in lbl_indexes]
+    labelnames = lbl_indexes
 
     res_path = join(results_folder, "results.pickle")
     with open(res_path, "rb") as f:
         res = pickle.load(f)
     performance = res["results"]
+    print("Mi/ma f1 stdev:", performance["run"]["f1-score"]["micro"]["std"], performance["run"]["f1-score"]["macro"]["std"])
     predictions = []
+
     try:
         cmat_folds = res["confusion"]["run"]
         print("Loaded precomputed confusion matrix")
+        if len(labelset) > 20:
+            cmat_folds = []
     except:
         cmat_folds = []
 
     # gather foldwise results
     for fold in range(5):
-        print("Fold", fold)
+        # print("Fold", fold)
         preds_path = join(results_folder, "mlp_fold{}.predictions.pickle".format(fold))
         with open(preds_path,"rb") as f:
-            preds = pickle.load(f)
+            full_preds = pickle.load(f)
+        preds = full_preds[inst_indexes]
+        # thresholding
         if len(preds) != len(test_labels):
             print("Error preds / lbls shape ", len(preds), len(test_labels))
             exit(1)
 
-        if not cmat_folds:
+        if len(cmat_folds) < 5:
             # generate conf. matrix on the fly
-            cmat = metrics.confusion_matrix(test_labels, preds)
+            cmat = metrics.confusion_matrix(full_test_labels, np.argmax(full_preds, axis=1))
             print("Generated confusion matrix on the fly")
+            if len(test_labels) < len(full_test_labels):
+                cmat = cmat[lbl_indexes, :][:, lbl_indexes]
+            cmat_folds.append(cmat)
+
+
         predictions.append(preds)
+
+    # get mean of confusion matrix
     cmat = np.mean(cmat_folds, axis=0)
-    heatmap(cmat, res_path + ".fold{}.confusion.png".format(fold))
-    minmax_instances_labels(predictions, performance)
+    heatmap(cmat, res_path + "confusion".format(fold), labelnames)
+    # get min/max instances & labels
+    minmax_instances_labels(predictions, performance, len(test_labels), get_config_name(res_path))

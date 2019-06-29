@@ -37,6 +37,7 @@ class DNN:
 
     confusion_matrices = None
     model_paths = []
+    test_validation = False
 
     def create(config):
         name = config.learner.name
@@ -268,9 +269,16 @@ class DNN:
                 with tictoc("Training run {} on train/val data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
                     model = self.train_model2(trainval_idx)
                 # test the model
+                if self.test_validation:
+                    self.test = self.train[trainval_idx[1]]
+                    self.test_labels = self.train_labels[trainval_idx[1]]
+                    self.num_test_labels = len(self.test_labels)
                 with tictoc("Testing {} on data: {}.".format(self.current_run_descr, self.num_test_labels)):
                     self.do_test(model)
                     model_paths.append(self.model_saver.filepath)
+                    if self.test_validation:
+                        self.test = []
+                        self.test_labels = []
 
             self.report_results()
             # for embedding training, write the embeddings
@@ -304,10 +312,16 @@ class DNN:
 
     # train a model on training & validation data portions
     def train_model2(self, trainval_idx):
-        # labels
-        train_labels, val_labels = [
-            to_categorical(labels, num_classes=self.num_labels) if len(labels) > 0 else np.empty((0,)) for labels in \
-                                    [self.train_labels[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
+        if len(self.test) > 0:
+            # labels
+            train_labels, val_labels = [
+                to_categorical(labels, num_classes=self.num_labels) if len(labels) > 0 else np.empty((0,)) for labels in \
+                                        [self.train_labels[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
+        else:
+            self.test_validation = True
+            # use all
+            train_labels = to_categorical(self.train_labels, num_classes=self.num_labels)
+            trainval_idx = np.asarray(list(range(len(self.train)))), []
         # data
         if self.num_train != self.num_train_labels:
             trainval_idx = self.expand_index_to_sequence(trainval_idx)
@@ -431,7 +445,11 @@ class DNN:
         predictions = np.argmax(predictions, axis=1)
         self.add_performance("run", predictions)
         maxfreq, maxlabel = -1, -1
-        for t in set(self.test_labels):
+        try:
+            unique_lbls = np.unique(self.test_labels)
+        except:
+            unique_lbls = set(self.test_labels)
+        for t in unique_lbls:
             freq = len([1 for x in self.test_labels if x == t])
             if freq > maxfreq:
                 maxfreq = freq

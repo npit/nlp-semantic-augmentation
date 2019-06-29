@@ -76,8 +76,10 @@ class SemanticResource(Serializable):
                 break
         # restore correct config
         self.semantic_name = SemanticResource.get_semantic_name(self.config)
-        info("Restored specifid semantic name to : {}".format(self.semantic_name))
+        info("Restored specified semantic name to : {}".format(self.semantic_name))
         self.form_name()
+        self.set_serialization_params()
+        self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
 
 
     def create(config):
@@ -114,6 +116,7 @@ class SemanticResource(Serializable):
         if self.semantic_weights == "frequencies":
             # get raw semantic frequencies
             for d in range(len(self.concept_freqs)):
+                info("Dataset part {}/{}".format(d, len(self.concept_freqs)))
                 for doc_dict in self.concept_freqs[d]:
                     doc_vector = np.asarray([[doc_dict[s] if s in doc_dict else 0 for s in concept_order]], np.float32)
                     semantic_document_vectors[d] = np.append(semantic_document_vectors[d], doc_vector, axis=0)
