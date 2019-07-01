@@ -266,11 +266,11 @@ class Evaluator:
             preds_amax = np.argmax(preds_proba, axis=1)
             # get prec, rec, f1
             for measure in [x for x in self.measures if x != "accuracy"]:
-                cw, ma, mi, ws = self.get_pre_rec_f1(preds_amax, measure, self.num_labels)
+                cw, mi, ma, we = self.get_pre_rec_f1(preds_amax, measure, self.num_labels)
                 self.performance[run_type][measure]["classwise"]["folds"].append(cw)
                 self.performance[run_type][measure]["macro"]["folds"].append(ma)
                 self.performance[run_type][measure]["micro"]["folds"].append(mi)
-                self.performance[run_type][measure]["weighted"]["folds"].append(ws)
+                self.performance[run_type][measure]["weighted"]["folds"].append(we)
                 self.confusion_matrices[run_type].append(metrics.confusion_matrix(self.test_labels, preds_amax, range(self.num_labels)))
 
             # get accuracies

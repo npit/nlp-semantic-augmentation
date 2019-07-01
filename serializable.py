@@ -96,9 +96,8 @@ class Serializable:
         self.handler_functions = []
         self.load_flags = []
         # setup paths
-        self.data_paths = self.get_paths_by_name(self.name, raw_path=self.get_raw_path())
+        self.configure_serialization_paths()
         # alias some paths
-        self.serialization_path_preprocessed, self.serialization_path = self.data_paths[:2]
         self.read_functions = [read_pickled, read_pickled, self.fetch_raw]
         self.handler_functions = [self.handle_preprocessed, self.handle_raw_serialized, self.handle_raw]
         self.set_additional_serialization_sources()
@@ -114,6 +113,10 @@ class Serializable:
         # preprocessed
         serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
         return [serialization_path_preprocessed, serialization_path, raw_path]
+
+    def configure_serialization_paths(self):
+        self.data_paths = self.get_paths_by_name(self.name, raw_path=self.get_raw_path())
+        self.serialization_path_preprocessed, self.serialization_path = self.data_paths[:2]
 
     def set_additional_serialization_sources(self):
         pass

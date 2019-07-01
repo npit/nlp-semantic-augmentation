@@ -4,7 +4,6 @@ from utils import error, info, debug, get_shape, shapes_list
 import numpy as np
 import pandas as pd
 from pandas.errors import ParserError
-from os.path import exists
 
 
 class Embedding(Representation):
@@ -17,7 +16,6 @@ class Embedding(Representation):
     embedding_vocabulary_index = {}
 
     data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index"]
-
 
     # region # serializable overrides
     def set_resources(self):
@@ -41,7 +39,6 @@ class Embedding(Representation):
         self.loaded_preprocessed = True
         self.dataset_vectors, self.elements_per_instance, self.undefined_word_index = [preprocessed[n] for n in self.data_names]
         debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
-        #error("Read empty train or test preprocessed representations!", not all([x.size for x in self.dataset_vectors]))
 
     # endregion
 

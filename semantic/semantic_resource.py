@@ -1,6 +1,6 @@
 from os.path import join, exists, dirname
 from os import makedirs
-from utils import tictoc, error, info, debug, write_pickled, read_pickled, shapes_list
+from utils import tictoc, error, info, debug, write_pickled, read_pickled, shapes_list, warning
 from serializable import Serializable
 from representation.bag import Bag, TFIDF
 from defs import is_none
@@ -65,13 +65,17 @@ class SemanticResource(Serializable):
         if not self.config.misc.skip_deserialization:
             Serializable.__init__(self, self.dir_name)
             self.set_serialization_params()
-
+        else:
+            warning("Skipping deserialization for the semantic component.")
         self.set_parameters()
+
         if not self.config.misc.skip_deserialization:
             self.acquire_data()
         # restore correct config
         self.set_parameters()
         self.set_name()
+        import ipdb; ipdb.set_trace()
+        self.set_serialization_params()
         info("Restored semantic name to : {}".format(self.name))
 
 

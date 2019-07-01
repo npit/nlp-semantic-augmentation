@@ -102,11 +102,11 @@ train:
   early_stopping_patience: 20
   batch_size: 20
 
-log_level: debug
 
 
 
 print:
+  log_level: debug
   # evaluation metrics: f1, accuracy, precision, recall
   measures: ["f1-score"]
   # evaluation metric aggregations: macro, micro, weighted
@@ -133,3 +133,4 @@ misc:
   keys:
     googleapi: my-google-api-key 
   skip_deserialization: True
+  seed: 1337
