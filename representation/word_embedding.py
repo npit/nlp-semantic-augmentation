@@ -77,6 +77,10 @@ class WordEmbedding(Embedding):
                 pbar.set_description(desc="Chunk {}/{}".format(chunk_index+1, num_chunks))
                 pbar.update()
 
+        # write
+        info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+
     # transform input texts to embeddings
     def map_text(self, dset):
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:

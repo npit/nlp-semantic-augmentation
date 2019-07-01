@@ -50,7 +50,7 @@ class Dataset(Serializable):
 
     # dataset creation
     def __init__(self, skip_init=False):
-        random.seed(self.config.seed)
+        random.seed(self.config.get_seed())
         if skip_init or self.config is None:
             return
         Serializable.__init__(self, self.dir_name)

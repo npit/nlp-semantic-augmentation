@@ -107,6 +107,7 @@ train:
 
 print:
   log_level: debug
+  log_dir: logs
   # evaluation metrics: f1, accuracy, precision, recall
   measures: ["f1-score"]
   # evaluation metric aggregations: macro, micro, weighted
@@ -130,7 +131,8 @@ folders:
   raw_data: raw_data
 
 misc:
+  run_id:
+  seed: 1337
   keys:
     googleapi: my-google-api-key 
   skip_deserialization: True
-  seed: 1337

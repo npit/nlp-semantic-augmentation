@@ -51,7 +51,7 @@ class SemanticResource(Serializable):
 
         for w in weight_vals:
             for f in filter_vals:
-                conf = copy.deepcopy(self.config)
+                conf = self.config.get_copy()
                 conf.semantic.weights = w
                 conf.semantic.limit = f
                 candidate_name = self.generate_name(conf)
