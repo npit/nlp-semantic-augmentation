@@ -31,6 +31,7 @@ def heatmap(arr, base_outpath, labelnames):
     plt.gca().set_xticklabels(labelnames)
     plt.gca().set_yticks(range(len(labelnames)))
     plt.gca().set_yticklabels(labelnames)
+    plt.xlabel(" ")
     plt.setp(plt.gca().get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor")
 
     # plt.axis('off')
@@ -42,7 +43,7 @@ def heatmap(arr, base_outpath, labelnames):
     #     labelbottom=False)
 
 
-    plt.savefig(outpath)
+    plt.savefig(outpath, bbox_inches='tight', pad_inches=0)
     plt.clf()
     print("Wrote {}".format(outpath))
     # also save cmat
@@ -57,13 +58,14 @@ def heatmap(arr, base_outpath, labelnames):
     plt.figure()
     plt.imshow(arr, cmap=colormap)
     plt.colorbar()
+    plt.xlabel(" ")
     plt.gca().set_xticks(range(len(labelnames)))
     plt.gca().set_xticklabels(labelnames)
     plt.gca().set_yticks(range(len(labelnames)))
     plt.gca().set_yticklabels(labelnames)
     plt.setp(plt.gca().get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor")
 
-    plt.savefig(outpath)
+    plt.savefig(outpath, bbox_inches='tight', pad_inches=0)
     print("Wrote {}".format(outpath))
     # also save cmat
     with open(outpath + ".pkl", "wb") as f:
@@ -106,18 +108,25 @@ def minmax_instances_labels(predictions, performance, num_test_labels, confignam
         res["labels"] = ranked_scores_idxs
         res_nosort["labels"] = scores_cw
 
-    baseoutpath = join(outputfolder, configname + ".rankings")
+    baseoutpath = join(outputfolder, configname + "_rankings")
     # print figures as vertical heatmaps
     for what in ["labels", "instances"]:
         plt.figure()
         plt.bar(range(len(res_nosort[what])), res_nosort[what])
+        if what == "labels":
+            plt.gca().set_xticks(range(len(labelnames)))
+            plt.gca().set_xticklabels(labelnames)
+            plt.setp(plt.gca().get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor")
+            plt.ylabel("f1-score")
+            plt.xlabel("label")
+
         # if what == "instances":
         #     plt.bar(range(len(res_nosort[what])), res_nosort[what])
         #     # plt.scatter(range(len(res_nosort[what])), res_nosort[what])
         # else:
         #     plt.plot(res_nosort[what])
-        outpath = "{}.{}.plot.png".format(baseoutpath, what)
-        plt.savefig(outpath)
+        outpath = "{}_{}_plot.png".format(baseoutpath, what)
+        plt.savefig(outpath, bbox_inches='tight', pad_inches=0)
         print("Wrote", outpath)
 
         show_width = 200 if what == "instances" else 1
@@ -125,8 +134,8 @@ def minmax_instances_labels(predictions, performance, num_test_labels, confignam
         plt.figure()
         plt.imshow(expanded)
         plt.gca().set_yticks([])
-        outpath = "{}.{}.heatmap.png".format(baseoutpath, what)
-        plt.savefig(outpath)
+        outpath = "{}_{}_heatmap.png".format(baseoutpath, what)
+        plt.savefig(outpath, bbox_inches='tight', pad_inches=0)
         print("Wrote", outpath)
 
     print()
@@ -154,7 +163,9 @@ def minmax_instances_labels(predictions, performance, num_test_labels, confignam
 
 if __name__ == "__main__":
     datasets = {"20ng":    "/home/nik/software/sematext-jnle/serialization/datasets/20newsgroups.preprocessed.pickle",
-                "reuters": "/home/nik/software/sematext-jnle/serialization/datasets/reuters.preprocessed.pickle"}
+                "reuters": "/home/nik/software/sematext-jnle/serialization/datasets/reuters.preprocessed.pickle",
+            "bbc": "/home/nik/software/sematext-jnle/serialization/datasets/bbc.json.preprocessed.pickle",
+            "ohsumed": "/home/nik/software/sematext-jnle/serialization/datasets/ohsumed.json.preprocessed.pickle"}
     sem = {"20ng":    "/home/nik/software/sematext-jnle/serialization/semantic/20newsgroups_wordnet_tfidf_all_disamfirst.preprocessed.pickle",
                 "reuters": "/home/nik/software/sematext-jnle/serialization/semantic/reuters_wordnet_tfidf_all_disampos_spread3-0.6.preprocessed.pickle"}
 
@@ -173,16 +184,25 @@ if __name__ == "__main__":
 
         full_test_labels = dataset[4]
 
-    # labels histogram
-    thresh = 20
-    hist = sorted(collections.Counter(full_test_labels).items(), key=lambda x: x[1], reverse=True)
-    full_labelset = sorted(set(full_test_labels))
-    labelset = [x[0] for x in hist if x[1] > thresh]
-    inst_indexes = [i for i in range(len(full_test_labels)) if full_test_labels[i] in labelset]
-    lbl_indexes = np.asarray([i for i in range(len(full_labelset)) if full_labelset[i] in labelset])
-    test_labels = full_test_labels[inst_indexes]
-    # labelnames = [labelnames[x] for x in lbl_indexes]
-    labelnames = lbl_indexes
+
+    if base_dataset != "bbc":
+        # labels histogram
+        thresh = 20
+        hist = sorted(collections.Counter(full_test_labels).items(), key=lambda x: x[1], reverse=True)
+        full_labelset = sorted(set(full_test_labels))
+        labelset = [x[0] for x in hist if x[1] > thresh]
+        inst_indexes = [i for i in range(len(full_test_labels)) if full_test_labels[i] in labelset]
+        lbl_indexes = np.asarray([i for i in range(len(full_labelset)) if full_labelset[i] in labelset])
+        test_labels = full_test_labels[inst_indexes]
+        # labelnames = [labelnames[x] for x in lbl_indexes]
+        labelnames = lbl_indexes
+    else:
+        test_labels = None
+        lbl_indexes = list(range(len(labelnames)))
+        inst_indexes = None
+        train_labels = dataset[1]
+        with open(join(results_folder, "mlp_fold0.trainval.pickle"), "rb") as f:
+            train_val = pickle.load(f)
 
     res_path = join(results_folder, "results.pickle")
     with open(res_path, "rb") as f:
@@ -205,15 +225,24 @@ if __name__ == "__main__":
         preds_path = join(results_folder, "mlp_fold{}.predictions.pickle".format(fold))
         with open(preds_path,"rb") as f:
             full_preds = pickle.load(f)
-        preds = full_preds[inst_indexes]
+        if inst_indexes is not None:
+            preds = full_preds[inst_indexes]
+        else:
+            preds = full_preds
+            import pdb;pdb.set_trace()
+            test_labels = [train_labels[x] for x in train_val[fold][1]]
+
         # thresholding
         if len(preds) != len(test_labels):
             print("Error preds / lbls shape ", len(preds), len(test_labels))
             exit(1)
 
         if len(cmat_folds) < 5:
-            # generate conf. matrix on the fly
-            cmat = metrics.confusion_matrix(full_test_labels, np.argmax(full_preds, axis=1))
+            if len(full_test_labels) == 0:
+                cmat = metrics.confusion_matrix(test_labels, np.argmax(preds, axis=1))
+            else:
+                # generate conf. matrix on the fly
+                cmat = metrics.confusion_matrix(full_test_labels, np.argmax(full_preds, axis=1))
             print("Generated confusion matrix on the fly")
             if len(test_labels) < len(full_test_labels):
                 cmat = cmat[lbl_indexes, :][:, lbl_indexes]

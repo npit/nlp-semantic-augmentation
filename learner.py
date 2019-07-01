@@ -475,7 +475,7 @@ class DNN:
 
         # get everything else
         for measure in [x for x in self.measures if x !="accuracy"]:
-            cw, ma, mi, ws = self.get_pre_rec_f1(preds, measure)
+            cw, mi, ma, ws = self.get_pre_rec_f1(preds, measure)
             self.performance[type][measure]["classwise"]["folds"].append(cw)
             self.performance[type][measure]["macro"]["folds"].append(ma)
             self.performance[type][measure]["micro"]["folds"].append(mi)
