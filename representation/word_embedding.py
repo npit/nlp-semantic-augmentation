@@ -10,12 +10,11 @@ import tqdm
 class WordEmbedding(Embedding):
     name = "word_embedding"
     unknown_word_token = "unk"
-
+    present_words = None
 
     # expected raw data path
     def get_raw_path(self):
         return "{}/{}_dim{}.pickle".format(self.raw_data_dir, self.base_name, self.dimension)
-
 
     def map_text_partial_load(self, dset):
         # iterate over files. match existing words
@@ -26,34 +25,38 @@ class WordEmbedding(Embedding):
         info("Mapping with a read batch size of {}".format(batch_size))
         error("Partial loading implementation has to include UNKs", not self.map_missing_unks)
 
-        # make a mapping embedding vocab index -> file_index, word_index
+        # make a mapping from the embedding vocabulary index -> file_index, word_index
+        # thus the embeddings file can be traversed just once
         vocab_to_dataset = {}
 
         for dset_idx, docs in enumerate(text_bundles):
             num_docs = len(docs)
             current_num_words = 0
-            word_stats = WordEmbeddingStats(self.vocabulary, self.embedding_vocabulary_index.keys())
+            word_stats = WordEmbeddingStats(dset.vocabulary, self.embedding_vocabulary_index.keys())
             # make empty features
             with tqdm.tqdm("Bulding embedding / dataset vocabulary mapping for text bundle {}/{}".format(dset_idx + 1, len(text_bundles)),
                            total=num_docs, ascii=True) as pbar:
                 for file_idx, word_info_list in enumerate(text_bundles[dset_idx]):
                     for word_idx, word_info in enumerate(word_info_list):
                         word = word_info[0]
-                        word_in_vocab = word in self.embedding_vocabulary_index
-                        word_stats.update_word_stats(word, word_in_vocab)
-                        if word_in_vocab:
+                        word_in_embedding_vocab = word in self.embedding_vocabulary_index
+                        word_stats.update_word_stats(word, word_in_embedding_vocab)
+                        if word_in_embedding_vocab:
                             # word exists in the embeddings vocabulary
                             vocab_index = self.embedding_vocabulary_index[word]
                             if vocab_index not in vocab_to_dataset:
                                 vocab_to_dataset[vocab_index] = []
                             vocab_to_dataset[vocab_index].append((dset_idx, current_num_words))
+                            self.present_words.add(word)
                         current_num_words += 1
                     pbar.update()
                     self.elements_per_instance[dset_idx].append(len(word_info_list))
             word_stats.print_word_stats()
             self.dataset_vectors[dset_idx] = np.repeat(self.get_zero_pad_element(), current_num_words, axis=0)
 
-        useful_indexes = sorted(vocab_to_dataset.keys(), reverse=True)
+        # get the embedding indexes words are mapped to
+        present_embedding_word_indexes = sorted(vocab_to_dataset.keys(), reverse=True)
+        self.mapped_embedding_words = set([self.embedding_vocabulary[i] for i in set(present_embedding_word_indexes)])
 
         # populate features by batch-loading the embedding csv
         num_chunks = math.ceil(len(self.embedding_vocabulary_index) / batch_size)
@@ -61,25 +64,35 @@ class WordEmbedding(Embedding):
             for chunk_index, chunk in enumerate(pd.read_csv(self.embeddings_path, index_col=0, header=None,
                                                 delim_whitespace=True, chunksize=batch_size)):
                 while True:
-                    if not useful_indexes:
+                    if not present_embedding_word_indexes:
                         break
                     # get next vocabulary index of interest
-                    vocab_index = useful_indexes.pop()
+                    vocab_index = present_embedding_word_indexes.pop()
                     if vocab_index >= (chunk_index + 1) * batch_size:
                         # vocab index is in the next chunk. reinsert and continue
-                        useful_indexes.append(vocab_index)
+                        present_embedding_word_indexes.append(vocab_index)
                         break
                     # get local (in the batch) index position
                     batch_vocab_index = vocab_index - batch_size * chunk_index
                     vector = chunk.iloc[batch_vocab_index].values
                     for dset_idx, global_word_idx in vocab_to_dataset[vocab_index]:
                         self.dataset_vectors[dset_idx][global_word_idx] = vector
-                pbar.set_description(desc="Chunk {}/{}".format(chunk_index+1, num_chunks))
+                pbar.set_description(desc="Chunk {}/{}".format(chunk_index + 1, num_chunks))
                 pbar.update()
 
         # write
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+
+    def get_all_preprocessed(self):
+        dat = Embedding.get_all_preprocessed(self)
+        dat["present_words"] = self.present_words
+        return dat
+
+    # mark preprocessing
+    def handle_preprocessed(self, preprocessed):
+        self.present_words = preprocessed["present_words"]
+        Embedding.handle_preprocessed(self, preprocessed)
 
     # transform input texts to embeddings
     def map_text(self, dset):
@@ -89,7 +102,7 @@ class WordEmbedding(Embedding):
 
         self.dataset_vectors = [[], []]
         self.elements_per_instance = [[], []]
-        self.vocabulary = dset.vocabulary
+        self.present_words = set()
 
         # if there's a vocabulary file read or precomputed, utilize partial loading of the underlying csv
         # saves a lot of memory
@@ -108,7 +121,7 @@ class WordEmbedding(Embedding):
         for dset_idx, docs in enumerate(text_bundles):
             num_docs = len(docs)
             with tictoc("Embedding mapping for text bundle {}/{}, with {} texts".format(dset_idx + 1, len(text_bundles), num_docs)):
-                word_stats = WordEmbeddingStats(self.vocabulary, self.embeddings.index)
+                word_stats = WordEmbeddingStats(dset.vocabulary, self.embeddings.index)
                 for j, doc_wp_list in enumerate(text_bundles[dset_idx]):
                     # drop POS
                     word_list = [wp[0] for wp in doc_wp_list]
@@ -124,6 +137,7 @@ class WordEmbedding(Embedding):
                     word_list = [w for w in word_list if present_map[w]] if not self.map_missing_unks else \
                         [w if present_map[w] else self.unknown_word_token for w in word_list]
 
+                    self.present_words.update([w for w in present_map if present_map[w]])
                     error("No words present in document.", len(word_list) == 0)
 
                     # get embeddings
@@ -145,6 +159,16 @@ class WordEmbedding(Embedding):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
 
+    # getter for semantic processing, filtering only to present words
+    def process_data_for_semantic_processing(self, train, test):
+        if self.map_missing_unks:
+            return Embedding.process_data_for_semantic_processing(self, train, test)
+        # if we discard words that are not in the vocabulary, return those that are in the vocabulary
+        # s.t. semantic processing is only applied on them
+        ret_train, ret_test = [[w for w in doc if w[0] in self.present_words] for doc in train], \
+                              [[w for w in doc if w[0] in self.present_words] for doc in test]
+        return ret_train, ret_test
+
 
     def __init__(self, config):
         self.config = config
@@ -155,10 +179,10 @@ class WordEmbedding(Embedding):
 class WordEmbeddingStats:
     """Class to compute and show word-embedding matching / coverage statistics"""
 
-    def __init__(self, vocabulary, embedding_vocab):
+    def __init__(self, dataset_vocabulary, embedding_vocab):
         self.hist = {w: 0 for w in embedding_vocab}
         self.hist_missing = {}
-        self.vocabulary = vocabulary
+        self.dataset_vocabulary = dataset_vocabulary
 
     def update_word_stats(self, word, word_in_embedding_vocabulary):
         if not word_in_embedding_vocabulary:
@@ -167,6 +191,7 @@ class WordEmbeddingStats:
             self.hist_missing[word] += 1
         else:
             self.hist[word] += 1
+
     def print_word_stats(self):
         try:
             terms_hit, hit_sum = len([v for v in self.hist if self.hist[v] > 0]), sum(self.hist.values())
@@ -176,6 +201,6 @@ class WordEmbeddingStats:
             debug("{:.3f} % terms in the vocabulary appear at least once, which corresponds to a total of {:.3f} % terms in the text".
                   format(terms_hit / len(self.hist) * 100, hit_sum / total_term_sum * 100))
             debug("{:.3f} % terms in the vocabulary never appear, i.e. a total of {:.3f} % terms in the text".format(
-                terms_missed / len(self.vocabulary) * 100, miss_sum / total_term_sum * 100))
+                terms_missed / len(self.dataset_vocabulary) * 100, miss_sum / total_term_sum * 100))
         except ZeroDivisionError:
             warning("No samples!")

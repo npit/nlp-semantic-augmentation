@@ -4,7 +4,6 @@ from utils import tictoc, error, info, debug, write_pickled, read_pickled, shape
 from serializable import Serializable
 from representation.bag import Bag, TFIDF
 from defs import is_none
-import copy
 import defs
 
 class SemanticResource(Serializable):
@@ -264,6 +263,7 @@ class SemanticResource(Serializable):
             self.process_similar_loaded()
             return
 
+
         # compute bag from scratch
         if self.semantic_weights == defs.weights.tfidf:
             self.bag_train, self.bag_test = TFIDF(), TFIDF()
@@ -273,7 +273,9 @@ class SemanticResource(Serializable):
         # read the semantic resource input-concept cache , if it exists
         self.load_semantic_cache()
 
-        # process the dataset
+        # get representation-relatd information of the data to semantically annotate, if applicable
+        train_data, test_data = representation.process_data_for_semantic_processing(dataset.train, dataset.test)
+
         # train
         info("Extracting {}-{} semantic information from the training dataset".format(self.name, self.semantic_weights))
         self.bag_train.set_term_weighting_function(self.get_concept)
@@ -281,16 +283,17 @@ class SemanticResource(Serializable):
         if not is_none(self.config.semantic.limit):
             self.bag_train.set_term_filtering(self.limit_type, self.limit_number)
         self.bag_train.set_term_extraction_function(lambda x: x)
-        self.bag_train.map_collection(dataset.train)
+        self.bag_train.map_collection(train_data)
         self.reference_concepts = self.bag_train.get_term_list()
 
         # test - since we restrict to the training set concepts, no need to filter
-        info("Extracting {}-{} semantic information with a {}-long term list from the test dataset".format(self.name, self.semantic_weights, len(self.reference_concepts)))
+        info("Extracting {}-{} semantic information with a {}-long term list from the test dataset".format(\
+            self.name, self.semantic_weights, len(self.reference_concepts)))
         self.bag_test.set_term_list(self.reference_concepts)
         self.bag_test.set_term_weighting_function(self.get_concept)
         self.bag_test.set_term_delineation_function(self.get_term_delineation)
         self.bag_test.set_term_extraction_function(lambda x: x)
-        self.bag_test.map_collection(dataset.test)
+        self.bag_test.map_collection(test_data)
 
         # collect vectors
         self.concept_freqs = [self.bag_train.get_weights(), self.bag_test.get_weights()]

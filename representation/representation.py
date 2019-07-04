@@ -204,3 +204,9 @@ class Representation(Serializable):
         if not self.dataset_vectors:
             error("Attempted to set constant epi before computing dataset vectors.")
         self.elements_per_instance = [[num for _ in ds] for ds in self.dataset_vectors]
+
+    # data getter for semantic processing
+
+    def process_data_for_semantic_processing(self, train, test):
+        return train, test
+
