@@ -172,12 +172,12 @@ class Evaluator:
             info("{} : {}".format(header, scores_str))
 
     # print performance across folds and compute foldwise aggregations
-    def report_overall_results(self, validation_description, write_folder):
+    def report_overall_results(self, validation_description, num_total_train, write_folder):
         """Function to report learning results
         """
         info("==============================")
         self.show_label_distribution(self.test_labels)
-        self.analyze_overall_errors()
+        self.analyze_overall_errors(num_total_train)
 
         info("{} {} performance {} with a validation setting of [{}]".format("/".join(self.preferred_types),
                                                                   "/".join(self.preferred_measures),
@@ -367,9 +367,7 @@ class Evaluator:
 
 
 
-    def consolidate_folded_test_results(self):
-        num_total_train = len(set(np.concatenate(self.predictions_instance_indexes)))
-
+    def consolidate_folded_test_results(self, num_total_train):
         for run_type in self.predictions:
             for p, preds in enumerate(self.predictions[run_type]):
                 full_preds = np.zeros((num_total_train, self.num_labels), np.float32)
@@ -379,7 +377,7 @@ class Evaluator:
                 self.predictions[run_type][p] = full_preds
 
     # analyze overall error of the run
-    def analyze_overall_errors(self):
+    def analyze_overall_errors(self, num_total_train):
         """Method to generate an error analysis over folds
         - label-wise ranking: extract best/worst labels, average across instances
         - instance-wise ranking: extract best/worst instances, average across labels
@@ -399,7 +397,7 @@ class Evaluator:
 
             if not self.use_validation_for_training:
                 # instances vary across folds -- consolidate
-                self.consolidate_folded_test_results()
+                self.consolidate_folded_test_results(num_total_train)
 
             for run_type in self.predictions:
                 # instance-wise

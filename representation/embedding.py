@@ -13,6 +13,7 @@ class Embedding(Representation):
     embeddings = None
     words_to_numeric_idx = None
     dimension = None
+    # word - word_index map
     embedding_vocabulary_index = {}
 
     data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index"]

@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 from os.path import join, exists
 import logging
 import random
@@ -18,20 +19,20 @@ class Config:
     conf = {}
     run_id = None
 
-    def  get_copy(self):
+    def get_copy(self):
         """Get a copy of the config object
 
         This omits the logger object, which causes problems to the copying procedure."""
         c = Config()
-        c.dataset = self.dataset
-        c.representation = self.representation
-        c.transform = self.transform
-        c.semantic = self.semantic
-        c.learner = self.learner
+        c.dataset = deepcopy(self.dataset)
+        c.representation = deepcopy(self.representation)
+        c.transform = deepcopy(self.transform)
+        c.semantic = deepcopy(self.semantic)
+        c.learner = deepcopy(self.learner)
         c.train = self.train
-        c.misc = self.misc
-        c.print = self.print
-        c.folders = self.folders
+        c.misc = deepcopy(self.misc)
+        c.print = deepcopy(self.print)
+        c.folders = deepcopy(self.folders)
 
         return c
 

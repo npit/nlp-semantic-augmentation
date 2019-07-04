@@ -1,6 +1,6 @@
 import json
 from os.path import basename
-
+import numpy as np
 from dataset.dataset import Dataset
 from utils import write_pickled
 
@@ -82,6 +82,10 @@ class ManualDataset(Dataset):
                 [list(map(str, sorted(unique_labels[tt]))) for tt in ["train", "test"]]
         if max_num_instance_labels > 1:
             self.multilabel = True
+        else:
+            # labels to ndarray
+            self.train_labels = np.squeeze(np.asarray(self.train_labels))
+            self.test_labels = np.squeeze(np.asarray(self.test_labels))
         # write serialized data
         write_pickled(self.serialization_path, self.get_all_raw())
 

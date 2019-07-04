@@ -80,7 +80,7 @@ class Learner:
 
         # configure and sanity-check evaluator
         self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
-        if not self.use_validation_for_training:
+        if self.validation_exists and not self.use_validation_for_training:
             # calculate the majority label from the training data
             self.evaluator.majority_label = get_majority_label(self.train_labels, self.num_labels)
             info("Majority label: {}".format(self.evaluator.majority_label))
@@ -132,7 +132,7 @@ class Learner:
                         self.evaluator.evaluate_learning_run(existing_predictions, instance_indexes=test_instance_indexes)
                         continue
                 # if no test data is available, use the validation data
-                if not self.use_validation_for_training:
+                if self.validation_exists and not self.use_validation_for_training:
                     train_idx, val_idx = trainval_idx
                     self.test, self.test_labels = self.train[val_idx], self.train_labels[val_idx]
                     self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
@@ -148,15 +148,14 @@ class Learner:
                     self.do_test(model)
                     model_paths.append(self.get_current_model_path())
 
-                if not self.use_validation_for_training:
+                if self.validation_exists and not self.use_validation_for_training:
                     self.test, self.test_labels = [], []
                     self.test_instance_indexes = None
 
-
-            if not self.use_validation_for_training:
+            if self.validation_exists and not self.use_validation_for_training:
                 # pass the entire training labels
                 self.evaluator.configure(self.train_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
-            self.evaluator.report_overall_results(validation_description, self.results_folder)
+            self.evaluator.report_overall_results(validation_description, len(self.train), self.results_folder)
 
     # evaluate a model on the test set
     def do_test(self, model):

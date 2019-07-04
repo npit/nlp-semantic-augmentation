@@ -86,6 +86,8 @@ class Dataset(Serializable):
                 list(map(int, flatten(labels)))
         except ValueError as ve:
             error("Non-numeric label encountered: {}".format(ve))
+        except TypeError as ve:
+            warning("Non-collection labelitem encountered: {}".format(ve))
         # zero train / test
         # error("Problematic values loaded.", zero_length(self.train, self.test))
 
