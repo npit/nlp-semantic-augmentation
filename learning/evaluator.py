@@ -281,32 +281,14 @@ class Evaluator:
     # show labels distribution
     def show_label_distribution(self, labels=None, do_show=True):
         if not self.label_distribution:
-            if labels is None:
-                labels = self.test_labels
-            # calc label distribution
-            for lblset in labels:
-                if self.do_multilabel:
-                    for lbl in lblset:
-                        lbl = int(lbl)
-                        if lbl not in self.label_distribution:
-                            self.label_distribution[lbl] = 0
-                        self.label_distribution[lbl] += 1
-                else:
-                    label = lblset
-                    try:
-                        label = lblset[0]
-                    except:
-                        pass
-                    if label not in self.label_distribution:
-                        self.label_distribution[label] = 0
-                    self.label_distribution[label] += 1
+            if labels is not None:
+                self.test_labels = labels
+            self.label_distribution = get_majority_label(self.test_labels, self.num_labels, return_counts=True)
         if do_show:
             info("Label distribution:")
-            sorted_labels = sorted(self.label_distribution.keys())
-            for lbl in sorted_labels:
+            for lbl, freq in self.label_distribution:
                 maj = " - [majority]" if lbl == self.majority_label else ""
-                count = self.label_distribution[lbl]
-                info("Label {} : {}{}".format(lbl, count, maj))
+                info("Label {} : {}{}".format(lbl, freq, maj))
 
     # evaluate predictions and add baselines
     def evaluate_learning_run(self, predictions, instance_indexes=None):

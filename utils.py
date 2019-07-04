@@ -3,7 +3,7 @@ import pickle
 import logging
 import numpy as np
 import os
-from collections import namedtuple
+from collections import namedtuple, Counter
 import nltk
 
 num_warnings = 0
@@ -142,24 +142,22 @@ def align_index(input_list, reference):
     return output
 
 
-def get_majority_label(labels, num_labels):
+def get_majority_label(labels, num_labels, return_counts=False):
     """Gets majority (in terms of frequency) label in (potentially multilabel) input
     """
-    maxfreq, maxlabel = -1, -1
+    counts = Counter()
     try:
-        for t in range(num_labels):
-            freq = len([1 for labelset in labels if t in labelset])
-            if freq > maxfreq:
-                maxfreq = freq
-                maxlabel = t
-    except TypeError:
+        # iterable labels
+        labels[0].__iter__
+        for lab in labels:
+            counts.update(lab)
+    except AttributeError:
         # non-iterable labels
-        for t in range(num_labels):
-            freq = len([1 for label in labels if t == label])
-            if freq > maxfreq:
-                maxfreq = freq
-                maxlabel = t
-    return maxlabel
+        counts = Counter(labels)
+    if return_counts:
+        return sorted(list(counts.most_common()), key= lambda x: x[0])
+    # just the max label
+    return counts.most_common(1)[0][0]
 
 
 # split lists into sublists
