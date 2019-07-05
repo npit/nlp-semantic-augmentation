@@ -14,6 +14,7 @@ class SemanticResource(Serializable):
     loaded_vectorized = False
 
     lookup_cache = {}
+    hypernym_cache = {}
     word_concept_embedding_cache = {}
 
     concept_freqs = []
@@ -73,10 +74,8 @@ class SemanticResource(Serializable):
         # restore correct config
         self.set_parameters()
         self.set_name()
-        import ipdb; ipdb.set_trace()
         self.set_serialization_params()
         info("Restored semantic name to : {}".format(self.name))
-
 
     def get_vectors(self):
         return self.semantic_document_vectors
@@ -110,16 +109,46 @@ class SemanticResource(Serializable):
     # and a local word cache. Updates concept frequencies as well.
     def get_concept(self, word_information):
         if self.do_cache and word_information in self.lookup_cache:
-            concept_activations = self.lookup_cache[word_information]
-            # debug("Cache hit! for {}".format(word_information))
+            activations = self.lookup_cache[word_information]
         else:
-            concept_activations = self.lookup(word_information)
-            if not concept_activations:
-                return []
-            if self.do_cache:
-                # populate cache
-                self.lookup_cache[word_information] = concept_activations
-        return concept_activations
+            activations = self.lookup(word_information)
+        if not activations:
+            return {}
+        if self.do_spread_activation:
+            for concept in list(activations.keys()):
+                hypers = self.run_spreading_activation(concept)
+                for h in hypers:
+                    activations[h] = hypers[h]
+        if self.do_cache and word_information not in self.lookup_cache:
+            # populate cache
+            self.lookup_cache[word_information] = activations
+
+        return activations
+
+    def run_spreading_activation(self, concept):
+        ret = {}
+        # current weight value
+        current_concepts = [concept]
+        decay = 1
+        for _ in range(self.spread_steps):
+            decay *= self.spread_decay_factor
+            new_concepts = []
+            while current_concepts:
+                concept = current_concepts.pop()
+                if self.do_cache and concept in self.hypernym_cache:
+                    hypers = self.hypernym_cache[concept]
+                else:
+                    hypers = self.spread_activation(concept)
+                    if self.do_cache and concept not in self.hypernym_cache:
+                        self.hypernym_cache[concept] = hypers
+                if not hypers:
+                    continue
+                for h in hypers:
+                    ret[h] = decay
+                new_concepts.extend(hypers)
+            current_concepts = new_concepts
+
+        return ret
 
     # vectorized data handler
     def handle_vectorized(self, data):
@@ -198,16 +227,23 @@ class SemanticResource(Serializable):
     def get_cache_path(self):
         return join(self.config.folders.raw_data, self.dir_name, self.base_name + ".cache.pickle")
 
+    def get_cache_path(self):
+        return join(self.config.folders.raw_data, self.dir_name, self.base_name + ".hypernym.cache.pickle")
+
     # read existing resource-wise serialized semantic cache from previous runs to speedup resolving
     def load_semantic_cache(self):
         if not self.do_cache:
             return None
+        # direct cache
         cache_path = self.get_cache_path()
         if exists(cache_path):
             self.lookup_cache = read_pickled(cache_path)
             info("Read a {}-long semantic cache from {}.".format(len(self.lookup_cache), cache_path))
-            return self.lookup_cache
-        return {}
+        # spreading activation cache
+        hypernym_cache_path = self.get_cache_path()
+        if exists(hypernym_cache_path):
+            self.hypernym_cache = read_pickled(hypernym_cache_path)
+            info("Read a {}-long hypernym semantic cache from {}.".format(len(self.hypernym_cache), hypernym_cache_path))
 
     # write the semantic cache after resolution of the current dataset
     def write_semantic_cache(self):
@@ -306,7 +342,7 @@ class SemanticResource(Serializable):
         # store the cache
         self.write_semantic_cache()
 
-    def spread_activation(self, synset, steps_to_go, current_decay):
+    def spread_activation(self, synset):
         error("Attempted to call abstract spread activation for semantic resource {}.".format(self.name))
 
     def handle_preprocessed(self, preprocessed):

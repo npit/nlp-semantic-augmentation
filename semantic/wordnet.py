@@ -10,6 +10,8 @@ from nltk.corpus import wordnet as wn
 class Wordnet(SemanticResource):
     name = "wordnet"
     # pos_tag_mapping = {"VB": wn.VERB, "NN": wn.NOUN, "JJ": wn.ADJ, "RB": wn.ADV}
+    # local name to synset cache for spreading activation speedups
+    name_to_synset_cache = {}
 
     @staticmethod
     def get_wordnet_pos(config, treebank_tag):
@@ -64,24 +66,11 @@ class Wordnet(SemanticResource):
             return {}
         synsets = self.disambiguate(synsets, word_information)
         activations = {synset._name: 1 for synset in synsets}
-        if self.do_spread_activation:
-            # climb the hypernym ladder
-            hyper_activations = self.spread_activation(synsets, self.spread_steps, 1)
-            activations = {**activations, **hyper_activations}
         return activations
 
-    def spread_activation(self, synsets, steps_to_go, current_decay):
-        if steps_to_go == 0:
-            return
-        activations = {}
-        # current weight value
-        new_decay = current_decay * self.spread_decay_factor
-        for synset in synsets:
-            # get hypernyms of synset
-            for hyper in synset.hypernyms():
-                activations[hyper._name] = current_decay
-                hypers = self.spread_activation([hyper], steps_to_go - 1, new_decay)
-                if hypers:
-                    activations = {**activations, **hypers}
-        return activations
-
+    def spread_activation(self, synset_name):
+        if synset_name in self.name_to_synset_cache:
+            synset = self.name_to_synset_cache[synset_name]
+        else:
+            synset = wn.synset(synset_name)
+        return [h._name for h in synset.hypernyms()]
