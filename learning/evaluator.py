@@ -170,20 +170,24 @@ class Evaluator:
             # print
             header = " ".join(["{:10}".format(x) for x in [run_type, aggr, measure, scores_str] if x is not None])
             info("{} : {}".format(header, scores_str))
+            return True
+        return False
 
     # print performance across folds and compute foldwise aggregations
     def report_overall_results(self, validation_description, num_total_train, write_folder):
         """Function to report learning results
         """
-        info("==============================")
         self.show_label_distribution(self.test_labels)
+        info("==============================")
         self.analyze_overall_errors(num_total_train)
+        info("==============================")
 
         info("{} {} performance {} with a validation setting of [{}]".format("/".join(self.preferred_types),
                                                                   "/".join(self.preferred_measures),
                                                                   "/".join(self.preferred_stats), validation_description))
-        info("==============================")
+        info("------------------------------")
         for run_type in self.run_types:
+            did_print = False
             for measure in self.measures:
                 if not self.do_multilabel:
                     for aggr in self.multiclass_aggregations:
@@ -192,7 +196,7 @@ class Evaluator:
                         # calculate the foldwise statistics
                         self.performance[run_type][measure][aggr] = self.calc_fold_score_stats(self.performance[run_type][measure][aggr])
                         # print if it's required by the settings
-                        self.print_performance(run_type, measure, aggr)
+                        did_print = self.print_performance(run_type, measure, aggr)
                         # # print the combination, if it's in the prefered stuff to print
                         # if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
                         #     scores_str = self.get_score_stats_string(self.performance[run_type][measure][aggr])
@@ -201,12 +205,14 @@ class Evaluator:
                     # multilabel setting: different measure, no classwise aggregations
                     for measure in self.multilabel_measures:
                         self.performance[run_type][measure] = self.calc_fold_score_stats(self.performance[run_type][measure])
-                        self.print_performance(run_type, measure)
+                        did_print = self.print_performance(run_type, measure)
                         # # print, if it's prefered
                         # if all([run_type in self.preferred_types, measure in self.preferred_measures]):
                         #     scores_str = self.get_score_stats_string(self.performance[run_type][measure])
                         #     info("{:10} {:10} : {}".format(run_type, measure, scores_str))
-            info("------------------------------")
+            if did_print:
+                info("------------------------------")
+        info("==============================")
 
         if write_folder is not None:
             # write the results in csv in the results directory
@@ -285,7 +291,9 @@ class Evaluator:
                 self.test_labels = labels
             self.label_distribution = get_majority_label(self.test_labels, self.num_labels, return_counts=True)
         if do_show:
+            info("==============================")
             info("Label distribution:")
+            info("------------------------------")
             for lbl, freq in self.label_distribution:
                 maj = " - [majority]" if lbl == self.majority_label else ""
                 info("Label {} : {}{}".format(lbl, freq, maj))
@@ -429,7 +437,9 @@ class Evaluator:
                 info("{:10} {:8} {:7} {:10} | ({}) ({})".format("accuracy", run_type, print_type, "instances", indexes, scores))
 
         lbl_top = min(self.top_k, self.num_labels)
+        info("---------------------------")
         info("Fold-average top-{} labels:".format(lbl_top))
+        info("---------------------------")
         for run_type in self.preferred_types:
             print_types = {"top": lambda x: x[:lbl_top], "bottom": lambda x: x[-lbl_top:]}
             for print_type, func in print_types.items():

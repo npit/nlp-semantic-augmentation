@@ -30,6 +30,10 @@ class Learner:
     def process_input(self, data):
         return data
 
+    def count_samples(self):
+        self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
+            map(len, [self.train, self.test, self.train_labels, self.test_labels])
+
     def make(self, representation, dataset):
         self.verbosity = 1 if self.config.print.training_progress else 0
         # get data and labels
@@ -50,8 +54,7 @@ class Learner:
         # get many handy variables
         self.do_multilabel = dataset.is_multilabel()
         self.num_labels = dataset.get_num_labels()
-        self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
-            list(map(len, [self.train, self.test, self.train_labels, self.test_labels]))
+        self.count_samples()
         self.input_dim = representation.get_dimension()
         self.forbid_load = self.config.learner.no_load
         self.sequence_length = self.config.learner.sequence_length
@@ -85,7 +88,6 @@ class Learner:
             self.evaluator.majority_label = get_majority_label(self.train_labels, self.num_labels)
             info("Majority label: {}".format(self.evaluator.majority_label))
             self.evaluator.show_label_distribution(labels=self.train_labels, do_show=False)
-
 
         error("Input none dimension.", self.input_dim is None)
         info("Created learning: {}".format(self))
@@ -137,6 +139,7 @@ class Learner:
                     self.test, self.test_labels = self.train[val_idx], self.train_labels[val_idx]
                     self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
                     self.test_instance_indexes = val_idx
+                    self.count_samples()
                     trainval_idx = (train_idx, [])
 
                 # train the model
@@ -185,7 +188,6 @@ class Learner:
         val_datalabels = (val_data, val_labels) if val_data.size > 0 else None
         return train_data, train_labels, val_datalabels
 
-
     def get_current_model_path(self):
         filepath = join(self.models_folder, "{}".format(self.name))
         if self.do_folds:
@@ -217,7 +219,6 @@ class Learner:
             # for multilabel K-fold, stratification is not available. Also convert label format.
             if self.do_multilabel:
                 splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
-                labels_to_split = self.train_labels
             else:
                 splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
                 # convert to 2D array

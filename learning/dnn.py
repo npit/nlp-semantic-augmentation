@@ -4,10 +4,17 @@ import warnings
 from os import makedirs
 import numpy as np
 from learning.classifier import Classifier
+import sys
+
+# import keras with this disgusting hack to get rid of the "Using xxxx backend" message
+stderr = sys.stderr
+sys.stderr = open('/dev/null', 'w')
 from keras.models import Sequential
 from keras.layers import Activation, Dense, Dropout
 from keras.layers import LSTM as keras_lstm
 from keras import callbacks
+sys.stderr = stderr
+
 from utils import info, debug, error, write_pickled
 
 # from keras import backend

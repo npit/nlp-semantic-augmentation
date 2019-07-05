@@ -135,21 +135,6 @@ class Dataset(Serializable):
     def get_num_labels(self):
         return self.num_labels
 
-    # static method for external name computation
-    @staticmethod
-    def get_limited_name(config):
-        name = config.dataset.name
-        if config.has_class_limit():
-            name += "_clim_{}".format(config.dataset.class_limit)
-        if config.has_data_limit():
-            ltrain, ltest = config.dataset.data_limit
-            if ltrain:
-                name += "_dlim_tr{}".format(ltrain)
-            if ltest:
-                name += "_dlim_te{}".format(ltest)
-        return name
-
-
     # apply stratifed  limiting to the data wrt labels
     def limit_data_stratify(num_limit, data, labels):
         limit_ratio = num_limit / len(data)
@@ -180,7 +165,10 @@ class Dataset(Serializable):
         return data, labels
 
     def apply_data_limit(self, name):
-        ltrain, ltest = self.config.dataset.data_limit
+        lim = self.config.dataset.data_limit
+        lim = lim + [-1] if len(lim) == 1 else lim
+        lim = [x if x >= 0 else None for x in lim]
+        ltrain, ltest = lim
         if ltrain:
             name += "_dlim_tr{}".format(ltrain)
             if self.train:

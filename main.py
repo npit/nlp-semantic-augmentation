@@ -1,5 +1,4 @@
 #! /home/nik/work/iit/submissions/NLE-special/venv/bin/python3.6
-import warnings
 from dataset import instantiator as dset_instantiator
 from representation import instantiator as rep_instantiator
 from semantic import instantiator as sem_instantiator
@@ -8,13 +7,10 @@ from settings import Config
 import argparse
 from utils import info, warning, num_warnings, tictoc
 from learning import instantiator as lrn_instantiator
-warnings.simplefilter(action='ignore', category=FutureWarning)
-print("Imports done.")
 
 
 def main(config_file):
 
-    print("Running main.")
     # initialize configuration
     config = Config(config_file)
 
