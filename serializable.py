@@ -1,4 +1,5 @@
 from utils import error, read_pickled, info, debug
+from component.component import Component
 from os.path import exists, isfile, join
 from os import makedirs
 
@@ -20,7 +21,7 @@ are computed automatically from a base object name.
 """
 
 
-class Serializable:
+class Serializable(Component):
     name = None
     base_name = None
     serialization_dir = None
@@ -69,6 +70,9 @@ class Serializable:
 
     def set_multiple_config_names(self):
         pass
+
+    def populate(self):
+        error("Attempted to access abstract populate function of {}.".format(self.name))
 
     def load_any_of(self, path_names):
         for s, name in enumerate(path_names):
@@ -133,7 +137,7 @@ class Serializable:
             if data is None:
                 # debug("Failed to load {} from path {}".format(self.name, path))
                 return False
-            debug("Reading path {} with func {} and handler {}".format(path, reader, handler))
+            # debug("Reading path {} with func {} and handler {}".format(path, reader, handler))
             handler(data)
             self.load_flags[index] = True
             return True

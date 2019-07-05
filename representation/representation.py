@@ -28,16 +28,14 @@ class Representation(Serializable):
         """Constructor"""
         self.set_params()
         self.set_name()
+
+    def populate(self):
         Serializable.__init__(self, self.dir_name)
         # check for serialized mapped data
         self.set_serialization_params()
         # add paths for aggregated / transformed / enriched representations:
         # set required resources
         self.set_resources()
-        # if a transform has been defined
-        if self.config.has_transform():
-            # suspend potential needless repr. loading for now
-            return
         # fetch the required data
         self.acquire_data()
 
@@ -125,7 +123,10 @@ class Representation(Serializable):
 
     @staticmethod
     def generate_name(config):
-        return "{}_{}_dim{}".format(config.representation.name, config.dataset.full_name, config.representation.dimension)
+        try:
+            return "{}_{}_dim{}".format(config.representation.name, config.dataset.full_name, config.representation.dimension)
+        except:
+            return "{}_{}_dim{}".format(config.representation.name, config.dataset.name, config.representation.dimension)
 
     # name setter function, exists for potential overriding
     def set_name(self):
@@ -211,7 +212,28 @@ class Representation(Serializable):
         self.elements_per_instance = [[num for _ in ds] for ds in self.dataset_vectors]
 
     # data getter for semantic processing
-
     def process_data_for_semantic_processing(self, train, test):
         return train, test
+
+    # abstracts
+    def aggregate_instance_vectors(self):
+        error("Attempted to run abstract aggregate_instance_vectors for {}".format(self.name))
+
+    def compute_dense(self):
+        error("Attempted to run abstract compute_dense for {}".format(self.name))
+
+    def __str__(self):
+        return self.name
+
+    # region  # chain methods
+    def get_outputs(self):
+        # yield mapped dataset vectors
+        return self.get_all_preprocessed()["dataset_vectors"]
+
+    def run(self):
+        self.populate()
+        self.map_text()
+        self.compute_dense()
+        self.aggregate_instance_vectors()
+
 

@@ -7,8 +7,14 @@ import yaml
 import utils
 import defs
 import nltk
-from utils import need, error
+from utils import need, error, info
 import shutil
+
+from component.chain import Chain
+from component.pipeline import Pipeline
+
+from collections import OrderedDict
+
 
 
 class Config:
@@ -18,6 +24,8 @@ class Config:
     seed = None
     conf = {}
     run_id = None
+
+    chains = []
 
     def get_copy(self):
         """Get a copy of the config object
@@ -35,6 +43,9 @@ class Config:
         c.folders = deepcopy(self.folders)
 
         return c
+
+    class fusion:
+        name = None
 
     class dataset_conf:
         name = None
@@ -114,6 +125,9 @@ class Config:
         if conf_file is not None:
             self.initialize(conf_file)
 
+    def get_pipeline(self):
+        return self.pipeline
+
     def has_data_limit(self):
         return self.dataset.data_limit is not None and any([x is not None for x in self.dataset.data_limit])
 
@@ -124,6 +138,8 @@ class Config:
         return self.has_data_limit() or self.has_class_limit()
 
     def initialize(self, configuration):
+        # read global configuration
+
         self.read_config(configuration)
         self.make_directories()
         # copy configuration to run folder
@@ -134,6 +150,9 @@ class Config:
 
         self.setup_logging()
         self.setup_seed()
+
+        # read chains
+        self.read_chains(configuration)
 
     def make_directories(self):
         os.makedirs(self.folders.run, exist_ok=True)
@@ -201,6 +220,46 @@ class Config:
     def get_seed(self):
         return self.seed
 
+    def read_chains(self, input_config):
+        self.pipeline = Pipeline()
+        if type(input_config) == str:
+            try:
+                # it's a yaml file
+                with open(input_config) as f:
+                    self.conf = Config.ordered_load(f, Loader=yaml.SafeLoader)
+                    # self.conf = yaml.load(f, Loader=yaml.SafeLoader)
+            except yaml.parser.ParserError as p:
+                error("Failed to parse input config file: {}".format(input_config))
+        elif type(input_config) == dict:
+            self.conf = input_config
+
+        need(self.has_value("chains"), "Need chain information")
+        for chain in self.conf["chains"]:
+            self.pipeline.add_chain(self.read_chain(chain))
+
+    def read_chain(self, chain_name):
+        chain_configuration_dict = self.conf["chains"][chain_name]
+        # chain_configuration_dict["run_id"] = chain_name
+        # make object
+        chain_config = self.get_copy()
+        # parse the configuration
+        read_order = chain_config.read_config(chain_configuration_dict)
+        # clear up read order
+        return Chain(chain_name, chain_configuration_dict.keys(), read_order)
+
+    @staticmethod
+    def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
+        class OrderedLoader(Loader):
+            pass
+
+        def construct_mapping(loader, node):
+            loader.flatten_mapping(node)
+            return object_pairs_hook(loader.construct_pairs(node))
+        OrderedLoader.add_constructor(
+            yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+            construct_mapping)
+        return yaml.load(stream, OrderedLoader)
+
     # read yaml configuration
     def read_config(self, input_config):
         # read yml file
@@ -208,103 +267,137 @@ class Config:
             try:
                 # it's a yaml file
                 with open(input_config) as f:
-                    self.conf = yaml.load(f, Loader=yaml.SafeLoader)
+                    self.conf = Config.ordered_load(f, Loader=yaml.SafeLoader)
+                    # self.conf = yaml.load(f, Loader=yaml.SafeLoader)
             except yaml.parser.ParserError as p:
                 error("Failed to parse input config file: {}".format(input_config))
-        elif type(input_config) == dict:
+        elif type(input_config) in [dict, OrderedDict]:
             self.conf = input_config
 
-        # read dataset options
-        need(self.has_value("dataset"), "Need dataset information")
-        dataset_opts = self.conf["dataset"]
-        self.dataset.name = dataset_opts["name"]
-        self.dataset.data_limit = self.get_value("data_limit", base=dataset_opts, default=None, expected_type=list)
-        self.dataset.class_limit = self.get_value("class_limit", base=dataset_opts, default=None, expected_type=int)
-        self.dataset.prepro = self.get_value("prepro", base=dataset_opts, default=None)
+        try:
+            fields = list(input_config.keys())
+            fields.reverse()
+        except:
+            fields = [x for x in self.conf.keys() if x != "chains"]
+        read_order = []
+        while fields:
+            field = fields.pop()
+            # read dataset options
+            # need(self.has_value("dataset"), "Need dataset information")
+            if field == "dataset":
+                dataset_opts = self.conf["dataset"]
+                self.dataset.name = dataset_opts["name"]
+                self.dataset.data_limit = self.get_value("data_limit", base=dataset_opts, default=None, expected_type=list)
+                self.dataset.class_limit = self.get_value("class_limit", base=dataset_opts, default=None, expected_type=int)
+                self.dataset.prepro = self.get_value("prepro", base=dataset_opts, default=None)
+                field = self.dataset
 
-        # read representation options
-        need(self.has_value("representation"), "Need representation information")
-        representation_information = self.conf["representation"]
-        self.representation.name = representation_information["name"]
-        self.representation.aggregation = self.get_value("aggregation", base=representation_information, default=defs.alias.none)
-        self.representation.aggregation_params = utils.as_list(self.get_value("aggregation_params", base=representation_information, default=[]))
-        self.representation.dimension = representation_information["dimension"]
-        self.representation.sequence_length = self.get_value("sequence_length", default=1, base=representation_information)
-        self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)
-        self.representation.term_list = self.get_value("term_list", base=representation_information)
-        self.representation.limit = self.get_value("limit", base=representation_information, default=[])
+            elif field == "link":
+                self.link = self.conf["link"]
+                field = self.link
 
-        if self.has_value("transform"):
-            transform_opts = self.conf["transform"]
-            self.transform.name = transform_opts["name"]
-            self.transform.dimension = transform_opts["dimension"]
+            # read representation options
+            # need(self.has_value("representation"), "Need representation information")
+            elif field == "representation":
+                representation_information = self.conf["representation"]
+                self.representation.name = representation_information["name"]
+                self.representation.aggregation = self.get_value("aggregation", base=representation_information, default=defs.alias.none)
+                self.representation.aggregation_params = utils.as_list(self.get_value("aggregation_params", base=representation_information, default=[]))
+                self.representation.dimension = representation_information["dimension"]
+                self.representation.sequence_length = self.get_value("sequence_length", default=1, base=representation_information)
+                self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)
+                self.representation.term_list = self.get_value("term_list", base=representation_information)
+                self.representation.limit = self.get_value("limit", base=representation_information, default=[])
+                field = self.representation
 
-        if self.has_value("semantic"):
-            semantic_opts = self.conf["semantic"]
-            self.semantic.name = semantic_opts["name"]
-            self.semantic.unit = semantic_opts["unit"]
-            self.semantic.enrichment = self.get_value("enrichment", base=semantic_opts, default=None)
-            self.semantic.disambiguation = semantic_opts["disambiguation"]
-            self.semantic.weights = semantic_opts["weights"]
-            self.semantic.limit = self.get_value("limit", base=semantic_opts, default=[], expected_type=list)
-            # context file only relevant on semantic embedding disamgibuation
-            self.semantic.context_file = self.get_value("context_file", base=semantic_opts)
-            self.semantic.context_aggregation = self.get_value("context_aggregation", base=semantic_opts)
-            self.semantic.context_threshold = self.get_value("context_threshold", base=semantic_opts)
-            self.semantic.spreading_activation = self.get_value("spreading_activation", base=semantic_opts, expected_type=list, default=[])
+            elif field == "transform":
+                transform_opts = self.conf["transform"]
+                self.transform.name = transform_opts["name"]
+                self.transform.dimension = transform_opts["dimension"]
+                field = self.transform
 
-        need(self.has_value("learner"), "Need learning information")
-        learner_opts = self.conf["learner"]
-        self.learner.name = learner_opts["name"]
-        self.learner.hidden_dim = learner_opts["hidden_dim"]
-        self.learner.num_layers = learner_opts["layers"]
-        self.learner.sequence_length = self.get_value("sequence_length", default=1, base=learner_opts)
-        self.learner.no_load = self.get_value("no_load", default=False, base=learner_opts)
-        self.learner.num_clusters = self.get_value("num_clusters", default=None, base=learner_opts)
-
-        need(self.has_value("train"), "Need training information")
-        training_opts = self.conf["train"]
-        self.train.epochs = training_opts["epochs"]
-        self.train.folds = self.get_value("folds", default=None, base=training_opts)
-        self.train.validation_portion = self.get_value("validation_portion", default=None, base=training_opts)
-        self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=training_opts)
-        self.train.batch_size = training_opts["batch_size"]
-
-        if self.has_value("folders"):
-            folder_opts = self.conf["folders"]
-            self.folders.run = folder_opts["run"]
-            self.folders.results = join(self.folders.run, "results")
-            self.folders.serialization = self.get_value("serialization", base=folder_opts, default="serialization")
-            self.folders.raw_data = self.get_value("raw_data", base=folder_opts, default="raw_data")
-            nltk_data_path = self.get_value("nltk", base=folder_opts, default=os.path.join(self.folders.raw_data, "nltk"))
-            # set nltk data folder
-            nltk.data.path = [nltk_data_path]
-
-        if self.has_value("print"):
-            print_opts = self.conf['print']
-            self.print.run_types = self.get_value("run_types", base=print_opts)
-            self.print.measures = self.get_value("measures", base=print_opts)
-            self.print.aggregations = self.get_value("aggregations", base=print_opts)
-            self.print.folds = self.get_value("folds", base=print_opts, default=False)
-            self.print.training_progress = self.get_value("training_progress", base=print_opts, default=False)
-            self.print.stats = self.get_value("stats", base=print_opts)
-            self.print.error_analysis = self.get_value("error_analysis", base=print_opts, default=True)
-            self.print.top_k = self.get_value("top_k", base=print_opts, default=3, expected_type=int)
-            self.print.log_level = self.get_value("log_level", base=print_opts, default="info")
-            self.print.log_dir = self.get_value("log_dir", base=print_opts, default="logs")
-
-        if self.has_value("misc"):
-            misc_opts = self.conf["misc"]
-            if self.has_value("keys", base=misc_opts):
-                for kname, kvalue in misc_opts['keys'].items():
-                    self.misc.keys[kname] = kvalue
-            self.misc.independent = self.get_value("independent_component", base=misc_opts, default=False)
-            self.misc.skip_deserialization = self.get_value("skip_deserialization", base=misc_opts, default=False)
-            self.misc.csv_separator = self.get_value("csv_separator", base=misc_opts, default=",")
-            self.misc.run_id = self.get_value("run_id", base=misc_opts, default="run_" + utils.datetime_str())
+            elif field == "fusion":
+                fusion_opts = self.conf["fusion"]
+                self.fusion.name = fusion_opts["name"]
+                field = self.fusion
 
 
-        print("Read configuration for run: {} from the file {}".format(self.run_id, input_config))
+            elif field == "semantic":
+                semantic_opts = self.conf["semantic"]
+                self.semantic.name = semantic_opts["name"]
+                self.semantic.unit = semantic_opts["unit"]
+                self.semantic.enrichment = self.get_value("enrichment", base=semantic_opts, default=None)
+                self.semantic.disambiguation = semantic_opts["disambiguation"]
+                self.semantic.weights = semantic_opts["weights"]
+                self.semantic.limit = self.get_value("limit", base=semantic_opts, default=[], expected_type=list)
+                # context file only relevant on semantic embedding disamgibuation
+                self.semantic.context_file = self.get_value("context_file", base=semantic_opts)
+                self.semantic.context_aggregation = self.get_value("context_aggregation", base=semantic_opts)
+                self.semantic.context_threshold = self.get_value("context_threshold", base=semantic_opts)
+                self.semantic.spreading_activation = self.get_value("spreading_activation", base=semantic_opts, expected_type=list, default=[])
+                field = self.semantic
+
+            # need(self.has_value("learner"), "Need learning information")
+            elif field == "learner":
+                learner_opts = self.conf["learner"]
+                self.learner.name = learner_opts["name"]
+                self.learner.hidden_dim = learner_opts["hidden_dim"]
+                self.learner.num_layers = learner_opts["layers"]
+                self.learner.sequence_length = self.get_value("sequence_length", default=1, base=learner_opts)
+                self.learner.no_load = self.get_value("no_load", default=False, base=learner_opts)
+                self.learner.num_clusters = self.get_value("num_clusters", default=None, base=learner_opts)
+                field = self.learner
+
+            # need(self.has_value("train"), "Need training information")
+            elif field == "train":
+                training_opts = self.conf["train"]
+                self.train.epochs = training_opts["epochs"]
+                self.train.folds = self.get_value("folds", default=None, base=training_opts)
+                self.train.validation_portion = self.get_value("validation_portion", default=None, base=training_opts)
+                self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=training_opts)
+                self.train.batch_size = training_opts["batch_size"]
+                field = self.train
+
+            elif field == "folders":
+                folder_opts = self.conf["folders"]
+                self.folders.run = folder_opts["run"]
+                self.folders.results = join(self.folders.run, "results")
+                self.folders.serialization = self.get_value("serialization", base=folder_opts, default="serialization")
+                self.folders.raw_data = self.get_value("raw_data", base=folder_opts, default="raw_data")
+                nltk_data_path = self.get_value("nltk", base=folder_opts, default=os.path.join(self.folders.raw_data, "nltk"))
+                # set nltk data folder
+                nltk.data.path = [nltk_data_path]
+
+            elif field == "print":
+                print_opts = self.conf['print']
+                self.print.run_types = self.get_value("run_types", base=print_opts)
+                self.print.measures = self.get_value("measures", base=print_opts)
+                self.print.aggregations = self.get_value("aggregations", base=print_opts)
+                self.print.folds = self.get_value("folds", base=print_opts, default=False)
+                self.print.training_progress = self.get_value("training_progress", base=print_opts, default=False)
+                self.print.stats = self.get_value("stats", base=print_opts)
+                self.print.error_analysis = self.get_value("error_analysis", base=print_opts, default=True)
+                self.print.top_k = self.get_value("top_k", base=print_opts, default=3, expected_type=int)
+                self.print.log_level = self.get_value("log_level", base=print_opts, default="info")
+                self.print.log_dir = self.get_value("log_dir", base=print_opts, default="logs")
+                field = self.print
+
+            elif self.has_value("misc"):
+                misc_opts = self.conf["misc"]
+                if self.has_value("keys", base=misc_opts):
+                    for kname, kvalue in misc_opts['keys'].items():
+                        self.misc.keys[kname] = kvalue
+                self.misc.independent = self.get_value("independent_component", base=misc_opts, default=False)
+                self.misc.skip_deserialization = self.get_value("skip_deserialization", base=misc_opts, default=False)
+                self.misc.csv_separator = self.get_value("csv_separator", base=misc_opts, default=",")
+                self.misc.run_id = self.get_value("run_id", base=misc_opts, default="run_" + utils.datetime_str())
+                field = self.misc
+
+            read_order.append(self)
+
+
+        info("Read configuration for run / chain: {} from the file {}".format(self.run_id, input_config if type(input_config) == str else input_config.keys()))
+        return read_order
 
     def has_transform(self):
         return self.transform.name not in [defs.alias.none, None]

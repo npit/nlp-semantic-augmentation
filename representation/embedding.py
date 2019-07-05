@@ -66,8 +66,8 @@ class Embedding(Representation):
             error("Failed to read {}-delimited raw embedding from {}".format(self.config.misc.csv_separator, path), pe)
         # sanity check on defined dimension
         csv_dimension = self.embeddings.shape[-1]
-        if csv_dimension != self.dimension:
-            error("Specified representation dimension of {} but read csv embeddings are {}-dimensional.".format(self.dimension, csv_dimension))
+        error("Specified representation dimension of {} but read csv embeddings are {}-dimensional.".format(self.dimension, csv_dimension),
+              csv_dimension != self.dimension)
 
     def __init__(self):
         Representation.__init__(self)

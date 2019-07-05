@@ -18,11 +18,12 @@ class WordEmbedding(Embedding):
     def get_raw_path(self):
         return "{}/{}_dim{}.pickle".format(self.raw_data_dir, self.base_name, self.dimension)
 
-    def map_text_partial_load(self, dset):
+    def map_text_partial_load(self):
         # iterate over files. match existing words
         # map embedding vocab indexes to files and word positions in that file
         # iterate sequentially the csv with batch loading
-        text_bundles = dset.train, dset.test
+        text_bundles = self.inputs["train-data"], self.inputs["test-data"]
+        vocabulary = self.inputs["vocabulary"]
         batch_size = 10000
         info("Mapping with a read batch size of {}".format(batch_size))
         error("Partial loading implementation has to include UNKs", not self.map_missing_unks)
@@ -34,7 +35,7 @@ class WordEmbedding(Embedding):
         for dset_idx, docs in enumerate(text_bundles):
             num_docs = len(docs)
             current_num_words = 0
-            word_stats = WordEmbeddingStats(dset.vocabulary, self.embedding_vocabulary_index.keys())
+            word_stats = WordEmbeddingStats(vocabulary, self.embedding_vocabulary_index.keys())
             # make empty features
             with tqdm.tqdm("Bulding embedding / dataset vocabulary mapping for text bundle {}/{}".format(dset_idx + 1, len(text_bundles)),
                            total=num_docs, ascii=True) as pbar:
@@ -97,10 +98,10 @@ class WordEmbedding(Embedding):
         Embedding.handle_preprocessed(self, preprocessed)
 
     # transform input texts to embeddings
-    def map_text(self, dset):
+    def map_text(self):
         if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
             return
-        info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
+        info("Mapping to {} word embeddings.".format(self.name))
 
         self.dataset_vectors = [[], []]
         self.elements_per_instance = [[], []]
@@ -109,10 +110,11 @@ class WordEmbedding(Embedding):
         # if there's a vocabulary file read or precomputed, utilize partial loading of the underlying csv
         # saves a lot of memory
         if self.embedding_vocabulary_index:
-            self.map_text_partial_load(dset)
+            self.map_text_partial_load()
             return
 
-        text_bundles = dset.train, dset.test
+        text_bundles = self.inputs["train-data"], self.inputs["test-data"]
+        vocabulary = self.inputs["vocabulary"]
 
         # initialize unknown token embedding, if it's not defined
         if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
@@ -123,7 +125,7 @@ class WordEmbedding(Embedding):
         for dset_idx, docs in enumerate(text_bundles):
             num_docs = len(docs)
             with tictoc("Embedding mapping for text bundle {}/{}, with {} texts".format(dset_idx + 1, len(text_bundles), num_docs)):
-                word_stats = WordEmbeddingStats(dset.vocabulary, self.embeddings.index)
+                word_stats = WordEmbeddingStats(vocabulary, self.embeddings.index)
                 for j, doc_wp_list in enumerate(text_bundles[dset_idx]):
                     # drop POS
                     word_list = [wp[0] for wp in doc_wp_list]

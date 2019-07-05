@@ -3,7 +3,7 @@ import pickle
 import logging
 import numpy as np
 import os
-from collections import namedtuple, Counter
+from collections import namedtuple, Counter, OrderedDict
 import nltk
 
 num_warnings = 0
@@ -74,7 +74,7 @@ def to_namedtuple(conf_dict, ntname, do_recurse=False):
     keys = sorted(conf_dict.keys())
     if do_recurse:
         # apply namedtuple conversion to internal dicts
-        conf = namedtuple(ntname, keys)(*[to_namedtuple(conf_dict[k], "dummy") if type(conf_dict[k]) == dict else conf_dict[k] for k in keys])
+        conf = namedtuple(ntname, keys)(*[to_namedtuple(conf_dict[k], "dummy") if type(conf_dict[k]) in [dict, OrderedDict] else conf_dict[k] for k in keys])
     else:
         conf = namedtuple(ntname, keys)(*[conf_dict[k] for k in keys])
     return conf

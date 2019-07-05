@@ -37,8 +37,11 @@ class Transform(Serializable):
         self.is_supervised = False
         self.config = config
         self.dimension = config.transform.dimension
-        if representation.dimension is not None:
-            self.initialize(representation)
+        self.representation = representation
+
+    def populate(self):
+        if self.representation.dimension is not None:
+            self.initialize(self.representation)
             self.acquire_data()
         else:
             # None dimension (typical for uncomputed bags) -- no point to load

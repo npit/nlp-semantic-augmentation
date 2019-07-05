@@ -63,6 +63,8 @@ class SemanticResource(Serializable):
 
     def __init__(self):
         self.base_name = self.name
+
+    def populate(self):
         if not self.config.misc.skip_deserialization:
             Serializable.__init__(self, self.dir_name)
             self.set_serialization_params()
@@ -285,11 +287,7 @@ class SemanticResource(Serializable):
             self.concept_freqs[1] = self.bag_test.get_weights()
 
     # function to map words to wordnet concepts
-    def map_text(self, representation, dataset):
-        self.representation = representation
-        if self.representation.loaded_enriched():
-            info("Skipping mapping text due to enriched data already loaded.")
-            return
+    def map_text(self):
         if self.loaded_vectorized:
             info("Skipping mapping text due to vectorized data already loaded.")
             return
@@ -310,7 +308,7 @@ class SemanticResource(Serializable):
         self.load_semantic_cache()
 
         # get representation-relatd information of the data to semantically annotate, if applicable
-        train_data, test_data = representation.process_data_for_semantic_processing(dataset.train, dataset.test)
+        train_data, test_data = self.inputs["train-data"], self.inputs["test-data"]
 
         # train
         info("Extracting {}-{} semantic information from the training dataset".format(self.name, self.semantic_weights))
@@ -354,3 +352,14 @@ class SemanticResource(Serializable):
         """ Function to produce a list of terms of interest, from which to extract concepts """
         # default: word information
         return [word_info for word_info in document_text]
+
+    # region: # chain methods
+    def get_outputs(self):
+        # get the dense output
+        warning("Fix the darn dashes / underscore mismatches")
+        return self.get_all_preprocessed()["concept_weights"]
+
+    def run(self):
+        self.populate()
+        self.map_text()
+        self.generate_vectors()

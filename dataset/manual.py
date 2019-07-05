@@ -31,7 +31,7 @@ class ManualDataset(Dataset):
 
     def __init__(self, config):
         self.config = config
-        self.name = self.base_name = basename(config.dataset.name)
+        self.name = self.base_name = basename(config.name)
         Dataset.__init__(self)
 
     def get_all_raw(self):
@@ -42,7 +42,7 @@ class ManualDataset(Dataset):
 
     # raw path getter
     def get_raw_path(self):
-        return self.config.dataset.name
+        return self.config.name
 
     def fetch_raw(self, raw_data_path):
         # no limited dataset

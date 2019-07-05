@@ -54,6 +54,9 @@ class Dataset(Serializable):
         if skip_init or self.config is None:
             return
         Serializable.__init__(self, self.dir_name)
+        self.config.dataset.full_name = self.name
+
+    def populate(self):
         self.set_serialization_params()
         # check for limited dataset
         self.apply_limit()
@@ -384,4 +387,19 @@ class Dataset(Serializable):
         return res
 
     def __str__(self):
-        return "{}, train/test {}/{}, num labels: {}".format(self.base_name, len(self.train), len(self.test), self.num_labels)
+        try:
+            return "{}, train/test {}/{}, num labels: {}".format(self.base_name, len(self.train), len(self.test), self.num_labels)
+        except:
+            return self.base_name
+
+    # region # chain methods
+    def load_inputs(self, inputs):
+        error("Attempted to load inputs into a {} component.".format(self.base_name), inputs is not None)
+
+    def get_outputs(self):
+        return self.get_all_preprocessed()
+
+    def run(self):
+        self.populate()
+        self.preprocess()
+    # endregion
