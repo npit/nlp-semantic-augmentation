@@ -15,6 +15,10 @@ from keras.layers import LSTM as keras_lstm
 from keras import callbacks
 sys.stderr = stderr
 
+# tf deprecation warnings
+import tensorflow.python.util.deprecation as deprecation
+deprecation._PRINT_DEPRECATION_WARNINGS = False
+
 from utils import info, debug, error, write_pickled
 
 # from keras import backend

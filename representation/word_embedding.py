@@ -12,6 +12,8 @@ class WordEmbedding(Embedding):
     unknown_word_token = "unk"
     present_words = None
 
+    data_names = Embedding.data_names + ["undefined_word_index"]
+
     # expected raw data path
     def get_raw_path(self):
         return "{}/{}_dim{}.pickle".format(self.raw_data_dir, self.base_name, self.dimension)

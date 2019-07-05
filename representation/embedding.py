@@ -16,7 +16,6 @@ class Embedding(Representation):
     # word - word_index map
     embedding_vocabulary_index = {}
 
-    data_names = ["dataset_vectors", "elements_per_instance", "undefined_word_index"]
 
     # region # serializable overrides
     def set_resources(self):
@@ -155,14 +154,3 @@ class Embedding(Representation):
         self.compatible_aggregations = defs.aggregation.avail
         self.compatible_sequence_lengths = defs.sequence_length.avail
         Representation.set_params(self)
-
-    def set_transform(self, transform):
-        """Update representation information as per the input transform"""
-        self.name += transform.get_name()
-        self.dimension = transform.get_dimension()
-
-        data = transform.get_all_preprocessed()
-        self.dataset_vectors, self.elements_per_instance, self.undefined_word_index = \
-            [data[n] for n in self.data_names]
-        self.loaded_transformed = True
-

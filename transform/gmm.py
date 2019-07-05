@@ -1,3 +1,6 @@
+from sklearn.mixture import GaussianMixture
+from transform.transform import Transform
+
 
 class GMMClustering(Transform):
     """Gausian Mixture Model clustering

@@ -6,6 +6,7 @@ from representation.bag import Bag, TFIDF
 from defs import is_none
 import defs
 
+
 class SemanticResource(Serializable):
     dir_name = "semantic"
     semantic_name = None
@@ -186,14 +187,14 @@ class SemanticResource(Serializable):
             return None
         name_components = [config.semantic.name,
                            "w{}".format(config.semantic.weights),
-                           "".join(map(str,config.semantic.limit)),
+                           "" if is_none(config.semantic.limit) else "".join(map(str, config.semantic.limit)),
                            "" if is_none(config.semantic.disambiguation) else "disam{}".format(config.semantic.disambiguation),
-                           "" if is_none(config.semantic.spreading_activation) else "_spread{}".format("-".join(map(str,config.semantic.spreading_activation)))
+                           "" if is_none(config.semantic.spreading_activation) else "spread{}".format("-".join(map(str, config.semantic.spreading_activation)))
                            ]
         if include_dataset and not config.misc.independent_component:
             # include the dataset in the sem. resource name
-            name_components = [config.dataset
-                                   .full_name] + name_components
+            name_components = [config.dataset.full_name] + name_components
+        name_components = filter(lambda x: x, name_components)
         return "_".join(filter(lambda x: x != '', name_components))
 
     # make name string from components
@@ -227,7 +228,7 @@ class SemanticResource(Serializable):
     def get_cache_path(self):
         return join(self.config.folders.raw_data, self.dir_name, self.base_name + ".cache.pickle")
 
-    def get_cache_path(self):
+    def get_hypernym_cache_path(self):
         return join(self.config.folders.raw_data, self.dir_name, self.base_name + ".hypernym.cache.pickle")
 
     # read existing resource-wise serialized semantic cache from previous runs to speedup resolving
@@ -299,7 +300,6 @@ class SemanticResource(Serializable):
             self.process_similar_loaded()
             return
 
-
         # compute bag from scratch
         if self.semantic_weights == defs.weights.tfidf:
             self.bag_train, self.bag_test = TFIDF(), TFIDF()
@@ -323,8 +323,8 @@ class SemanticResource(Serializable):
         self.reference_concepts = self.bag_train.get_term_list()
 
         # test - since we restrict to the training set concepts, no need to filter
-        info("Extracting {}-{} semantic information with a {}-long term list from the test dataset".format(\
-            self.name, self.semantic_weights, len(self.reference_concepts)))
+        info("Extracting {}-{} semantic information with a {}-long term list from the test dataset".
+             format(self.name, self.semantic_weights, len(self.reference_concepts)))
         self.bag_test.set_term_list(self.reference_concepts)
         self.bag_test.set_term_weighting_function(self.get_concept)
         self.bag_test.set_term_delineation_function(self.get_term_delineation)
@@ -354,4 +354,3 @@ class SemanticResource(Serializable):
         """ Function to produce a list of terms of interest, from which to extract concepts """
         # default: word information
         return [word_info for word_info in document_text]
-

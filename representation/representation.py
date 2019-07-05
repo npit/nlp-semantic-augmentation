@@ -18,6 +18,8 @@ class Representation(Serializable):
     compatible_sequence_lengths = []
     sequence_length = 1
 
+    data_names = ["dataset_vectors", "elements_per_instance"]
+
     @staticmethod
     def get_available():
         return [cls.name for cls in Representation.__subclasses__()]
@@ -90,6 +92,9 @@ class Representation(Serializable):
 
     def get_data(self):
         return self.dataset_vectors
+
+    def get_name(self):
+        return self.name
 
     def get_dimension(self):
         return self.dimension
