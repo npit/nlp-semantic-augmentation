@@ -1,5 +1,7 @@
 from os.path import join, exists, dirname
 from os import makedirs
+
+from component.bundle import Bundle
 from utils import tictoc, error, info, debug, write_pickled, read_pickled, shapes_list, warning
 from serializable import Serializable
 from representation.bag import Bag, TFIDF
@@ -9,6 +11,7 @@ import defs
 
 class SemanticResource(Serializable):
     dir_name = "semantic"
+    component_name = "semantic"
     semantic_name = None
     name = None
     do_spread_activation = False
@@ -55,7 +58,7 @@ class SemanticResource(Serializable):
                 conf = self.config.get_copy()
                 conf.semantic.weights = w
                 conf.semantic.limit = f
-                candidate_name = self.generate_name(conf)
+                candidate_name = self.generate_name(conf, self.inputs.get_source_name())
                 debug("Semantic config candidate: {}".format(candidate_name))
                 semantic_names.append(candidate_name)
 
@@ -86,9 +89,6 @@ class SemanticResource(Serializable):
     def generate_vectors(self):
         if self.loaded_vectorized:
             info("Skipping generating, since loaded vectorized data already.")
-            return
-        if self.representation.loaded_enriched():
-            info("Skipping generating, since loaded enriched data already.")
             return
         # map dicts to vectors
         with tictoc("Generation of [{}] semantic vectors".format(self.semantic_weights)):
@@ -184,24 +184,22 @@ class SemanticResource(Serializable):
         self.set_name()
 
     @staticmethod
-    def generate_name(config, include_dataset=True):
-        if not config.has_semantic():
-            return None
+    def generate_name(config, input_name=None):
         name_components = [config.semantic.name,
                            "w{}".format(config.semantic.weights),
                            "" if is_none(config.semantic.limit) else "".join(map(str, config.semantic.limit)),
                            "" if is_none(config.semantic.disambiguation) else "disam{}".format(config.semantic.disambiguation),
                            "" if is_none(config.semantic.spreading_activation) else "spread{}".format("-".join(map(str, config.semantic.spreading_activation)))
                            ]
-        if include_dataset and not config.misc.independent_component:
+        if input_name is not None and not config.misc.independent_component:
             # include the dataset in the sem. resource name
-            name_components = [config.dataset.full_name] + name_components
+            name_components = [input_name] + name_components
         name_components = filter(lambda x: x, name_components)
         return "_".join(filter(lambda x: x != '', name_components))
 
     # make name string from components
     def set_name(self):
-        self.name = self.generate_name(self.config)
+        self.name = self.generate_name(self.config, self.inputs.get_source_name())
         self.config.semantic.full_name = self.name
 
     # apply disambiguation to choose a single semantic unit from a collection of such
@@ -298,6 +296,8 @@ class SemanticResource(Serializable):
             self.process_similar_loaded()
             return
 
+        self.initialize_lookup()
+
         # compute bag from scratch
         if self.semantic_weights == defs.weights.tfidf:
             self.bag_train, self.bag_test = TFIDF(), TFIDF()
@@ -308,7 +308,8 @@ class SemanticResource(Serializable):
         self.load_semantic_cache()
 
         # get representation-relatd information of the data to semantically annotate, if applicable
-        train_data, test_data = self.inputs["train-data"], self.inputs["test-data"]
+        error("{} - {} requires text.".format(self.get_component_name(), self.name), not self.inputs.has_text())
+        train_data, test_data = self.inputs.get_text()
 
         # train
         info("Extracting {}-{} semantic information from the training dataset".format(self.name, self.semantic_weights))
@@ -353,11 +354,15 @@ class SemanticResource(Serializable):
         # default: word information
         return [word_info for word_info in document_text]
 
+    def initialize_lookup(self):
+        pass
+
     # region: # chain methods
     def get_outputs(self):
         # get the dense output
         warning("Fix the darn dashes / underscore mismatches")
-        return self.get_all_preprocessed()["concept_weights"]
+        return Bundle(self.name, vectors=self.semantic_document_vectors)
+        #return self.get_all_preprocessed()["concept_weights"]
 
     def run(self):
         self.populate()

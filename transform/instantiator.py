@@ -7,7 +7,7 @@ from utils import error
 
 
 class Instantiator:
-    name = "transform"
+    component_name = "transform"
 
     def create(config):
         name = config.name

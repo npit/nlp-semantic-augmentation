@@ -1,9 +1,11 @@
 from component.component import Component
 
 class Link(Component):
-    name = "link"
+    component_name = "link"
 
     def __init__(self, config):
+        # no subclass for this
+        self.name = self.component_name
         self.required_finished_chains = config.link
 
     def run(self):

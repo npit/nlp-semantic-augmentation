@@ -13,6 +13,9 @@ class Wordnet(SemanticResource):
     # local name to synset cache for spreading activation speedups
     name_to_synset_cache = {}
 
+    def initialize_lookup(self):
+        Wordnet.setup_nltk_resources(self.config)
+
     @staticmethod
     def get_wordnet_pos(config, treebank_tag):
         Wordnet.setup_nltk_resources(config)
@@ -39,11 +42,11 @@ class Wordnet(SemanticResource):
 
     def __init__(self, config):
         self.config = config
-        Wordnet.setup_nltk_resources(config)
         SemanticResource.__init__(self)
 
     def setup_nltk_resources(config):
         try:
+            info("Setting up wordnet resources...")
             wn.VERB
         except:
             nltk_download(config, "wordnet")

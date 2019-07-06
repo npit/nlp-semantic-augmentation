@@ -5,7 +5,7 @@ from utils import error
 
 
 class Instantiator:
-    name = "learner"
+    component_name = "learner"
 
     def create(config):
         """Function to instantiate a learning"""

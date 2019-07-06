@@ -12,6 +12,7 @@ Abstract class representing a learning model
 
 class Learner:
 
+    component_name = "learner"
     save_dir = "models"
     folds = None
     fold_index = 0

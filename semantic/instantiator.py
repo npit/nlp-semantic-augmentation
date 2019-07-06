@@ -8,10 +8,10 @@ from utils import error
 
 
 class Instantiator:
-    name = "semantic"
+    component_name = "semantic"
 
     def create(config):
-        name = config.name
+        name = config.semantic.name
         if name == Wordnet.name:
             return Wordnet(config)
         if name == GoogleKnowledgeGraph.name:

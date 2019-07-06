@@ -5,7 +5,7 @@ from representation.word_embedding import WordEmbedding
 
 
 class Instantiator:
-    name = "representation"
+    component_name = "representation"
     def create(config):
         name = config.representation.name
         if name == BagRepresentation.name:

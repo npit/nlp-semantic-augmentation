@@ -4,6 +4,8 @@ import tqdm
 import numpy as np
 from os import listdir
 from os.path import basename, join
+
+from component.bundle import Bundle
 from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, flatten
 from defs import is_none
 from sklearn.datasets import fetch_20newsgroups
@@ -20,6 +22,7 @@ from serializable import Serializable
 
 class Dataset(Serializable):
     name = ""
+    component_name = "dataset"
     vocabulary = set()
     vocabulary_index = []
     word_to_index = {}
@@ -397,7 +400,10 @@ class Dataset(Serializable):
         error("Attempted to load inputs into a {} component.".format(self.base_name), inputs is not None)
 
     def get_outputs(self):
-        return self.get_all_preprocessed()
+        # data = self.get_all_preprocessed()
+        # data["name"] = self.name
+        bundle = Bundle(self.name, text=(self.train, self.test), labels=(self.train_labels, self.test_labels))
+        return bundle
 
     def run(self):
         self.populate()

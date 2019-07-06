@@ -1,5 +1,7 @@
 from os.path import basename, isfile
 import pandas as pd
+
+from component.bundle import Bundle
 from utils import error, tictoc, info, debug, write_pickled, warning, shapes_list, read_lines, one_hot, get_shape
 import numpy as np
 from serializable import Serializable
@@ -12,6 +14,7 @@ import copy
 
 
 class Representation(Serializable):
+    component_name = "representation"
     dir_name = "representation"
     loaded_transformed = False
     compatible_aggregations = []
@@ -26,10 +29,11 @@ class Representation(Serializable):
 
     def __init__(self, can_fail_loading=True):
         """Constructor"""
-        self.set_params()
-        self.set_name()
+        pass
 
     def populate(self):
+        self.set_params()
+        self.set_name()
         Serializable.__init__(self, self.dir_name)
         # check for serialized mapped data
         self.set_serialization_params()
@@ -45,27 +49,14 @@ class Representation(Serializable):
     # add exra representations-specific serialization paths
     def set_additional_serialization_sources(self):
         # compute names
-        aggr = "".join(list(map(str, [self.config.representation.aggregation] + self.config.representation.aggregation_params + [self.sequence_length])))
+        aggr = "".join(list(map(str, [self.config.representation.aggregation] + [self.sequence_length])))
         self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
-
-        sem = SemanticResource.generate_name(self.config, include_dataset=False)
-        finalized_id = sem + "_" + self.config.semantic.enrichment if sem else "nosem"
-        self.serialization_path_finalized = "{}/{}.aggregated_{}.finalized_{}.pickle".format(
-            self.serialization_dir, self.name, aggr, finalized_id)
-
         self.add_serialization_source(self.serialization_path_aggregated, handler=self.handle_aggregated)
-        self.add_serialization_source(self.serialization_path_finalized, handler=self.handle_finalized)
 
     def handle_aggregated(self, data):
         self.handle_preprocessed(data)
         self.loaded_aggregated = True
-        debug("Read aggregated dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
-
-    def handle_finalized(self, data):
-        self.handle_preprocessed(data)
-        self.loaded_finalized = True
-        self.dimension = data["dataset_vectors"][0].shape[-1]
-        debug("Read finalized dataset embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
+        debug("Read aggregated embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
 
     def handle_raw(self, raw_data):
         pass
@@ -77,8 +68,6 @@ class Representation(Serializable):
     def preprocess(self):
         pass
 
-    def loaded_enriched(self):
-        return self.loaded_finalized
     # endregion
 
     # region # getter functions
@@ -107,12 +96,11 @@ class Representation(Serializable):
     # shortcut for reading configuration values
     def set_params(self):
         self.aggregation = self.config.representation.aggregation
-        self.aggregation_params = self.config.representation.aggregation_params
         if self.aggregation not in self.compatible_aggregations:
             error("{} aggregation incompatible with {}. Compatible ones are: {}!".format(self.aggregation, self.base_name, self.compatible_aggregations))
 
         self.dimension = self.config.representation.dimension
-        self.dataset_name = self.config.dataset.name
+        self.dataset_name = self.inputs.get_source_name()
         self.base_name = self.name
 
         self.sequence_length = self.config.representation.sequence_length
@@ -122,16 +110,12 @@ class Representation(Serializable):
                 self.sequence_length, self.base_name, self.compatible_sequence_lengths))
 
     @staticmethod
-    def generate_name(config):
-        try:
-            return "{}_{}_dim{}".format(config.representation.name, config.dataset.full_name, config.representation.dimension)
-        except:
-            return "{}_{}_dim{}".format(config.representation.name, config.dataset.name, config.representation.dimension)
+    def generate_name(config, input_name):
+        return "{}_{}_dim{}".format(config.representation.name, input_name, config.representation.dimension)
 
     # name setter function, exists for potential overriding
     def set_name(self):
-        self.name = Representation.generate_name(self.config)
-        self.config.representation.full_name = self.name
+        self.name = Representation.generate_name(self.config, self.inputs.get_source_name())
 
     # finalize embeddings to use for training, aggregating all data to a single ndarray
     # if semantic enrichment is selected, do the infusion
@@ -140,9 +124,6 @@ class Representation(Serializable):
         Attach semantic component to the representation
         :param semantic: the dense semantic vectors
         """
-        if self.loaded_finalized:
-            info("Skipping embeddings finalizing, since finalized data was already loaded.")
-            return
         if self.config.semantic.enrichment is not None:
             semantic_data = semantic.get_vectors()
             info("Enriching [{}] embeddings with shapes: {} {} and {} vecs/doc with [{}] semantic information of shapes {} {}.".
@@ -202,9 +183,6 @@ class Representation(Serializable):
             return one_hot(res, num_labels=binarize_num_labels)
         return res
 
-    def need_load_transform(self):
-        return not (self.loaded_aggregated or self.loaded_finalized)
-
     # set one element per instance
     def set_constant_elements_per_instance(self, num=1):
         if not self.dataset_vectors:
@@ -225,10 +203,13 @@ class Representation(Serializable):
     def __str__(self):
         return self.name
 
+    def map_text(self):
+        error("Attempted to access abstract function map_text of {}".format(self.name))
+
     # region  # chain methods
     def get_outputs(self):
         # yield mapped dataset vectors
-        return self.get_all_preprocessed()["dataset_vectors"]
+        return Bundle(self.name, vectors=self.dataset_vectors, labels=self.inputs.get_labels())
 
     def run(self):
         self.populate()

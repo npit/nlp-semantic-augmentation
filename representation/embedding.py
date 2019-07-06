@@ -92,7 +92,7 @@ class Embedding(Representation):
         """Method that maps features to a single vector per instance"""
         if self.aggregation == defs.alias.none:
             return
-        if self.loaded_aggregated or self.loaded_finalized:
+        if self.loaded_aggregated:
             debug("Skipping representation aggregation.")
             return
         info("Aggregating embeddings to single-vector-instances via the [{}] method.".format(self.aggregation))

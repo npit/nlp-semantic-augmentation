@@ -4,7 +4,7 @@ from dataset.twenty_newsgroups import TwentyNewsGroups
 
 
 class Instantiator:
-    name = "dataset"
+    component_name = "dataset"
 
     def create(config):
         name = config.dataset.name

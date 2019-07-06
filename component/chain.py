@@ -1,6 +1,6 @@
 from component.component import Component
 from component import instantiator
-from utils import info, debug, error
+from utils import info, debug, error, data_summary
 
 
 class Chain(Component):
@@ -18,33 +18,45 @@ class Chain(Component):
         """Constructor"""
 
         self.components = []
-        info("Creating chain: [{}]".format(name))
+        # info("Creating chain: [{}]".format(name))
+        # info("-------------------")
+        self.num_components = len(fields)
         self.name = name
         for idx, (component_name, component_params) in enumerate(zip(fields, configs)):
             component = instantiator.create(component_name, component_params)
             self.components.append(component)
-            debug("{}: {}".format(idx + 1, str(self.components[-1])))
-        self.num_components = len(self.components)
+            debug("Created chain {} component {}/{}: {}".format(name, idx + 1, self.num_components, str(self.components[-1])))
         info("Created chain with {} components.".format(self.num_components))
 
     def run(self, available_chain_outputs):
         info("Running chain [{}]".format(self.name))
         info("-------------------")
-        data = None
+        data_bundle = None
         for c, component in enumerate(self.components):
             info("Running component {}/{} : {}".format(c + 1, self.num_components, component))
             if component.required_finished_chains:
-                if data is None:
-                    data = [available_chain_outputs[x] for x in component.required_finished_chains]
-                    if len(data) == 1:
-                        data = data[0]
+                if data_bundle is None:
+                    data_bundle = [available_chain_outputs[x] for x in component.required_finished_chains]
+                    if len(data_bundle) == 1:
+                        data_bundle = data_bundle[0]
                 else:
                     error("WHops-Required finished chains with existing inputs!")
-            component.load_inputs(data)
+
+            if data_bundle is not None:
+                if type(data_bundle) == list:
+                    info("Bundle LIST:")
+                    for db in data_bundle:
+                        db.summarize_content("Passing bundle to component [{}]".format(component.get_name()))
+                else:
+                    data_bundle.summarize_content("Passing bundle to component [{}]".format(component.get_name()))
+            component.load_inputs(data_bundle)
             component.run()
-            data = component.get_outputs()
+            # data_bundle = {"data": component.get_outputs(), "name": component.get_name(), "component": component.get_component_name()}
+            data_bundle = component.get_outputs()
+            # data_summary(data_bundle, "output of component {}".format(component.get_name()))
+            # debug("Component [{}] yielded an output of {}".format(component.get_name(), data))
             # mark current output as chain's output
-            self.outputs = data
+            self.outputs = data_bundle
 
     def __str__(self):
         return self.get_name()

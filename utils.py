@@ -79,6 +79,8 @@ def to_namedtuple(conf_dict, ntname, do_recurse=False):
         conf = namedtuple(ntname, keys)(*[conf_dict[k] for k in keys])
     return conf
 
+def get_type_name(data):
+    return type(data).__name__
 
 def as_list(x):
     """Convert the input to a single-element list, if it's not a list
@@ -99,6 +101,52 @@ def one_hot(labels, num_labels):
         output = np.append(output, binarized, axis=0)
     return output
 
+def is_collection(data):
+    return type(data) in [list, dict, OrderedDict, tuple]
+
+def single_data_summary(data, data_index, recursion_depth=0):
+    dtype = get_type_name(data)
+    data_index = str(data_index) + ":"
+    indent = recursion_depth * "  "
+    msg = indent + "{}".format(data_index)
+    if is_collection(data):
+        msg += " {:15s} elements, {:10s}".format(str(len(data)) + " elements", dtype)
+    elif type(data) == np.ndarray:
+        msg += " {:15s} {:10s}".format(str(data.shape) + " shape", "ndarray")
+    else:
+        msg += "data of type".format(dtype)
+    info(msg)
+
+def data_summary(data, msg="", data_index="", recursion_depth=0):
+    """ Print a summary of data in the input"""
+    coll_len_lim = 4
+    recursion_depth_lim = 1
+    if recursion_depth < recursion_depth_lim:
+        recursion_depth += 1
+        # recurse into collections
+        if is_collection(data):
+            colltype = type(data)
+            if colltype in [dict, OrderedDict]:
+                maxname = max(map(len, data.keys()))
+                names = map(lambda x: ("{:" + str(maxname) + "s}").format(x), data.keys())
+                data = [data[k] for k in names]
+            else:
+                names = range(1, len(data)+1)
+
+            info("{} : ({}) {} elements:".format(msg, colltype.__name__, len(data)))
+            for count, (name, datum) in enumerate(zip(names, data)):
+                if is_collection(datum):
+                    data_summary(datum, data_index=name, recursion_depth=recursion_depth)
+                else:
+                    single_data_summary(datum, data_index=name, recursion_depth=recursion_depth)
+                if count == coll_len_lim:
+                    info("...")
+                    break
+    else:
+        # illustrate the data
+        if msg:
+            info("{} :".format(msg))
+        single_data_summary(data, data_index, recursion_depth=recursion_depth)
 
 def shapes_list(thelist):
     try:

@@ -5,8 +5,11 @@ from utils import error
 class Component:
     inputs = None
     outputs = None
-    name = None
+    component_name = None
     required_finished_chains = []
+
+    def get_component_name(self):
+        return self.component_name
 
     def get_name(self):
         return self.name

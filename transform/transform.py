@@ -73,9 +73,6 @@ class Transform(Serializable):
         if self.loaded():
             info("Skipping {} computation due to transform data already loaded.".format(self.name))
             return
-        if not repres.need_load_transform():
-            info("Skipping {} computation due to encompassing representations are already loaded. aggregated or finalized data already loaded.".format(self.name))
-            return
         if self.do_reinitialize:
             info("Reinitializing transform parameters from the loaded representation config.")
             self.initialize(repres)

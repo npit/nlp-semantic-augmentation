@@ -29,8 +29,6 @@ class Serializable(Component):
 
     # flags for data loading
     loaded_aggregated = False
-    loaded_enriched = False
-    loaded_finalized = False
     loaded_raw_serialized = False
     loaded_preprocessed = False
 

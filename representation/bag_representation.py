@@ -31,8 +31,8 @@ class BagRepresentation(Representation):
         Representation.set_params(self)
 
     @staticmethod
-    def generate_name(config):
-        name = Representation.generate_name(config)
+    def generate_name(config, input_name):
+        name = Representation.generate_name(config, input_name)
         name_components = []
         if config.representation.limit is not defs.limit.none:
             name_components.append("".join(map(str, config.representation.limit)))
