@@ -402,7 +402,7 @@ class Dataset(Serializable):
     def get_outputs(self):
         # data = self.get_all_preprocessed()
         # data["name"] = self.name
-        bundle = Bundle(self.name, text=(self.train, self.test), labels=(self.train_labels, self.test_labels))
+        bundle = Bundle(self.name, text=(self.train, self.test), labels=(self.train_labels, self.test_labels), vocabulary=self.vocabulary)
         return bundle
 
     def run(self):

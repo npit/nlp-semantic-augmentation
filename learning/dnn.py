@@ -87,7 +87,7 @@ class DNN(Classifier):
         return self.callbacks
 
     # to preliminary work
-    def make(self, representation, dataset):
+    def make(self):
 
         # initialize rng
         # for 100% determinism, you may need to enforce CPU single-threading
@@ -95,7 +95,7 @@ class DNN(Classifier):
         # session_conf = tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
         # sess = tf.Session(graph=tf.get_default_graph(), config=session_conf)
         # backend.set_session(sess)
-        Classifier.make(self, representation, dataset)
+        Classifier.make(self)
         pass
 
     # print information pertaining to early stopping
@@ -151,9 +151,9 @@ class MLP(DNN):
         self.layers = self.config.learner.num_layers
         DNN.__init__(self)
 
-    def make(self, representation, dataset):
+    def make(self):
         info("Building dnn: {}".format(self.name))
-        DNN.make(self, representation, dataset)
+        DNN.make(self)
         self.input_shape = (self.input_dim,)
 
     # build MLP model
@@ -188,9 +188,10 @@ class LSTM(DNN):
         DNN.__init__(self)
 
     # make network
-    def make(self, representation, dataset):
+    def make(self):
         info("Building dnn: {}".format(self.name))
-        DNN.make(self, representation, dataset)
+        error("Need fixes on seqlens")
+        DNN.make(self)
         # make sure embedding aggregation is compatible
         # with the sequence-based lstm model
         self.input_shape = (self.sequence_length, self.input_dim)

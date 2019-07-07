@@ -88,7 +88,6 @@ class Config:
         hidden_dim = None
         num_layers = None
         sequence_length = None
-        noload = False
 
     class folders_conf:
         run = None
@@ -109,7 +108,8 @@ class Config:
         keys = {}
         csv_separator = ","
         independent_component = None
-        skip_deserialization = None
+        allow_deserialization = None
+        allow_load_predictions = None
 
     def __init__(self, conf_file=None):
         "Configuration object constructor"
@@ -143,7 +143,7 @@ class Config:
         self.read_config(configuration)
         self.make_directories()
         # copy configuration to run folder
-        if type(configuration) == str:
+        if type(configuration) is str:
             config_copy = join(self.folders.run, os.path.basename(configuration))
             if not exists(config_copy):
                 shutil.copy(configuration, config_copy)
@@ -222,7 +222,7 @@ class Config:
 
     def read_chains(self, input_config):
         self.pipeline = Pipeline()
-        if type(input_config) == str:
+        if type(input_config) is str:
             try:
                 # it's a yaml file
                 with open(input_config) as f:
@@ -230,7 +230,7 @@ class Config:
                     # self.conf = yaml.load(f, Loader=yaml.SafeLoader)
             except yaml.parser.ParserError as p:
                 error("Failed to parse input config file: {}".format(input_config))
-        elif type(input_config) == dict:
+        elif type(input_config) is dict:
             self.conf = input_config
 
         need(self.has_value("chains"), "Need chain information")
@@ -263,7 +263,7 @@ class Config:
     # read yaml configuration
     def read_config(self, input_config):
         # read yml file
-        if type(input_config) == str:
+        if type(input_config) is str:
             try:
                 # it's a yaml file
                 with open(input_config) as f:
@@ -343,7 +343,6 @@ class Config:
                 self.learner.hidden_dim = learner_opts["hidden_dim"]
                 self.learner.num_layers = learner_opts["layers"]
                 self.learner.sequence_length = self.get_value("sequence_length", default=1, base=learner_opts)
-                self.learner.no_load = self.get_value("no_load", default=False, base=learner_opts)
                 self.learner.num_clusters = self.get_value("num_clusters", default=None, base=learner_opts)
                 field = self.learner
 
@@ -387,7 +386,8 @@ class Config:
                     for kname, kvalue in misc_opts['keys'].items():
                         self.misc.keys[kname] = kvalue
                 self.misc.independent = self.get_value("independent_component", base=misc_opts, default=False)
-                self.misc.skip_deserialization = self.get_value("skip_deserialization", base=misc_opts, default=False)
+                self.misc.deserialization_allowed = self.get_value("deserialization_allowed", base=misc_opts, default=True)
+                self.misc.predictions_loading_allowed = self.get_value("predictions_loading_allowed", base=misc_opts, default=False)
                 self.misc.csv_separator = self.get_value("csv_separator", base=misc_opts, default=",")
                 self.misc.run_id = self.get_value("run_id", base=misc_opts, default="run_" + utils.datetime_str())
                 field = self.misc
@@ -395,7 +395,7 @@ class Config:
             read_order.append(self)
 
 
-        info("Read configuration for run / chain: {} from the file {}".format(self.run_id, input_config if type(input_config) == str else input_config.keys()))
+        info("Read configuration for run / chain: {} from the file {}".format(self.run_id, input_config if type(input_config) is str else input_config.keys()))
         return read_order
 
     def has_transform(self):

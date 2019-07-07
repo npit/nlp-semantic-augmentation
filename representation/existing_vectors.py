@@ -35,7 +35,7 @@ class ExistingVectors(Embedding):
         self.dimension = self.vectors.shape[-1]
 
     def map_text(self, dset):
-        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
+        if self.loaded_preprocessed or self.loaded_aggregated:
             return
         info("Mapping dataset: {} to {} feature vectors.".format(dset.name, self.name))
         if self.sequence_length * (len(dset.train) + len(dset.test)) != len(self.vectors):

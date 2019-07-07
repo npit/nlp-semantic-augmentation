@@ -117,46 +117,46 @@ class Representation(Serializable):
     def set_name(self):
         self.name = Representation.generate_name(self.config, self.inputs.get_source_name())
 
-    # finalize embeddings to use for training, aggregating all data to a single ndarray
-    # if semantic enrichment is selected, do the infusion
-    def set_semantic(self, semantic):
-        """
-        Attach semantic component to the representation
-        :param semantic: the dense semantic vectors
-        """
-        if self.config.semantic.enrichment is not None:
-            semantic_data = semantic.get_vectors()
-            info("Enriching [{}] embeddings with shapes: {} {} and {} vecs/doc with [{}] semantic information of shapes {} {}.".
-                 format(self.config.representation.name, *shapes_list(self.dataset_vectors), self.sequence_length,
-                        self.config.semantic.name, *shapes_list(semantic_data)))
-
-            if self.config.semantic.enrichment == "concat":
-                semantic_dim = len(semantic_data[0][0])
-                final_dim = self.dimension + semantic_dim
-                for dset_idx in range(len(semantic_data)):
-                    info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx + 1, len(semantic_data), final_dim))
-                    if self.sequence_length > 1:
-                        # tile the vector the needed times to the right, reshape to the correct dim
-                        semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.sequence_length)),
-                                                             (-1, semantic_dim))
-                    self.dataset_vectors[dset_idx] = np.concatenate(
-                        [self.dataset_vectors[dset_idx], semantic_data[dset_idx]], axis=1)
-
-            elif self.config.semantic.enrichment == "replace":
-                final_dim = len(semantic_data[0][0])
-                for dset_idx in range(len(semantic_data)):
-                    info("Replacing dataset part {}/{} with semantic info of dimension: {}".format(dset_idx + 1, len(semantic_data), final_dim))
-                    if self.sequence_length > 1:
-                        # tile the vector the needed times to the right, reshape to the correct dim
-                        semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.sequence_length)),
-                                                             (-1, final_dim))
-                    self.dataset_vectors[dset_idx] = semantic_data[dset_idx]
-            else:
-                error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
-
-            # serialize finalized embeddings
-            self.dimension = final_dim
-            write_pickled(self.serialization_path_finalized, self.get_all_preprocessed())
+    # # finalize embeddings to use for training, aggregating all data to a single ndarray
+    # # if semantic enrichment is selected, do the infusion
+    # def set_semantic(self, semantic):
+    #     """
+    #     Attach semantic component to the representation
+    #     :param semantic: the dense semantic vectors
+    #     """
+    #     if self.config.semantic.enrichment is not None:
+    #         semantic_data = semantic.get_vectors()
+    #         info("Enriching [{}] embeddings with shapes: {} {} and {} vecs/doc with [{}] semantic information of shapes {} {}.".
+    #              format(self.config.representation.name, *shapes_list(self.dataset_vectors), self.sequence_length,
+    #                     self.config.semantic.name, *shapes_list(semantic_data)))
+    #
+    #         if self.config.semantic.enrichment == "concat":
+    #             semantic_dim = len(semantic_data[0][0])
+    #             final_dim = self.dimension + semantic_dim
+    #             for dset_idx in range(len(semantic_data)):
+    #                 info("Concatenating dataset part {}/{} to composite dimension: {}".format(dset_idx + 1, len(semantic_data), final_dim))
+    #                 if self.sequence_length > 1:
+    #                     # tile the vector the needed times to the right, reshape to the correct dim
+    #                     semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.sequence_length)),
+    #                                                          (-1, semantic_dim))
+    #                 self.dataset_vectors[dset_idx] = np.concatenate(
+    #                     [self.dataset_vectors[dset_idx], semantic_data[dset_idx]], axis=1)
+    #
+    #         elif self.config.semantic.enrichment == "replace":
+    #             final_dim = len(semantic_data[0][0])
+    #             for dset_idx in range(len(semantic_data)):
+    #                 info("Replacing dataset part {}/{} with semantic info of dimension: {}".format(dset_idx + 1, len(semantic_data), final_dim))
+    #                 if self.sequence_length > 1:
+    #                     # tile the vector the needed times to the right, reshape to the correct dim
+    #                     semantic_data[dset_idx] = np.reshape(np.tile(semantic_data[dset_idx], (1, self.sequence_length)),
+    #                                                          (-1, final_dim))
+    #                 self.dataset_vectors[dset_idx] = semantic_data[dset_idx]
+    #         else:
+    #             error("Undefined semantic enrichment: {}".format(self.config.semantic.enrichment))
+    #
+    #         # serialize finalized embeddings
+    #         self.dimension = final_dim
+    #         write_pickled(self.serialization_path_finalized, self.get_all_preprocessed())
 
     def has_word(self, word):
         return word in self.embeddings.index
@@ -200,16 +200,13 @@ class Representation(Serializable):
     def compute_dense(self):
         error("Attempted to run abstract compute_dense for {}".format(self.name))
 
-    def __str__(self):
-        return self.name
-
     def map_text(self):
         error("Attempted to access abstract function map_text of {}".format(self.name))
 
     # region  # chain methods
     def get_outputs(self):
         # yield mapped dataset vectors
-        return Bundle(self.name, vectors=self.dataset_vectors, labels=self.inputs.get_labels())
+        return Bundle(self.name, vectors=self.dataset_vectors)
 
     def run(self):
         self.populate()

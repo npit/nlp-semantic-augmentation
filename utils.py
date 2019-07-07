@@ -87,13 +87,22 @@ def as_list(x):
     """
     return [x] if type(x) != list else x
 
+def is_multilabel(labels):
+    try:
+        # attempt to check length of iterate
+        for sample_labels in labels:
+            if len(sample_labels) > 1:
+                return True
+    except TypeError:
+        pass
+    return False
 
 # function for one-hot encoding, can handle multilabel
 def one_hot(labels, num_labels):
     output = np.empty((0, num_labels), np.float32)
     for annot in labels:
         binarized = np.zeros((1, num_labels), np.float32)
-        if type(annot) == list:
+        if type(annot) is list:
             for lbl in annot:
                 binarized[0, lbl] = 1.0
         else:
@@ -110,16 +119,16 @@ def single_data_summary(data, data_index, recursion_depth=0):
     indent = recursion_depth * "  "
     msg = indent + "{}".format(data_index)
     if is_collection(data):
-        msg += " {:15s} elements, {:10s}".format(str(len(data)) + " elements", dtype)
-    elif type(data) == np.ndarray:
+        msg += " {:15s}, {:10s}".format(str(len(data)) + " elements", dtype)
+    elif type(data) is np.ndarray:
         msg += " {:15s} {:10s}".format(str(data.shape) + " shape", "ndarray")
     else:
-        msg += "data of type".format(dtype)
-    info(msg)
+        msg += "data of type {}".format(dtype)
+    debug(msg)
 
 def data_summary(data, msg="", data_index="", recursion_depth=0):
     """ Print a summary of data in the input"""
-    coll_len_lim = 4
+    coll_len_lim = 2
     recursion_depth_lim = 1
     if recursion_depth < recursion_depth_lim:
         recursion_depth += 1
@@ -133,19 +142,19 @@ def data_summary(data, msg="", data_index="", recursion_depth=0):
             else:
                 names = range(1, len(data)+1)
 
-            info("{} : ({}) {} elements:".format(msg, colltype.__name__, len(data)))
+            debug("{} : ({}) {} elements:".format(msg, colltype.__name__, len(data)))
             for count, (name, datum) in enumerate(zip(names, data)):
                 if is_collection(datum):
                     data_summary(datum, data_index=name, recursion_depth=recursion_depth)
                 else:
                     single_data_summary(datum, data_index=name, recursion_depth=recursion_depth)
                 if count == coll_len_lim:
-                    info("...")
+                    debug("...")
                     break
     else:
         # illustrate the data
         if msg:
-            info("{} :".format(msg))
+            debug("{} :".format(msg))
         single_data_summary(data, data_index, recursion_depth=recursion_depth)
 
 def shapes_list(thelist):
@@ -170,9 +179,11 @@ def read_lines(path):
             lines.append(line.strip())
     return lines
 
+
 # list flattener
 def flatten(llist):
     return [value for sublit in llist for value in sublit]
+
 
 # converts elements of l to the index they appear in the reference
 # flattens, if necessary
@@ -190,7 +201,7 @@ def align_index(input_list, reference):
     return output
 
 
-def get_majority_label(labels, num_labels, return_counts=False):
+def get_majority_label(labels, return_counts=False):
     """Gets majority (in terms of frequency) label in (potentially multilabel) input
     """
     counts = Counter()

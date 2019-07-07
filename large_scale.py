@@ -54,7 +54,7 @@ def traverse_dict(ddict, key, prev_keys):
             rres = traverse_dict(ddict, key, prev_keys)
             res.append(rres)
         return res
-    if type(ddict[key]) == dict:
+    if type(ddict[key]) is dict:
         prev_keys.append(key)
         res = traverse_dict(ddict[key], None, prev_keys)
     else:
@@ -99,7 +99,7 @@ def make_configs(base_config, run_dir, sources_dir="./"):
         for v, value in enumerate(combo):
             lconf = conf
             # make sure it's directory-friendly
-            if type(value) == list:
+            if type(value) is list:
                 val = "-".join(list(map(str, value)))
                 name_components.append(val)
             else:

@@ -11,11 +11,12 @@ class Clusterer(Learner):
         self.sequence_length = 1
         Learner.__init__(self)
 
-    def make(self, representation, dataset):
-        max_epi = max([max(x) for x in representation.elements_per_instance])
+    def make(self):
+        # max_epi = max([max(x) for x in representation.elements_per_instance])
+        max_epi = None
         if max_epi != 1:
             error("Clustering requires single-vector instances, got {} max elements per instance.".format(max_epi))
-        Learner.make(self, representation, dataset)
+        Learner.make(self)
 
 
 class KMeansClusterer(Clusterer):
@@ -31,8 +32,8 @@ class KMeansClusterer(Clusterer):
         self.num_clusters = config.learner.num_clusters
         Clusterer.__init__(self)
 
-    def make(self, representation, dataset):
-        Clusterer.make(self, representation, dataset)
+    def make(self):
+        Clusterer.make(self)
 
     # train a model on training & validation data portions
     def train_model(self, trainval_idx):

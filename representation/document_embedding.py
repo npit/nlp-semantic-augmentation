@@ -45,7 +45,7 @@ class DocumentEmbedding(Embedding):
         return model
 
     def map_text(self, dset):
-        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
+        if self.loaded_preprocessed or self.loaded_aggregated:
             return
         info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
         word_lists = dset.get_word_lists()

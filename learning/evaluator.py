@@ -60,7 +60,7 @@ class Evaluator:
         if len(test_labels) > 0:
             self.test_labels = test_labels
             # squeeze to ndarray if necessary
-            if not self.do_multilabel and type(test_labels) == list:
+            if not self.do_multilabel and type(test_labels) is list:
                 self.test_labels = np.squeeze(np.concatenate(test_labels))
 
         self.check_sanity()
@@ -289,7 +289,7 @@ class Evaluator:
         if not self.label_distribution:
             if labels is not None:
                 self.test_labels = labels
-            self.label_distribution = get_majority_label(self.test_labels, self.num_labels, return_counts=True)
+            self.label_distribution = get_majority_label(self.test_labels, return_counts=True)
         if do_show:
             info("==============================")
             info("Label distribution:")
@@ -315,7 +315,7 @@ class Evaluator:
         self.evaluate_predictions("run", predictions)
         # majority classifier
         if self.majority_label is None:
-            self.majority_label = get_majority_label(self.test_labels, self.num_labels)
+            self.majority_label = get_majority_label(self.test_labels)
             info("Majority label: {}".format(self.majority_label))
         majpred = np.zeros(predictions.shape, np.float32)
         majpred[:, self.majority_label] = 1.0

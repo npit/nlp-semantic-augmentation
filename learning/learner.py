@@ -1,4 +1,6 @@
-from utils import error, info, read_pickled, tictoc, write_pickled, one_hot, warning, get_majority_label
+from component.bundle import BundleList, Bundle
+from component.component import Component
+from utils import error, info, read_pickled, tictoc, write_pickled, one_hot, warning, get_majority_label, is_multilabel
 from sklearn.model_selection import KFold, StratifiedKFold, StratifiedShuffleSplit
 import numpy as np
 from os.path import join, dirname, exists, basename
@@ -10,7 +12,7 @@ from os import makedirs
 Abstract class representing a learning model
 """
 
-class Learner:
+class Learner(Component):
 
     component_name = "learner"
     save_dir = "models"
@@ -18,6 +20,7 @@ class Learner:
     fold_index = 0
     evaluator = None
     sequence_length = None
+    train, test, train_labels, test_labels = None, None, None, None
 
     test_instance_indexes = None
 
@@ -25,6 +28,7 @@ class Learner:
         """Generic learning constructor
         """
         # initialize evaluation
+        Component.__init__(self)
         self.evaluator = Evaluator(self.config)
 
     # input preproc
@@ -35,11 +39,8 @@ class Learner:
         self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
             map(len, [self.train, self.test, self.train_labels, self.test_labels])
 
-    def make(self, representation, dataset):
+    def make(self):
         self.verbosity = 1 if self.config.print.training_progress else 0
-        # get data and labels
-        self.train, self.test = representation.get_data()
-        self.train_labels, self.test_labels = [x for x in dataset.get_labels()]
         # need at least one sample per class
         zero_samples_idx = np.where(np.sum(self.train_labels, axis=0) == 0)
         if np.any(zero_samples_idx):
@@ -53,11 +54,12 @@ class Learner:
             error("NaNs in test data:{}".format(nans))
 
         # get many handy variables
-        self.do_multilabel = dataset.is_multilabel()
-        self.num_labels = dataset.get_num_labels()
+        self.do_multilabel = is_multilabel(self.train_labels)
+        label_counts = get_majority_label(self.train_labels, return_counts=True)
+        self.num_labels = len(label_counts)
         self.count_samples()
-        self.input_dim = representation.get_dimension()
-        self.forbid_load = self.config.learner.no_load
+        self.input_dim = self.train[0].shape[-1]
+        self.predictions_loading_allowed = self.config.misc.predictions_loading_allowed
         self.sequence_length = self.config.learner.sequence_length
         self.results_folder = self.config.folders.results
         self.models_folder = join(self.results_folder, "models")
@@ -85,8 +87,8 @@ class Learner:
         # configure and sanity-check evaluator
         self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
         if self.validation_exists and not self.use_validation_for_training:
-            # calculate the majority label from the training data
-            self.evaluator.majority_label = get_majority_label(self.train_labels, self.num_labels)
+            # calculate the majority label from the training data -- label counts already computed
+            self.evaluator.majority_label = label_counts.most_common(1)[0][0]
             info("Majority label: {}".format(self.evaluator.majority_label))
             self.evaluator.show_label_distribution(labels=self.train_labels, do_show=False)
 
@@ -126,7 +128,7 @@ class Learner:
                     validation_description = "<none>"
 
                 # check if the run is completed already and load existing results, if allowed
-                if not self.forbid_load:
+                if self.predictions_loading_allowed:
                     existing_predictions, test_instance_indexes = self.is_already_completed()
                     if existing_predictions is not None:
                         if not self.use_validation_for_training:
@@ -205,7 +207,7 @@ class Learner:
         trainval_serialization_file = join(self.results_folder, basename(self.get_current_model_path()) + ".trainval.pickle")
         if self.do_folds:
             # check if such data exists
-            if exists(trainval_serialization_file) and not self.forbid_load:
+            if exists(trainval_serialization_file) and self.predictions_loading_allowed:
                 info("Training {} with input data: {} samples, {} labels, on LOADED existing {} stratified folds".format(
                     self.name, self.num_train, self.num_train_labels, self.folds))
                 deser = read_pickled(trainval_serialization_file)
@@ -227,7 +229,7 @@ class Learner:
 
         if self.do_validate_portion:
             # check if such data exists
-            if exists(trainval_serialization_file) and not self.forbid_load:
+            if exists(trainval_serialization_file) and self.predictions_loading_allowed:
                 info("Training {} with input data: {} samples, {} labels, on LOADED existing {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
                 deser = read_pickled(trainval_serialization_file)
                 info("Loaded train/val split of {} / {}.".format(*list(map(len, deser[0]))))
@@ -274,3 +276,19 @@ class Learner:
         else:
             val_labels = np.empty((0,))
         return train_labels, val_labels
+
+    # region: component functions
+    def run(self):
+        # get data and labels
+        error("Called learner without BundleList input", type(self.inputs) is not BundleList)
+
+        error("{} needs vector information.".format(self.component_name), not self.inputs.has_vectors())
+        self.train, self.test = self.inputs.get_vectors(single=True)
+        error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
+        self.train_labels, self.test_labels = self.inputs.get_labels(single=True)
+
+        self.make()
+        self.do_traintest()
+
+    def get_outputs(self):
+        return Bundle(self.name, vectors=self.evaluator.predictions)

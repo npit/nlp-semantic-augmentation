@@ -135,4 +135,5 @@ misc:
   seed: 1337
   keys:
     googleapi: my-google-api-key 
-  skip_deserialization: False
+  deserialization_allowed: True
+  predictions_loading_allowed: False

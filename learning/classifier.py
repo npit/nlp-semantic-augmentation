@@ -1,5 +1,5 @@
 from learning.learner import Learner
-from utils import error, one_hot, ill_defined
+from utils import error, one_hot, ill_defined, warning
 import numpy as np
 from sklearn.naive_bayes import GaussianNB
 
@@ -11,10 +11,10 @@ class Classifier(Learner):
         """
         Learner.__init__(self)
 
-    def make(self, representation, dataset):
+    def make(self):
         # make sure there exist enough labels
-        error("Dataset supplied to classifier has only one label", ill_defined(dataset.get_num_labels(), cannot_be=1))
-        Learner.make(self, representation, dataset)
+        Learner.make(self)
+        error("Dataset supplied to classifier has only one label", ill_defined(self.num_labels, cannot_be=1))
 
 
 class SKLClassifier(Classifier):
@@ -22,8 +22,8 @@ class SKLClassifier(Classifier):
     def __init__(self):
         Classifier.__init__(self)
 
-    def make(self, representation, dataset):
-        Classifier.make(self, representation, dataset)
+    def make(self):
+        Classifier.make(self)
 
     # split train/val labels, do *not* convert to one-hot
     def prepare_labels(self, trainval_idx):
@@ -60,7 +60,8 @@ class NaiveBayes(SKLClassifier):
         self.model = GaussianNB
         SKLClassifier.__init__(self)
 
-    def make(self, representation, dataset):
-        if dataset.is_multilabel():
-            error("Cannot apply {} to multilabel data.".format(self.name))
-        SKLClassifier.make(self, representation, dataset)
+    def make(self):
+        # if dataset.is_multilabel():
+        #     error("Cannot apply {} to multilabel data.".format(self.name))
+        warning("Add multilabel check")
+        SKLClassifier.make(self)

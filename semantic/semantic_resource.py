@@ -68,14 +68,14 @@ class SemanticResource(Serializable):
         self.base_name = self.name
 
     def populate(self):
-        if not self.config.misc.skip_deserialization:
+        if self.config.misc.deserialization_allowed:
             Serializable.__init__(self, self.dir_name)
             self.set_serialization_params()
         else:
             warning("Skipping deserialization for the semantic component.")
         self.set_parameters()
 
-        if not self.config.misc.skip_deserialization:
+        if self.config.misc.deserialization_allowed:
             self.acquire_data()
         # restore correct config
         self.set_parameters()

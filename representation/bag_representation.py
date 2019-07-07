@@ -88,9 +88,6 @@ class BagRepresentation(Representation):
 
     # sparse to dense
     def compute_dense(self):
-        if self.loaded_finalized:
-            debug("Will not compute dense, since finalized data were loaded")
-            return
         if self.loaded_transformed:
             debug("Will not compute dense, since transformed data were loaded")
             return
@@ -138,7 +135,7 @@ class BagRepresentation(Representation):
         self.set_additional_serialization_sources()
 
     def map_text(self, dset):
-        if self.loaded_finalized or self.loaded_aggregated:
+        if  self.loaded_aggregated:
             debug("Skippping {} mapping due to preloading".format(self.base_name))
             return
         # need to calc term numeric index for aggregation

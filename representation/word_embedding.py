@@ -99,7 +99,7 @@ class WordEmbedding(Embedding):
 
     # transform input texts to embeddings
     def map_text(self):
-        if self.loaded_preprocessed or self.loaded_aggregated or self.loaded_finalized:
+        if self.loaded_preprocessed or self.loaded_aggregated:
             return
         info("Mapping to {} word embeddings.".format(self.name))
 
@@ -113,8 +113,11 @@ class WordEmbedding(Embedding):
             self.map_text_partial_load()
             return
 
-        text_bundles = self.inputs["train-data"], self.inputs["test-data"]
-        vocabulary = self.inputs["vocabulary"]
+        error("{} requires a text input.".format(self.name), not self.inputs.has_text())
+        error("{} requires a vocabulary input.".format(self.name), not self.inputs.has_vocabulary())
+
+        text_bundles = self.inputs.get_text()
+        vocabulary = self.inputs.get_vocabulary()
 
         # initialize unknown token embedding, if it's not defined
         if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
