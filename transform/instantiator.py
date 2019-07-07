@@ -10,7 +10,7 @@ class Instantiator:
     component_name = "transform"
 
     def create(config):
-        name = config.name
+        name = config.transform.name
         if name == LSA.base_name:
             return LSA(config)
         if name == KMeansClustering.base_name:

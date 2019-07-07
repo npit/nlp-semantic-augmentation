@@ -1,3 +1,4 @@
+from component.bundle import BundleList, Bundle
 from utils import error, info, shapes_list, write_pickled
 import numpy as np
 from sklearn.decomposition import TruncatedSVD, LatentDirichletAllocation
@@ -16,6 +17,7 @@ class Transform(Serializable):
     """Abstract transform class
 
     """
+    component_name = "transform"
     name = None
     dimension = None
     dir_name = "transform"
@@ -31,92 +33,67 @@ class Transform(Serializable):
     def get_available():
         return [cls.base_name for cls in Transform.__subclasses__()]
 
-    def __init__(self, representation):
-        config = representation.config
-        self.do_reinitialize = False
+    def __init__(self, config):
+        self.name = self.base_name
         self.is_supervised = False
         self.config = config
         self.dimension = config.transform.dimension
-        self.representation = representation
 
     def populate(self):
-        if self.representation.dimension is not None:
-            self.initialize(self.representation)
-            self.acquire_data()
-        else:
-            # None dimension (typical for uncomputed bags) -- no point to load
-            info("Will not attempt to load data of a <None> representation dimension transform.")
-            self.name = "none_dim_repr"
-            Serializable.__init__(self, self.dir_name)
-            self.do_reinitialize = True
-            return
-
-    def initialize(self, representation):
-        self.name = "{}_{}_{}".format(representation.name, self.base_name, self.dimension)
+        self.name = "{}_{}_{}".format(self.input_name, self.base_name, self.dimension)
         Serializable.__init__(self, self.dir_name)
         self.set_serialization_params()
+        self.acquire_data()
 
     def get_dimension(self):
         return self.dimension
 
     def get_name(self):
-        """Composite name getter"""
-        return "{}_{}".format(self.name, self.dimension)
+        return self.name
 
-    def check_compatibility(self, dataset, repres):
-        if repres.get_dimension() < self.dimension:
-            error("Got transform dimension of {} but representation of {}.".format(self.dimension, repres.get_dimension()))
-        return True
-
-    def compute(self, repres, dataset):
+    def compute(self):
         """Apply transform on input features"""
         if self.loaded():
             info("Skipping {} computation due to transform data already loaded.".format(self.name))
             return
-        if self.do_reinitialize:
-            info("Reinitializing transform parameters from the loaded representation config.")
-            self.initialize(repres)
-            self.acquire_data()
-            if self.loaded():
-                info("Loaded existing transformed data after reinitializion, exiting.")
-                return
 
         # sanity checks
-        self.check_compatibility(dataset, repres)
+        error("Got transform dimension of {} but input dimension is {}.".format(self.dimension, self.input_dimension), self.input_dimension < self.dimension)
+
+        # output containers
+        self.vectors = []
+        self.term_components = []
 
         # compute
-        num_chunks = len(repres.dataset_vectors)
+        num_chunks = len(self.input_vectors)
         info("Applying {} {}-dimensional transform on the raw representation.".format(self.base_name, self.dimension))
-        self.term_components = []
-        for dset_idx, dset in enumerate(repres.dataset_vectors):
-            # replace non-reduced vectors, to save memory
-            if dset_idx == 0:
-                info("Transforming training input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
+        for v, vecs in enumerate(self.input_vectors):
+            if v == 0:
+                info("Transforming training input data shape {}/{}: {}".format(v + 1, num_chunks, vecs.shape))
                 if self.is_supervised:
-                    ground_truth = dataset.get_labels()[dset_idx]
-                    ground_truth = repres.match_labels_to_instances(dset_idx, ground_truth)
-                    repres.dataset_vectors[dset_idx] = self.process_func_train(dset, ground_truth)
+                    error("TODO how to match labels to instances")
+                    ground_truth = self.labels[v]
+                    ground_truth = repres.match_labels_to_instances(v, ground_truth)
+                    self.vectors.append(self.process_func_train(vecs, ground_truth))
                 else:
-                    repres.dataset_vectors[dset_idx] = self.process_func_train(dset)
+                    self.vectors.append(self.process_func_train(vecs))
             else:
-                info("Transforming test input data shape {}/{}: {}".format(dset_idx + 1, num_chunks, dset.shape))
-                repres.dataset_vectors[dset_idx] = self.process_func_test(dset)
-            self.verify_transformed(repres.dataset_vectors[dset_idx])
+                info("Transforming test input data shape {}/{}: {}".format(v + 1, num_chunks, vecs.shape))
+                self.vectors.append(self.process_func_test(vecs))
+            self.verify_transformed(self.vectors[-1])
             self.term_components.append(self.get_term_representations())
 
-        repres.dimension = self.dimension
-        info("Output shapes (train/test): {}, {}".format(*shapes_list(repres.dataset_vectors)))
-        write_pickled(self.serialization_path_preprocessed, repres.get_all_preprocessed())
-        pass
+        info("Output shapes (train/test): {}, {}".format(*shapes_list(self.vectors)))
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_raw_path(self):
         return None
 
     def get_all_preprocessed(self):
-        return self.repr_data
+        return self.vectors
 
     def handle_preprocessed(self, data):
-        self.repr_data = data
+        self.vectors = data
 
     def get_term_representations(self):
         """Return term-based, rather than document-based representations
@@ -134,3 +111,19 @@ class Transform(Serializable):
             error("{} result contains nan elements in :{}".format(self.name, nans))
 
 
+    def run(self):
+        self.input_name = self.inputs.get_source_name()
+        error("{} - {} needs vector information.".format(self.get_component_name(), self.get_name()), not self.inputs.has_vectors())
+        if self.is_supervised:
+            error("{} - {} needs an input bundle list.".format(self.get_component_name(), self.get_name()), type(self.inputs) is not BundleList)
+            error("{} - {} needs label information.".format(self.get_component_name(), self.get_name()), not self.inputs.has_labels())
+            self.input_vectors = self.inputs.get_vectors(single=True)
+            self.labels = self.inputs.get_labels(single=True)
+        else:
+            self.input_vectors = self.inputs.get_vectors()
+        self.populate()
+        self.input_dimension = self.input_vectors[0].shape[-1]
+        self.compute()
+
+    def get_outputs(self):
+        return Bundle(self.name, vectors=self.vectors)
