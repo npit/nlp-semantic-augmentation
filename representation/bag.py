@@ -145,11 +145,11 @@ class Bag:
 
     # generic wrapper for getting term weights
     def get_term_weights(self, term):
-        # greenlight with the selected greenlighting function
-        if not self.term_greenlight_func(term):
-            return {}
         # get weight wrt the selected weighting function
-        return self.term_weighting_func(term)
+        term_weights = self.term_weighting_func(term)
+        # greenlight with the selected greenlighting function
+        term_weights = {t: term_weights[t] for t in term_weights if self.term_greenlight_func(t)}
+        return term_weights
 
     def map_collection(self, text_collection):
         num_docs = len(text_collection)
