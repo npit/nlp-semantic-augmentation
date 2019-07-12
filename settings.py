@@ -56,11 +56,12 @@ class Config:
     class print_conf:
         log_dir = None
         run_types = None
-        stats = None
-        aggregations = None
+        fold_aggregations = None
+        label_aggregations = None
         folds = None
         measures = None
         error_analysis = None
+        label_distribution = None
         top_k = 3
 
     class representation_conf:
@@ -370,14 +371,15 @@ class Config:
                 print_opts = self.conf['print']
                 self.print.run_types = self.get_value("run_types", base=print_opts)
                 self.print.measures = self.get_value("measures", base=print_opts)
-                self.print.aggregations = self.get_value("aggregations", base=print_opts)
+                self.print.label_aggregations = self.get_value("label_aggregations", base=print_opts)
                 self.print.folds = self.get_value("folds", base=print_opts, default=False)
                 self.print.training_progress = self.get_value("training_progress", base=print_opts, default=False)
-                self.print.stats = self.get_value("stats", base=print_opts)
+                self.print.fold_aggregations = self.get_value("fold_aggregations", base=print_opts)
                 self.print.error_analysis = self.get_value("error_analysis", base=print_opts, default=True)
                 self.print.top_k = self.get_value("top_k", base=print_opts, default=3, expected_type=int)
                 self.print.log_level = self.get_value("log_level", base=print_opts, default="info")
                 self.print.log_dir = self.get_value("log_dir", base=print_opts, default="logs")
+                self.print.label_distribution = self.get_value("label_distribution", base=print_opts, default="logs")
                 field = self.print
 
             elif self.has_value("misc"):

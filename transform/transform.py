@@ -1,10 +1,8 @@
-from component.bundle import BundleList, Bundle
-from utils import error, info, shapes_list, write_pickled
+from bundle.bundle import BundleList, Bundle
+from bundle.datatypes import Vectors, Labels
+from component.component import Component
+from utils import error, info, shapes_list, write_pickled, match_labels_to_instances, debug
 import numpy as np
-from sklearn.decomposition import TruncatedSVD, LatentDirichletAllocation
-from sklearn.mixture import GaussianMixture
-from sklearn.cluster import KMeans
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from serializable import Serializable
 
 """Module for feature transformation methods
@@ -25,7 +23,7 @@ class Transform(Serializable):
     transformer = None
     process_func_train = None
     process_func_test = None
-    is_supervised = None
+    is_supervised = False
     term_components = None
 
 
@@ -34,13 +32,14 @@ class Transform(Serializable):
         return [cls.base_name for cls in Transform.__subclasses__()]
 
     def __init__(self, config):
+        Component.__init__(self, produces=Vectors.name, consumes=Vectors.name)
+        if self.is_supervised:
+            self.consumes = [Vectors.name, Labels.name]
         self.name = self.base_name
-        self.is_supervised = False
         self.config = config
         self.dimension = config.transform.dimension
 
     def populate(self):
-        self.name = "{}_{}_{}".format(self.input_name, self.base_name, self.dimension)
         Serializable.__init__(self, self.dir_name)
         self.set_serialization_params()
         self.acquire_data()
@@ -54,7 +53,7 @@ class Transform(Serializable):
     def compute(self):
         """Apply transform on input features"""
         if self.loaded():
-            info("Skipping {} computation due to transform data already loaded.".format(self.name))
+            debug("Skipping {} computation due to transform data already loaded.".format(self.name))
             return
 
         # sanity checks
@@ -71,9 +70,7 @@ class Transform(Serializable):
             if v == 0:
                 info("Transforming training input data shape {}/{}: {}".format(v + 1, num_chunks, vecs.shape))
                 if self.is_supervised:
-                    error("TODO how to match labels to instances")
-                    ground_truth = self.labels[v]
-                    ground_truth = repres.match_labels_to_instances(v, ground_truth)
+                    ground_truth = np.reshape(match_labels_to_instances(self.elements_per_instance[v], self.labels[v]), (len(vecs),))
                     self.vectors.append(self.process_func_train(vecs, ground_truth))
                 else:
                     self.vectors.append(self.process_func_train(vecs))
@@ -110,20 +107,38 @@ class Transform(Serializable):
         if np.size(nans) != 0:
             error("{} result contains nan elements in :{}".format(self.name, nans))
 
+    def configure_name(self):
+        if self.is_supervised:
+            # set source name at the vector source
+            error("{} is supervised and needs an input bundle list.".format(self.get_full_name()), type(self.inputs) is not BundleList)
+            # get the longest name, most probable
+            self.input_name = max(self.inputs.get_source_name())
+        else:
+            error("{} is not supervised but got an input bundle list, instead of a single bundle.".format(self.get_full_name()), type(self.inputs) is BundleList)
+            # get the longest name, most probable
+            self.input_name = self.inputs.get_source_name()
+        self.name = "{}_{}_{}".format(self.input_name, self.base_name, self.dimension)
 
     def run(self):
-        self.input_name = self.inputs.get_source_name()
-        error("{} - {} needs vector information.".format(self.get_component_name(), self.get_name()), not self.inputs.has_vectors())
+        error("{} needs vector information.".format(self.get_full_name()), not self.inputs.has_vectors())
         if self.is_supervised:
-            error("{} - {} needs an input bundle list.".format(self.get_component_name(), self.get_name()), type(self.inputs) is not BundleList)
-            error("{} - {} needs label information.".format(self.get_component_name(), self.get_name()), not self.inputs.has_labels())
-            self.input_vectors = self.inputs.get_vectors(single=True)
+            error("{} is supervised and needs an input bundle list.".format(self.get_full_name()), type(self.inputs) is not BundleList)
+            error("{} got a {}-long bundle list, but a length of at most 2 is required.".format(self.get_full_name(), len(self.inputs)), len(self.inputs) > 2)
+            # verify that the input name is of the vectors source bundle
+            vectors_bundle_index = [i for i in range(len(self.inputs)) if self.inputs.get(i).has_vectors()][0]
+            expected_name = self.inputs.get(vectors_bundle_index).get_source_name()
+            if self.input_name != expected_name:
+                error("Supervised transform was configured to name {} but the vector bundle {} is encountered at runtime.".format(self.input_name, expected_name))
+
+            self.input_vectors = self.inputs.get(vectors_bundle_index).get_vectors().instances
+            self.elements_per_instance = self.inputs.get(vectors_bundle_index).get_vectors().elements_per_instance
+            error("{} is supervised and needs label information.".format(self.get_full_name()), not self.inputs.has_labels())
             self.labels = self.inputs.get_labels(single=True)
         else:
-            self.input_vectors = self.inputs.get_vectors()
+            error("{} is not supervised but got an input bundle list, instead of a single bundle.".format(self.get_full_name()), type(self.inputs) is BundleList)
+            self.input_vectors = self.inputs.get_vectors().instances
+            self.elements_per_instance = self.inputs.get_vectors().elements_per_instance
         self.populate()
         self.input_dimension = self.input_vectors[0].shape[-1]
         self.compute()
-
-    def get_outputs(self):
-        return Bundle(self.name, vectors=self.vectors)
+        self.outputs.set_vectors(Vectors(vecs=self.vectors))

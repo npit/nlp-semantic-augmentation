@@ -26,7 +26,6 @@ representation:
   # -- filter: how to select these NUM items:
   # --- first: just get the first NUM words
   # --- freq: get the first NUM words that are most frequent in the dataset (TODO)
-  aggregation_params: []
   # what to do with words missing from the embedding: drop / unk
   # unk: map to an <unknown> category
   # drop: discard them
@@ -111,14 +110,14 @@ print:
   # evaluation metrics: f1, accuracy, precision, recall
   measures: ["f1-score"]
   # evaluation metric aggregations: macro, micro, weighted
-  aggregations: ["macro", "micro"]
+  label_aggregations: ["macro", "micro"]
   # which run type is of interest
   # run: the actual run you are evaluating
   # majority: a majority classifier baseline
   # random: a random classifier baseline
   run_types: [run]
   # stats aggregating fold values
-  stats: ["mean", "var"]
+  fold_aggregations: ["mean", "var"]
   # instance / labelwise error stats
   error_analysis: False
 

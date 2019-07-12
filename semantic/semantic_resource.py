@@ -1,7 +1,9 @@
 from os.path import join, exists, dirname
 from os import makedirs
 
-from component.bundle import Bundle
+from bundle.bundle import Bundle
+from bundle.datatypes import Vectors, Text
+from component.component import Component
 from utils import tictoc, error, info, debug, write_pickled, read_pickled, shapes_list, warning
 from serializable import Serializable
 from representation.bag import Bag, TFIDF
@@ -58,26 +60,23 @@ class SemanticResource(Serializable):
                 conf = self.config.get_copy()
                 conf.semantic.weights = w
                 conf.semantic.limit = f
-                candidate_name = self.generate_name(conf, self.inputs.get_source_name())
+                candidate_name = self.generate_name(conf, self.source_name)
                 debug("Semantic config candidate: {}".format(candidate_name))
                 semantic_names.append(candidate_name)
 
         self.multiple_config_names = semantic_names
 
     def __init__(self):
+        Component.__init__(self, consumes=Text.name, produces=Vectors.name)
         self.base_name = self.name
 
     def populate(self):
-        if self.config.misc.deserialization_allowed:
-            Serializable.__init__(self, self.dir_name)
-            self.set_serialization_params()
-        else:
-            warning("Skipping deserialization for the semantic component.")
+        Serializable.__init__(self, self.dir_name)
         self.set_parameters()
+        self.set_serialization_params()
+        self.acquire_data()
 
-        if self.config.misc.deserialization_allowed:
-            self.acquire_data()
-        # restore correct config
+        # discard multiple-source namings and restore correct config
         self.set_parameters()
         self.set_name()
         self.set_serialization_params()
@@ -88,7 +87,7 @@ class SemanticResource(Serializable):
 
     def generate_vectors(self):
         if self.loaded_vectorized:
-            info("Skipping generating, since loaded vectorized data already.")
+            debug("Skipping generating sem. vectors, since loaded vectorized data already.")
             return
         # map dicts to vectors
         with tictoc("Generation of [{}] semantic vectors".format(self.semantic_weights)):
@@ -199,7 +198,7 @@ class SemanticResource(Serializable):
 
     # make name string from components
     def set_name(self):
-        self.name = self.generate_name(self.config, self.inputs.get_source_name())
+        self.name = self.generate_name(self.config, self.source_name)
         self.config.semantic.full_name = self.name
 
     # apply disambiguation to choose a single semantic unit from a collection of such
@@ -287,11 +286,11 @@ class SemanticResource(Serializable):
     # function to map words to wordnet concepts
     def map_text(self):
         if self.loaded_vectorized:
-            info("Skipping mapping text due to vectorized data already loaded.")
+            debug("Skipping mapping text due to vectorized data already loaded.")
             return
         if self.loaded_preprocessed:
             if self.semantic_weights == defs.weights.frequencies:
-                info("Skipping mapping text due to preprocessed data already loaded.")
+                debug("Skipping mapping text due to preprocessed data already loaded.")
                 return
             self.process_similar_loaded()
             return
@@ -308,8 +307,7 @@ class SemanticResource(Serializable):
         self.load_semantic_cache()
 
         # get representation-relatd information of the data to semantically annotate, if applicable
-        error("{} - {} requires text.".format(self.get_component_name(), self.name), not self.inputs.has_text())
-        train_data, test_data = self.inputs.get_text()
+        train_data, test_data = self.text
 
         # train
         info("Extracting {}-{} semantic information from the training dataset".format(self.name, self.semantic_weights))
@@ -358,13 +356,19 @@ class SemanticResource(Serializable):
         pass
 
     # region: # chain methods
-    def get_outputs(self):
-        # get the dense output
-        warning("Fix the darn dashes / underscore mismatches")
-        return Bundle(self.name, vectors=self.semantic_document_vectors)
-        #return self.get_all_preprocessed()["concept_weights"]
-
     def run(self):
+        self.process_component_inputs()
         self.populate()
         self.map_text()
         self.generate_vectors()
+        self.outputs.set_vectors(Vectors(vecs=self.semantic_document_vectors))
+
+    def configure_name(self):
+        self.source_name = self.inputs.get_source_name()
+        self.set_parameters()
+        self.set_name()
+        Component.configure_name(self)
+
+    def process_component_inputs(self):
+        error("{} requires text.".format(self.get_full_name()), not self.inputs.has_text())
+        self.text = self.inputs.get_text().instances

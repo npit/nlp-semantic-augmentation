@@ -141,7 +141,7 @@ class Embedding(Representation):
             # update the dataset vector collection and dimension
             self.dataset_vectors[dset_idx] = aggregated_dataset_vectors
             # update the elements per instance
-            self.elements_per_instance[dset_idx] = new_numel_per_instance
+            self.elements_per_instance[dset_idx] = np.asarray(new_numel_per_instance, np.int32)
 
             # report stats
             if self.aggregation == "pad":

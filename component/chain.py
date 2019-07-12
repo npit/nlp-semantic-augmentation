@@ -26,14 +26,15 @@ class Chain(Component):
             component = instantiator.create(component_name, component_params)
             self.components.append(component)
             debug("Created chain {} component {}/{}: {}".format(name, idx + 1, self.num_components, str(self.components[-1])))
-        info("Created chain with {} components.".format(self.num_components))
+        # info("Created chain with {} components.".format(self.num_components))
 
-    def run(self):
-        info("Running chain [{}]".format(self.name))
+    def run(self, dry_run=False):
+        info("-------------------")
+        info("{} chain [{}]".format("Running" if not dry_run else "Dry-runnin'", self.name))
         info("-------------------")
         data_bundle = None
         for c, component in enumerate(self.components):
-            info("Running component {}/{} : type: {} - name: {}".format(c + 1, self.num_components, component.get_component_name(), component.get_name()))
+            info("||| Running component {}/{} : type: {} - name: {}".format(c + 1, self.num_components, component.get_component_name(), component.get_name()))
             if component.get_required_finished_chains():
                 # the component requires an input from another chain
                 error("Chain [{}] requires input(s), but none are available.".format(self.get_name()), self.inputs is None)
@@ -41,20 +42,30 @@ class Chain(Component):
             if data_bundle is not None:
                 data_bundle.summarize_content("Passing bundle(s) to component [{}]".format(component.get_name()))
             component.load_inputs(data_bundle)
-            component.run()
+            if not dry_run:
+                component.run()
+            else:
+                component.configure_name()
             # data_bundle = {"data": component.get_outputs(), "name": component.get_name(), "component": component.get_component_name()}
             data_bundle = component.get_outputs()
             # data_summary(data_bundle, "output of component {}".format(component.get_name()))
             # debug("Component [{}] yielded an output of {}".format(component.get_name(), data))
             # mark current output as chain's output
             self.outputs = data_bundle
+        # chain done - set the source chain name
+        self.outputs.set_chain_name(self.name)
+
+    def configure_component_names(self):
+        for c, component in enumerate(self.components):
+            component.configure_name()
+            debug("Named chain {} component #{}/{} : {}".format(self.get_name(), c + 1, len(self.components), component.get_full_name()))
 
     def __str__(self):
         return self.get_name()
 
-    def ready(self, chain_outputs=None):
+    def ready(self, chain_output_names=None):
         # a chain is ready if its first element is ready
-        return self.components[0].ready(chain_outputs)
+        return self.components[0].ready(chain_output_names)
 
     def get_required_finished_chains(self):
         return self.components[0].required_finished_chains

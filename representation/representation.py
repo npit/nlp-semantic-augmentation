@@ -1,25 +1,19 @@
-from os.path import basename, isfile
-import pandas as pd
-
-from component.bundle import Bundle
-from utils import error, tictoc, info, debug, write_pickled, warning, shapes_list, read_lines, one_hot, get_shape
+from bundle.bundle import Bundle
+from bundle.datatypes import Vectors, Text
+from component.component import Component
+from utils import error, debug, shapes_list, one_hot
 import numpy as np
 from serializable import Serializable
-from semantic.semantic_resource import SemanticResource
-from gensim.models.doc2vec import Doc2Vec, TaggedDocument
-from representation.bag import Bag, TFIDF
-from defs import *
 import defs
-import copy
 
 
 class Representation(Serializable):
     component_name = "representation"
     dir_name = "representation"
-    loaded_transformed = False
     compatible_aggregations = []
     compatible_sequence_lengths = []
     sequence_length = 1
+    dataset_vectors = None
 
     data_names = ["dataset_vectors", "elements_per_instance"]
 
@@ -27,17 +21,15 @@ class Representation(Serializable):
     def get_available():
         return [cls.name for cls in Representation.__subclasses__()]
 
-    def __init__(self, can_fail_loading=True):
+    def __init__(self):
+        Component.__init__(self, consumes=Text.name, produces=Vectors.name)
         """Constructor"""
         pass
 
     def populate(self):
-        self.set_params()
-        self.set_name()
         Serializable.__init__(self, self.dir_name)
         # check for serialized mapped data
         self.set_serialization_params()
-        # add paths for aggregated / transformed / enriched representations:
         # set required resources
         self.set_resources()
         # fetch the required data
@@ -100,7 +92,7 @@ class Representation(Serializable):
             error("{} aggregation incompatible with {}. Compatible ones are: {}!".format(self.aggregation, self.base_name, self.compatible_aggregations))
 
         self.dimension = self.config.representation.dimension
-        self.dataset_name = self.inputs.get_source_name()
+        self.dataset_name = self.source_name
         self.base_name = self.name
 
         self.sequence_length = self.config.representation.sequence_length
@@ -115,7 +107,7 @@ class Representation(Serializable):
 
     # name setter function, exists for potential overriding
     def set_name(self):
-        self.name = Representation.generate_name(self.config, self.inputs.get_source_name())
+        self.name = Representation.generate_name(self.config, self.source_name)
 
     # # finalize embeddings to use for training, aggregating all data to a single ndarray
     # # if semantic enrichment is selected, do the infusion
@@ -161,33 +153,11 @@ class Representation(Serializable):
     def has_word(self, word):
         return word in self.embeddings.index
 
-    def match_labels_to_instances(self, dset_idx, gt, do_flatten=True, binarize_num_labels=None):
-        """Expand, if needed, ground truth samples for multi-vector instances
-        """
-        epi = self.elements_per_instance[dset_idx]
-        multi_vector_instance_idx = [i for i in range(len(epi)) if epi[i] > 1]
-        if not multi_vector_instance_idx:
-            if binarize_num_labels is not None:
-                return one_hot(gt, num_labels=binarize_num_labels)
-            return gt
-        res = []
-        for i in range(len(gt)):
-            # get the number of elements for the instance
-            times = epi[i]
-            if do_flatten:
-                res.extend([gt[i] for _ in range(times)])
-            else:
-                res.append([gt[i] for _ in range(times)])
-
-        if binarize_num_labels is not None:
-            return one_hot(res, num_labels=binarize_num_labels)
-        return res
-
     # set one element per instance
     def set_constant_elements_per_instance(self, num=1):
         if not self.dataset_vectors:
             error("Attempted to set constant epi before computing dataset vectors.")
-        self.elements_per_instance = [[num for _ in ds] for ds in self.dataset_vectors]
+        self.elements_per_instance = [np.asarray([num for _ in ds], np.int32) for ds in self.dataset_vectors]
 
     # data getter for semantic processing
     def process_data_for_semantic_processing(self, train, test):
@@ -204,14 +174,23 @@ class Representation(Serializable):
         error("Attempted to access abstract function map_text of {}".format(self.name))
 
     # region  # chain methods
-    def get_outputs(self):
-        # yield mapped dataset vectors
-        return Bundle(self.name, vectors=self.dataset_vectors)
+
+    def configure_name(self):
+        self.source_name = self.inputs.get_source_name()
+        self.set_params()
+        self.set_name()
+        Component.configure_name(self)
 
     def run(self):
         self.populate()
+        self.process_component_inputs()
         self.map_text()
         self.compute_dense()
         self.aggregate_instance_vectors()
+        self.outputs.set_vectors(Vectors(vecs=self.dataset_vectors, epi=self.elements_per_instance))
 
-
+    def process_component_inputs(self):
+        if self.loaded_aggregated or self.loaded_preprocessed:
+            return
+        error("{} requires a text input.".format(self.name), not self.inputs.has_text())
+        self.text, self.vocabulary = self.inputs.get_text().instances, self.inputs.get_text().vocabulary

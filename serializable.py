@@ -61,6 +61,7 @@ class Serializable(Component):
         self.loaded_preprocessed = False
         self.loaded_aggregated = False
         self.multiple_config_names = None
+        self.deserialization_allowed = self.config.misc.deserialization_allowed
         self.set_multiple_config_names()
 
     def loaded(self):
@@ -159,6 +160,9 @@ class Serializable(Component):
     def load_single_config_data(self):
         self.load_flags = [False for _ in self.data_paths]
         for index in range(len(self.data_paths)):
+            if not self.deserialization_allowed and index < len(self.data_paths) - 1:
+                debug("Skipping deser. of {} since it's not allowed".format(self.data_paths[index]))
+                continue
             if (self.attempt_load(index)):
                 return index
         # no data was found to load

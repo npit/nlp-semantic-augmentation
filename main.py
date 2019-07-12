@@ -15,6 +15,8 @@ def main(config_file):
     # initialize configuration
     conf = Config(config_file)
     pipeline = conf.get_pipeline()
+
+    pipeline.configure_names()
     pipeline.run()
 
     #

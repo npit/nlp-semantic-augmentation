@@ -22,8 +22,6 @@ class WordEmbedding(Embedding):
         # iterate over files. match existing words
         # map embedding vocab indexes to files and word positions in that file
         # iterate sequentially the csv with batch loading
-        text_bundles = self.inputs["train-data"], self.inputs["test-data"]
-        vocabulary = self.inputs["vocabulary"]
         batch_size = 10000
         info("Mapping with a read batch size of {}".format(batch_size))
         error("Partial loading implementation has to include UNKs", not self.map_missing_unks)
@@ -32,14 +30,14 @@ class WordEmbedding(Embedding):
         # thus the embeddings file can be traversed just once
         vocab_to_dataset = {}
 
-        for dset_idx, docs in enumerate(text_bundles):
+        for dset_idx, docs in enumerate(self.text):
             num_docs = len(docs)
             current_num_words = 0
-            word_stats = WordEmbeddingStats(vocabulary, self.embedding_vocabulary_index.keys())
+            word_stats = WordEmbeddingStats(self.vocabulary, self.embedding_vocabulary_index.keys())
             # make empty features
-            with tqdm.tqdm("Bulding embedding / dataset vocabulary mapping for text bundle {}/{}".format(dset_idx + 1, len(text_bundles)),
+            with tqdm.tqdm("Bulding embedding / dataset vocabulary mapping for text bundle {}/{}".format(dset_idx + 1, len(self.text)),
                            total=num_docs, ascii=True) as pbar:
-                for file_idx, word_info_list in enumerate(text_bundles[dset_idx]):
+                for file_idx, word_info_list in enumerate(self.text[dset_idx]):
                     for word_idx, word_info in enumerate(word_info_list):
                         word = word_info[0]
                         word_in_embedding_vocab = word in self.embedding_vocabulary_index
@@ -56,6 +54,7 @@ class WordEmbedding(Embedding):
                     self.elements_per_instance[dset_idx].append(len(word_info_list))
             word_stats.print_word_stats()
             self.dataset_vectors[dset_idx] = np.repeat(self.get_zero_pad_element(), current_num_words, axis=0)
+            self.elements_per_instance[dset_idx] = np.asarray(self.elements_per_instance[dset_idx], np.int32)
 
         # get the embedding indexes words are mapped to
         present_embedding_word_indexes = sorted(vocab_to_dataset.keys(), reverse=True)
@@ -113,23 +112,17 @@ class WordEmbedding(Embedding):
             self.map_text_partial_load()
             return
 
-        error("{} requires a text input.".format(self.name), not self.inputs.has_text())
-        error("{} requires a vocabulary input.".format(self.name), not self.inputs.has_vocabulary())
-
-        text_bundles = self.inputs.get_text()
-        vocabulary = self.inputs.get_vocabulary()
-
         # initialize unknown token embedding, if it's not defined
         if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
             warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
             self.embeddings.loc[self.unknown_word_token] = np.zeros(self.dimension)
 
         # loop over input text bundles (e.g. train & test)
-        for dset_idx, docs in enumerate(text_bundles):
+        for dset_idx, docs in enumerate(self.text):
             num_docs = len(docs)
-            with tictoc("Embedding mapping for text bundle {}/{}, with {} texts".format(dset_idx + 1, len(text_bundles), num_docs)):
-                word_stats = WordEmbeddingStats(vocabulary, self.embeddings.index)
-                for j, doc_wp_list in enumerate(text_bundles[dset_idx]):
+            with tictoc("Embedding mapping for text bundle {}/{}, with {} texts".format(dset_idx + 1, len(self.text), num_docs)):
+                word_stats = WordEmbeddingStats(self.vocabulary, self.embeddings.index)
+                for j, doc_wp_list in enumerate(self.text[dset_idx]):
                     # drop POS
                     word_list = [wp[0] for wp in doc_wp_list]
                     # debug("Text {}/{} with {} words".format(j + 1, num_documents, len(word_list)))
@@ -160,6 +153,7 @@ class WordEmbedding(Embedding):
                 self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values
 
             word_stats.print_word_stats()
+            self.elements_per_instance[dset_idx] = np.asarray(self.elements_per_instance[dset_idx], np.int32)
 
         # write
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))

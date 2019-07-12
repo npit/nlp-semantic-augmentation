@@ -24,10 +24,10 @@ class Evaluator:
 
     # available measures, aggregations and run types
     singlelabel_measures = ["precision", "recall", "f1-score", "accuracy"]
-    stats = ["mean", "var", "std", "folds"]
+    fold_aggregations = ["mean", "var", "std", "folds"]
     run_types = ["random", "majority", "run"]
     multilabel_measures = ["ap", "roc_auc"]
-    multiclass_aggregations = ["macro", "micro", "classwise", "weighted"]
+    label_aggregations = ["macro", "micro", "classwise", "weighted"]
 
     # defined in runtime
     measures = None
@@ -73,8 +73,8 @@ class Evaluator:
         # set output options
         self.preferred_types = self.config.print.run_types if self.config.print.run_types else self.run_types
         self.preferred_measures = self.config.print.measures if self.config.print.measures else []
-        self.preferred_aggregations = self.config.print.aggregations if self.config.print.aggregations else self.multiclass_aggregations
-        self.preferred_stats = self.config.print.stats if self.config.print.stats else self.stats
+        self.preferred_label_aggregations = self.config.print.label_aggregations if self.config.print.label_aggregations else self.label_aggregations
+        self.preferred_fold_aggregations = self.config.print.fold_aggregations if self.config.print.fold_aggregations else self.fold_aggregations
         self.top_k = self.config.print.top_k
         error("Invalid value for top-k printing: {}".format(self.top_k), self.top_k <= 0)
 
@@ -104,20 +104,20 @@ class Evaluator:
             for measure in self.measures:
                 self.performance[run_type][measure] = {}
                 if self.do_multilabel:
-                    for stat in self.stats:
+                    for stat in self.fold_aggregations:
                         self.performance[run_type][measure][stat] = None
                     self.performance[run_type][measure]["folds"] = []
                 else:
-                    for aggr in self.multiclass_aggregations:
+                    for aggr in self.label_aggregations:
                         self.performance[run_type][measure][aggr] = {}
-                        for stat in self.stats:
+                        for stat in self.fold_aggregations:
                             self.performance[run_type][measure][aggr][stat] = None
                         self.performance[run_type][measure][aggr]["folds"] = []
 
         # remove undefined combos
         if not self.do_multilabel:
             for run_type in self.run_types:
-                for aggr in [x for x in self.multiclass_aggregations if x not in ["macro", "classwise"]]:
+                for aggr in [x for x in self.label_aggregations if x not in ["macro", "classwise"]]:
                     del self.performance[run_type]["accuracy"][aggr]
 
         # sanity
@@ -127,9 +127,9 @@ class Evaluator:
         undefined = [x for x in self.preferred_measures if x not in self.measures + self.multilabel_measures]
         if undefined:
             error("Undefined measure(s) in: {}, availables are: {}".format(undefined, self.measures + self.multilabel_measures))
-        undefined = [x for x in self.preferred_aggregations if x not in self.multiclass_aggregations]
+        undefined = [x for x in self.preferred_label_aggregations if x not in self.label_aggregations]
         if undefined:
-            error("Undefined aggregation(s) in: {}, availables are: {}".format(undefined, self.multiclass_aggregations))
+            error("Undefined aggregation(s) in: {}, availables are: {}".format(undefined, self.label_aggregations))
 
     # aggregated evaluation measure function shortcuts
     def get_pre_rec_f1(self, preds, metric, num_labels, gt=None):
@@ -165,7 +165,7 @@ class Evaluator:
     def print_performance(self, run_type, measure, aggr=None):
         """performance printing function, checking respective settings and inputs for wether to print"""
         # print the combination, if it's in the prefered stuff to print
-        if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr is None or aggr in self.preferred_aggregations]):
+        if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr is None or aggr in self.preferred_label_aggregations]):
             scores_str = self.get_score_stats_string(self.performance[run_type][measure][aggr])
             # print
             header = " ".join(["{:10}".format(x) for x in [run_type, aggr, measure, scores_str] if x is not None])
@@ -184,13 +184,13 @@ class Evaluator:
 
         info("{} {} performance {} with a validation setting of [{}]".format("/".join(self.preferred_types),
                                                                   "/".join(self.preferred_measures),
-                                                                  "/".join(self.preferred_stats), validation_description))
+                                                                  "/".join(self.preferred_fold_aggregations), validation_description))
         info("------------------------------")
         for run_type in self.run_types:
             did_print = False
             for measure in self.measures:
                 if not self.do_multilabel:
-                    for aggr in self.multiclass_aggregations:
+                    for aggr in self.label_aggregations:
                         if aggr not in self.performance[run_type][measure]:
                             continue
                         # calculate the foldwise statistics
@@ -198,7 +198,7 @@ class Evaluator:
                         # print if it's required by the settings
                         did_print = self.print_performance(run_type, measure, aggr)
                         # # print the combination, if it's in the prefered stuff to print
-                        # if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_aggregations]):
+                        # if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_label_aggregations]):
                         #     scores_str = self.get_score_stats_string(self.performance[run_type][measure][aggr])
                         #     info("{:10} {:10} {:10} : {}".format(run_type, aggr, measure, scores_str))
                 else:
@@ -232,7 +232,7 @@ class Evaluator:
         for rtype in self.preferred_types:
             if not self.do_multilabel:
                 for measure in self.preferred_measures:
-                    for aggr in self.preferred_aggregations:
+                    for aggr in self.preferred_label_aggregations:
                         # don't print classwise results or unedfined aggregations
                         if aggr not in self.performance[rtype][measure]:
                             continue
@@ -286,6 +286,8 @@ class Evaluator:
 
     # show labels distribution
     def show_label_distribution(self, labels=None, do_show=True):
+        if not self.config.print.label_distribution:
+            return
         if not self.label_distribution:
             if labels is not None:
                 self.test_labels = labels
@@ -351,7 +353,7 @@ class Evaluator:
     # get a printable format of evaluation
     def get_score_stats_string(self, container):
         scores_str = []
-        for stat in self.preferred_stats:
+        for stat in self.preferred_fold_aggregations:
             scores_str.append(numeric_to_string(container[stat], self.print_precision))
         return " ".join(scores_str)
 

@@ -17,6 +17,14 @@ class Link(Component):
         else:
             error("Failed {} component parameter: {}".format(self.component_name, config.link))
 
+    def get_full_name(self):
+        return "({})".format(self.component_name)
+
     def run(self):
         # carry over inputs
+        self.outputs = self.inputs
+
+    # override name configurator
+    def configure_name(self):
+        # transfer input
         self.outputs = self.inputs

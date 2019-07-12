@@ -7,6 +7,7 @@ from scipy.sparse import csr_matrix
 
 class Bag:
     term_list = None
+    local_term_list = None
     global_weights = None
     weights = None
     term_weighting_func = None
@@ -30,6 +31,7 @@ class Bag:
 
     def __init__(self):
         self.term_list = []
+        self.local_term_list = set()
         self.term_index_map = {}
         self.global_weights = {}
         self.use_fixed_term_list = False
@@ -145,11 +147,11 @@ class Bag:
 
     # generic wrapper for getting term weights
     def get_term_weights(self, term):
-        # greenlight with the selected greenlighting function
-        if not self.term_greenlight_func(term):
-            return {}
         # get weight wrt the selected weighting function
-        return self.term_weighting_func(term)
+        term_weights = self.term_weighting_func(term)
+        # greenlight terms with the selected greenlighting function
+        weights = {t: term_weights[t] for t in term_weights if self.term_greenlight_func(t)}
+        return weights
 
     def map_collection(self, text_collection):
         num_docs = len(text_collection)
@@ -163,9 +165,9 @@ class Bag:
                 pbar.update()
                 text_term_freqs = {}
                 # delineate and extract terms of interest
-                term_list = [self.term_extraction_func(x) for x in self.term_delineation_func(word_info_list)]
+                terms = [self.term_extraction_func(x) for x in self.term_delineation_func(word_info_list)]
                 # iterate
-                for term in term_list:
+                for term in terms:
                     # process term, and produce weight information of the processed result
                     term_weights = self.get_term_weights(term)
                     # if the word produced weights, add it

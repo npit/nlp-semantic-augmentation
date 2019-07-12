@@ -1,4 +1,5 @@
-from component.bundle import BundleList, Bundle
+from bundle.bundle import BundleList, Bundle
+from bundle.datatypes import Vectors, Labels
 from component.component import Component
 from utils import error, info, read_pickled, tictoc, write_pickled, one_hot, warning, get_majority_label, is_multilabel
 from sklearn.model_selection import KFold, StratifiedKFold, StratifiedShuffleSplit
@@ -28,7 +29,8 @@ class Learner(Component):
         """Generic learning constructor
         """
         # initialize evaluation
-        Component.__init__(self)
+        Component.__init__(self, consumes=[Vectors.name, Labels.name])
+        self.can_be_final = True
         self.evaluator = Evaluator(self.config)
 
     # input preproc
@@ -88,7 +90,7 @@ class Learner(Component):
         self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
         if self.validation_exists and not self.use_validation_for_training:
             # calculate the majority label from the training data -- label counts already computed
-            self.evaluator.majority_label = label_counts.most_common(1)[0][0]
+            self.evaluator.majority_label = label_counts[0][0]
             info("Majority label: {}".format(self.evaluator.majority_label))
             self.evaluator.show_label_distribution(labels=self.train_labels, do_show=False)
 
@@ -279,16 +281,18 @@ class Learner(Component):
 
     # region: component functions
     def run(self):
-        # get data and labels
-        error("Called learner without BundleList input", type(self.inputs) is not BundleList)
-
-        error("{} needs vector information.".format(self.component_name), not self.inputs.has_vectors())
-        self.train, self.test = self.inputs.get_vectors(single=True)
-        error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
-        self.train_labels, self.test_labels = self.inputs.get_labels(single=True)
-
+        self.process_component_inputs()
         self.make()
         self.do_traintest()
+
+    def process_component_inputs(self):
+        # get data and labels
+        error("Learner needs at least two-input bundle input list.", type(self.inputs) is not BundleList)
+        error("{} needs vector information.".format(self.component_name), not self.inputs.has_vectors())
+        error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
+
+        self.train, self.test = self.inputs.get_vectors(single=True).instances
+        self.train_labels, self.test_labels = self.inputs.get_labels(single=True)
 
     def get_outputs(self):
         return Bundle(self.name, vectors=self.evaluator.predictions)

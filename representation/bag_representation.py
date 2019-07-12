@@ -2,8 +2,9 @@ import copy
 from os.path import basename
 
 import defs
+from defs import is_none
 from representation.bag import TFIDF, Bag
-from representation.representation import Representation, is_none
+from representation.representation import Representation
 from utils import debug, read_lines, info, shapes_list, error, write_pickled
 
 
@@ -106,7 +107,7 @@ class BagRepresentation(Representation):
         # intead of undefined word index, get the term list
         self.dataset_vectors, self.dataset_words, self.term_list = [preprocessed[n] for n in self.data_names]
         # set misc required variables
-        self.elements_per_instance = [[1 for _ in ds] for ds in self.dataset_vectors]
+        self.set_constant_elements_per_instance()
 
     def handle_aggregated(self, data):
         self.handle_preprocessed()

@@ -8,6 +8,21 @@ import nltk
 
 num_warnings = 0
 
+def match_labels_to_instances(elements_per_instance, labels):
+    """Expand, if needed, ground truth samples for multi-vector instances
+    """
+    multi_vector_instance_idx = [i for i in range(len(elements_per_instance)) if elements_per_instance[i] > 1]
+    if not multi_vector_instance_idx:
+        return labels
+    res = []
+    for i in range(len(labels)):
+        # get the number of elements for the instance
+        times = elements_per_instance[i]
+        res.extend([elements_per_instance[i] for _ in range(times)])
+    return res
+
+
+
 # check for zero length on variable input args
 def zero_length(*args):
     for arg in args:
@@ -214,7 +229,7 @@ def get_majority_label(labels, return_counts=False):
         # non-iterable labels
         counts = Counter(labels)
     if return_counts:
-        return sorted(list(counts.most_common()), key= lambda x: x[0])
+        return sorted(list(counts.most_common()), key= lambda x: x[1], reverse=True)
     # just the max label
     return counts.most_common(1)[0][0]
 

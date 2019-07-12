@@ -1,16 +1,16 @@
 import random
-import json
 import tqdm
 import numpy as np
 from os import listdir
-from os.path import basename, join
+from os.path import basename
 
-from component.bundle import Bundle
+from bundle.datatypes import Text
+from component.component import Component
+from bundle.bundle import Bundle
 from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, flatten
 from defs import is_none
-from sklearn.datasets import fetch_20newsgroups
 from sklearn.model_selection import StratifiedShuffleSplit
-from nltk.corpus import stopwords, reuters
+from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer, PorterStemmer
 from nltk.tokenize import word_tokenize, sent_tokenize
 import string
@@ -53,6 +53,7 @@ class Dataset(Serializable):
 
     # dataset creation
     def __init__(self, skip_init=False):
+        Component.__init__(self, produces=[Text.name])
         random.seed(self.config.get_seed())
         if skip_init or self.config is None:
             return
@@ -62,7 +63,6 @@ class Dataset(Serializable):
     def populate(self):
         self.set_serialization_params()
         # check for limited dataset
-        self.apply_limit()
         self.acquire_data()
         if self.loaded():
             # downloaded successfully
@@ -396,16 +396,17 @@ class Dataset(Serializable):
             return self.base_name
 
     # region # chain methods
+
     def load_inputs(self, inputs):
         error("Attempted to load inputs into a {} component.".format(self.base_name), inputs is not None)
 
-    def get_outputs(self):
-        # data = self.get_all_preprocessed()
-        # data["name"] = self.name
-        bundle = Bundle(self.name, text=(self.train, self.test), labels=(self.train_labels, self.test_labels), vocabulary=self.vocabulary)
-        return bundle
+    def configure_name(self):
+        self.apply_limit()
+        Component.configure_name(self)
 
     def run(self):
         self.populate()
         self.preprocess()
+        self.outputs.set_text(Text((self.train, self.test), self.vocabulary))
+        self.outputs.set_labels((self.train_labels, self.test_labels))
     # endregion
