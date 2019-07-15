@@ -39,8 +39,28 @@ class Pipeline:
             if not chain.ready(chain_outputs.get_chain_names()):
                 run_pool.append(chain.get_name())
                 continue
+            data_bundle = None
             chain.load_inputs(chain_outputs)
-            chain.run(dry_run=True)
+            required_input_chains = chain.get_required_finished_chains()
+            if required_input_chains:
+                # the first component requires an input from another chain -- check if it's loaded
+                error("Chain [{}] requires input(s), but none are available.".format(chain.get_name()), chain.inputs is None)
+                data_bundle = chain.inputs.get_bundles(chain_names=required_input_chains)
+            for c, component in enumerate(chain.components):
+                component.load_inputs(data_bundle)
+                # configure names
+                component.configure_name()
+                # configure output dependencies
+                if c > 0:
+                    chain.components[c-1].add_output_demand(chain.name, component.get_name())
+                data_bundle = component.get_outputs()
+                chain.outputs = data_bundle
+
+            # set output demand to other chains feeding into this one, to this chain and first component
+            if required_input_chains:
+                for ch in required_input_chains:
+                    self.chains[ch].backtrack_output_demand(chain.get_name(), chain.components[0].get_name(), chain.components[0].consumes)
+
             chain_outputs.add_bundle(chain.get_outputs(), chain_name=chain.get_name())
 
     def run(self):
@@ -78,11 +98,9 @@ class Pipeline:
         all_required_inputs = set()
         # check input requirements are satisfiable
         for chain_name, chain in self.chains.items():
-            first_component = chain.get_components()[0]
-            for req_out in first_component.get_required_finished_chains():
+            for req_out in chain.get_required_finished_chains():
                 if req_out not in self.chains:
-                    error("First component [{}] of chain {} requires an output of a non-existent chain: {}".format(
-                        first_component.get_name(), chain_name, req_out))
+                    error("Chain {} requires an output of a non-existent chain: {}".format(chain_name, req_out))
                 all_required_inputs.add(req_out)
 
         # check if endpoints are not dangling

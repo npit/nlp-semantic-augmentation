@@ -7,7 +7,7 @@ from learning import instantiator as lrn_instantiator
 
 from settings import Config
 import argparse
-from utils import info, warning, num_warnings, tictoc
+from utils import info, warning, num_warnings, tictoc, error
 
 
 def main(config_file):
@@ -18,6 +18,7 @@ def main(config_file):
 
     pipeline.configure_names()
     pipeline.run()
+    # error("Add a required datatypes per component")
 
     #
     # # time the entire run

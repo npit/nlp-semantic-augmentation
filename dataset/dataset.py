@@ -4,7 +4,7 @@ import numpy as np
 from os import listdir
 from os.path import basename
 
-from bundle.datatypes import Text
+from bundle.datatypes import Text, Labels
 from component.component import Component
 from bundle.bundle import Bundle
 from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, flatten
@@ -408,5 +408,5 @@ class Dataset(Serializable):
         self.populate()
         self.preprocess()
         self.outputs.set_text(Text((self.train, self.test), self.vocabulary))
-        self.outputs.set_labels((self.train_labels, self.test_labels))
+        self.outputs.set_labels(Labels((self.train_labels, self.test_labels)))
     # endregion

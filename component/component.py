@@ -1,5 +1,6 @@
 from bundle.bundle import Bundle
-from utils import error
+from utils import error, debug, as_list
+
 """Abstract class representing a computation pipeline component
 """
 
@@ -14,8 +15,13 @@ class Component:
     consumes = None
 
     component_name = None
-    can_be_final = False # denotes wether it is a valid chain end
+    # denotes wether it is a valid chain end
+    can_be_final = False
+    # required input  from other chains
     required_finished_chains = []
+
+    def add_output_demand(self, chain_name, component_name):
+        self.outputs.set_demand(chain_name, component_name)
 
     def get_component_name(self):
         return self.component_name
@@ -31,19 +37,15 @@ class Component:
 
     def __init__(self, produces=None, consumes=None):
         """Constructor"""
-        self.produces = produces
-        self.consumes = consumes
+        self.produces = as_list(produces)
+        self.consumes = as_list(consumes)
         # instantiate output bundle
         self.outputs = Bundle()
-        pass
 
     def configure_name(self):
         # set configured name to the output bundle
         self.outputs.set_source_name(self.name)
         pass
-
-    def ready(self, available_output_names):
-        return all(x in available_output_names for x in self.required_finished_chains)
 
     def load_inputs(self, data):
         self.inputs = data
@@ -53,7 +55,7 @@ class Component:
         return self.outputs
 
     def __str__(self):
-        return "{} - {}".format(self.component_name, self.get_name())
+        return self.get_full_name()
 
     def run(self):
         """Component runner function"""

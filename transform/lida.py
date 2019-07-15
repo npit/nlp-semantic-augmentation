@@ -14,6 +14,7 @@ class LiDA(Transform):
     def __init__(self, representation):
         """LiDA constructor"""
         Transform.__init__(self, representation)
+        # supervised
         self.transformer = LinearDiscriminantAnalysis(n_components=self.dimension)
         self.is_supervised = True
         self.process_func_train = self.transformer.fit_transform

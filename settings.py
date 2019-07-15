@@ -246,7 +246,7 @@ class Config:
         # parse the configuration
         read_order = chain_config.read_config(chain_configuration_dict)
         # clear up read order
-        return Chain(chain_name, chain_configuration_dict.keys(), read_order)
+        return Chain(chain_name, list(chain_configuration_dict.keys()), read_order)
 
     @staticmethod
     def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):

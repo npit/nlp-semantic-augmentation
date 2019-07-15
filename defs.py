@@ -14,7 +14,7 @@ avail_sequence_length = [ "unit", "non_unit"]
 avail_weights = ["frequencies", "tfidf"]
 avail_disam = ["first", "pos"]
 avail_limit = ["frequency", "top", "none"]
-avail_alias = ["none"]
+avail_alias = ["none", "link"]
 
 aggregation = make_def("aggregation")
 sequence_length = make_def("sequence_length")

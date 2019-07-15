@@ -1,6 +1,7 @@
 from component.component import Component
 from component import instantiator
-from utils import info, debug, error, data_summary
+from utils import info, debug, error, warning, as_list
+import defs
 
 
 class Chain(Component):
@@ -18,8 +19,13 @@ class Chain(Component):
         """Constructor"""
 
         self.components = []
-        # info("Creating chain: [{}]".format(name))
-        # info("-------------------")
+        # parse potential inputs
+        if defs.alias.link in fields:
+            idx = fields.index(defs.alias.link)
+            self.required_finished_chains = as_list(getattr(configs[idx], defs.alias.link))
+            del fields[idx]
+            del configs[idx]
+
         self.num_components = len(fields)
         self.name = name
         for idx, (component_name, component_params) in enumerate(zip(fields, configs)):
@@ -28,29 +34,40 @@ class Chain(Component):
             debug("Created chain {} component {}/{}: {}".format(name, idx + 1, self.num_components, str(self.components[-1])))
         # info("Created chain with {} components.".format(self.num_components))
 
-    def run(self, dry_run=False):
+    def backtrack_output_demand(self, chain_name, component_name, consumes):
+        """Marks backwards the output requirement of the chain's output"""
+        debug("Backtracking needs of chain {} (first:{}) to chain {}".format(chain_name, component_name, self.name))
+        cons = [x for x in consumes]
+        for comp in reversed(self.components):
+            # comp.add_output_demand(chain_name, component_name)
+            comp.add_output_demand(chain_name, component_name)
+            overlap = [x for x in comp.produces if x in consumes]
+            cons = [c for c in cons if c not in overlap]
+            debug("Component {} covers {} need {}".format(comp.get_full_name(), "final" if not cons else "", overlap))
+            if not cons:
+                break
+
+    def run(self):
         info("-------------------")
-        info("{} chain [{}]".format("Running" if not dry_run else "Dry-runnin'", self.name))
+        info("{} chain [{}]".format("Running", self.name))
         info("-------------------")
         data_bundle = None
+        if self.get_required_finished_chains():
+            error("Chain [{}] requires input(s), but none are available.".format(self.get_name()), self.inputs is None)
+            data_bundle = self.inputs.get_bundles(chain_names=self.get_required_finished_chains())
+
         for c, component in enumerate(self.components):
             info("||| Running component {}/{} : type: {} - name: {}".format(c + 1, self.num_components, component.get_component_name(), component.get_name()))
-            if component.get_required_finished_chains():
-                # the component requires an input from another chain
-                error("Chain [{}] requires input(s), but none are available.".format(self.get_name()), self.inputs is None)
-                data_bundle = self.inputs.get_bundles(chain_names=component.get_required_finished_chains())
+
             if data_bundle is not None:
                 data_bundle.summarize_content("Passing bundle(s) to component [{}]".format(component.get_name()))
             component.load_inputs(data_bundle)
-            if not dry_run:
-                component.run()
-            else:
-                component.configure_name()
-            # data_bundle = {"data": component.get_outputs(), "name": component.get_name(), "component": component.get_component_name()}
+            component.run()
+            # check if input needs deletion now
+            if data_bundle is not None:
+                data_bundle.clear_data(self.get_name(), component.get_name())
+            # update current component and chain output
             data_bundle = component.get_outputs()
-            # data_summary(data_bundle, "output of component {}".format(component.get_name()))
-            # debug("Component [{}] yielded an output of {}".format(component.get_name(), data))
-            # mark current output as chain's output
             self.outputs = data_bundle
         # chain done - set the source chain name
         self.outputs.set_chain_name(self.name)
@@ -65,7 +82,4 @@ class Chain(Component):
 
     def ready(self, chain_output_names=None):
         # a chain is ready if its first element is ready
-        return self.components[0].ready(chain_output_names)
-
-    def get_required_finished_chains(self):
-        return self.components[0].required_finished_chains
+        return all(x in chain_output_names for x in self.required_finished_chains)

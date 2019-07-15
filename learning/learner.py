@@ -285,6 +285,8 @@ class Learner(Component):
         self.make()
         self.do_traintest()
 
+        self.outputs.set_vectors(Vectors(vecs=self.evaluator.predictions))
+
     def process_component_inputs(self):
         # get data and labels
         error("Learner needs at least two-input bundle input list.", type(self.inputs) is not BundleList)
@@ -292,7 +294,4 @@ class Learner(Component):
         error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
 
         self.train, self.test = self.inputs.get_vectors(single=True).instances
-        self.train_labels, self.test_labels = self.inputs.get_labels(single=True)
-
-    def get_outputs(self):
-        return Bundle(self.name, vectors=self.evaluator.predictions)
+        self.train_labels, self.test_labels = self.inputs.get_labels(single=True).instances

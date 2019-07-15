@@ -4,7 +4,6 @@ from semantic.instantiator import Instantiator as sem_instantiator
 from transform.instantiator import Instantiator as tra_instantiator
 from learning.instantiator import Instantiator as lrn_instantiator
 from fusion.instantiator import Instantiator as fus_instantiator
-from component.link import Link
 from utils import error
 
 """Generic component instantiator"""
@@ -23,6 +22,4 @@ def create(component_name, component_params):
         return lrn_instantiator.create(component_params)
     if component_name == fus_instantiator.component_name:
         return fus_instantiator.create(component_params)
-    if component_name == Link.component_name:
-        return Link(component_params)
     error("Undefined component type: {}".format(component_name))

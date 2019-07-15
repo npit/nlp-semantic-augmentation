@@ -1,3 +1,4 @@
+from bundle.datatypes import Text, Labels, Vectors
 from utils import info, data_summary, error, debug
 
 """Data container class to pass data around
@@ -12,11 +13,25 @@ class Bundle:
     source_name = None
     chain_name = None
 
-    content_dict = {}
+    content_dict = None
+    demand = None
+
+    def __str__(self):
+        parts = [self.source_name]
+        if self.chain_name is not None:
+            parts.append(self.chain_name)
+        if self.vectors is not None:
+            parts.append(Vectors.name)
+        if self.vectors is not None:
+            parts.append(Labels.name)
+        if self.vectors is not None:
+            parts.append(Text.name)
+        return "_".join(parts)
 
     def __init__(self, source_name=None, vectors=None, labels=None, text=None):
         self.source_name = source_name
         self.content_dict = {}
+        self.demand = {}
         if vectors is not None:
             self.content_dict["vectors"] = vectors
             self.vectors = vectors
@@ -26,6 +41,36 @@ class Bundle:
         if text is not None:
             self.content_dict["text"] = text
             self.text = text
+
+    def clear_data(self, chain_name, component_name):
+        """Delete unneeded data
+        chain_name: the chain that just used the bundle
+        component_name: the component that just used the bundle
+        """
+        debug("Removing demand {}-{} from bundle {}".format(chain_name, component_name, self.get_full_name()))
+        error("Attempted to clear data after run of non-registered chain {}".format(chain_name), chain_name not in self.demand)
+        error("Attempted to clear data after run of non-registered component {} of chain {}".format(
+            component_name, chain_name), component_name not in self.demand[chain_name])
+        self.demand[chain_name].remove(component_name)
+        if not self.demand[chain_name]:
+            del self.demand[chain_name]
+        if not self.demand:
+            debug("Deleting bundle {}.".format(self.get_full_name()))
+            if self.vectors:
+                del self.vectors
+            if self.text is not None:
+                del self.text
+            if self.labels is not None:
+                del self.labels
+            pass
+
+    def get_full_name(self):
+        return "({}|{})".format(self.chain_name, self.source_name)
+
+    def set_demand(self, chain_name, component_name):
+        if chain_name not in self.demand:
+            self.demand[chain_name] = []
+        self.demand[chain_name].append(component_name)
 
     def summarize_content(self, msg=None):
         msg = "" if msg is None else msg + ": "
@@ -94,6 +139,10 @@ class BundleList:
     def __init__(self, input_list=None):
         self.bundles = [] if input_list is None else input_list
 
+    def clear_data(self, chain_name, component_name):
+        for bundle in self.bundles:
+            bundle.clear_data(chain_name, component_name)
+
     def summarize_content(self, msg=""):
         """Summarize all bundlelist bundles"""
         if not self.bundles:
@@ -105,6 +154,11 @@ class BundleList:
         info(msg)
         for bundle in self.bundles:
             bundle.summarize_content()
+
+
+    def set_demand(self, chain_name, component_name):
+        for bundle in self.bundles:
+            bundle.set_demand(chain_name, component_name)
 
     def add_bundle(self, bundle, chain_name=None):
         """Add a bundle to the collection. Override name, if submitted."""
