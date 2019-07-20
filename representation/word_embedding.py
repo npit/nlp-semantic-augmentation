@@ -58,7 +58,7 @@ class WordEmbedding(Embedding):
 
         # get the embedding indexes words are mapped to
         present_embedding_word_indexes = sorted(vocab_to_dataset.keys(), reverse=True)
-        self.mapped_embedding_words = set([self.embedding_vocabulary[i] for i in set(present_embedding_word_indexes)])
+        # self.mapped_embedding_words = set([self.embedding_vocabulary_index[i] for i in set(present_embedding_word_indexes)])
 
         # populate features by batch-loading the embedding csv
         num_chunks = math.ceil(len(self.embedding_vocabulary_index) / batch_size)

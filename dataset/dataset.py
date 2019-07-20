@@ -322,7 +322,8 @@ class Dataset(Serializable):
         # stemming / lemmatization
         words_with_pos = [word_prepro(wp) for wp in words_with_pos]
         if not words_with_pos:
-            error("Text preprocessed to an empty list:\n{}".format(text))
+            warning("Text preprocessed to an empty list:\n{}".format(text))
+            return None
         return words_with_pos
 
     # preprocess single
@@ -337,6 +338,9 @@ class Dataset(Serializable):
                 # text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
                 text_words_pos = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
                                                           word_prepro=self.word_prepro, stopwords=self.stopwords)
+                if text_words_pos is None:
+                    error("Text {}/{} preprocessed to an empty list:\n{}".format(i+1,len(document_list), document_list[i]))
+
                 ret_words_pos.append(text_words_pos)
                 if track_vocabulary:
                     ret_voc.update([wp[0] for wp in text_words_pos])

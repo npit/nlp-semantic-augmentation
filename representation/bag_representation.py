@@ -55,7 +55,7 @@ class BagRepresentation(Representation):
                 conf = copy.deepcopy(self.config)
                 conf.representation.name = w
                 conf.representation.limit = f
-                candidate_name = self.generate_name(conf)
+                candidate_name = self.generate_name(conf, self.source_name)
                 names.append(candidate_name)
                 debug("Bag config candidate: {}".format(candidate_name))
         self.multiple_config_names = names
@@ -89,11 +89,9 @@ class BagRepresentation(Representation):
 
     # sparse to dense
     def compute_dense(self):
-        if self.loaded_transformed:
-            debug("Will not compute dense, since transformed data were loaded")
-            return
         info("Computing dense representation for the bag.")
-        self.dataset_vectors = [self.bag_train.get_dense(), self.bag_test.get_dense()]
+        b = Bag()
+        self.dataset_vectors = [b.get_dense(input_sparse=x) for x in self.dataset_vectors]
         info("Computed dense dataset shapes: {} {}".format(*shapes_list(self.dataset_vectors)))
 
     def aggregate_instance_vectors(self):
@@ -119,38 +117,29 @@ class BagRepresentation(Representation):
                 error("Configuration for {} set to dimension {} but read {} from data.".format(self.name, self.dimension, data_dim))
         self.dimension = data_dim
 
-    def set_transform(self, transform):
-        """Update representation information as per the input transform"""
-        self.name += transform.get_name()
-        self.dimension = transform.get_dimension()
+    # def accomodate_dimension_change(self):
+    #     self.set_params()
+    #     # the superclass method above reads the dimension from the config -- set from the Bag field
+    #     self.set_name()
+    #     self.set_serialization_params()
+    #     self.set_additional_serialization_sources()
 
-        data = transform.get_all_preprocessed()
-        self.dataset_vectors, self.elements_per_instance, self.term_list = [data[n] for n in self.data_names]
-        self.loaded_transformed = True
-
-    def accomodate_dimension_change(self):
-        self.set_params()
-        # the superclass method above reads the dimension from the config -- set from the Bag field
-        self.set_name()
-        self.set_serialization_params()
-        self.set_additional_serialization_sources()
-
-    def map_text(self, dset):
-        if  self.loaded_aggregated:
+    def map_text(self):
+        if self.loaded_aggregated:
             debug("Skippping {} mapping due to preloading".format(self.base_name))
             return
         # need to calc term numeric index for aggregation
         if self.term_list is None:
             # no supplied token list -- use vocabulary of the training dataset
-            self.term_list = dset.vocabulary
-            info("Setting bag dimension to {} from dataset vocabulary.".format(len(self.term_list)))
+            self.term_list = self.vocabulary
+            info("Setting bag dimension to {} from input vocabulary.".format(len(self.term_list)))
         if self.do_limit:
             self.dimension = self.limit_number
         else:
             self.dimension = len(self.term_list)
         self.config.representation.dimension = self.dimension
-        self.accomodate_dimension_change()
-        info("Renamed representation after bag computation to: {}".format(self.name))
+        # self.accomodate_dimension_change()
+        # info("Renamed representation after bag computation to: {}".format(self.name))
 
         # calc term index mapping
         self.term_index = {term: self.term_list.index(term) for term in self.term_list}
@@ -161,17 +150,17 @@ class BagRepresentation(Representation):
         if self.loaded_preprocessed:
             debug("Skippping {} mapping due to preloading".format(self.base_name))
             return
-        info("Mapping {} to {} representation.".format(dset.name, self.name))
 
         self.dataset_words = [self.term_list, None]
         self.dataset_vectors = []
 
+        train, test = self.text
         # train
         self.bag_train = self.bag_class()
         self.bag_train.set_term_list(self.term_list)
         if self.do_limit:
             self.bag_train.set_term_filtering(self.limit_type, self.limit_number)
-        self.bag_train.map_collection(dset.train)
+        self.bag_train.map_collection(train)
         self.dataset_vectors.append(self.bag_train.get_weights())
         if self.do_limit:
             self.term_list = self.bag_train.get_term_list()
@@ -184,7 +173,7 @@ class BagRepresentation(Representation):
         # test
         self.bag_test = self.bag_class()
         self.bag_test.set_term_list(self.term_list)
-        self.bag_test.map_collection(dset.test)
+        self.bag_test.map_collection(test)
         self.dataset_vectors.append(self.bag_test.get_weights())
 
         # set misc required variables

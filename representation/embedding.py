@@ -1,6 +1,6 @@
 import defs
 from representation.representation import Representation
-from utils import error, info, debug, get_shape, shapes_list
+from utils import error, info, debug, get_shape, shapes_list, warning
 import numpy as np
 import pandas as pd
 from pandas.errors import ParserError
@@ -95,7 +95,9 @@ class Embedding(Representation):
         if self.loaded_aggregated:
             debug("Skipping representation aggregation.")
             return
-        info("Aggregating embeddings to single-vector-instances via the [{}] method.".format(self.aggregation))
+        aggr_str = self.aggregation
+        if self.aggregation == defs.aggregation.pad: aggr_str += "_seq{}".format(self.sequence_length)
+        info("Aggregating embeddings to single-vector-instances via the [{}] method.".format(aggr_str))
         # use words per document for the aggregation, aggregating function as an argument
         # stats
         aggregation_stats = [0, 0]
@@ -128,7 +130,7 @@ class Embedding(Representation):
                     elif self.sequence_length > num_vectors:
                         # make pad and stack vertically
                         pad_size = self.sequence_length - num_vectors
-                        pad = np.tile(self.get_zero_pad_element(), (pad_size, 1), np.float32)
+                        pad = np.tile(self.get_zero_pad_element(), (pad_size, 1))
                         curr_instance = np.append(curr_instance, pad, axis=0)
                         aggregation_stats[1] += 1
                 elif self.aggregation == defs.alias.none:

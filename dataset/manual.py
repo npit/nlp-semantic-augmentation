@@ -84,8 +84,8 @@ class ManualDataset(Dataset):
             self.multilabel = True
         else:
             # labels to ndarray
-            self.train_labels = np.squeeze(np.asarray(self.train_labels))
-            self.test_labels = np.squeeze(np.asarray(self.test_labels))
+            self.train_labels = np.squeeze(np.asarray(self.train_labels, dtype=np.int32))
+            self.test_labels = np.squeeze(np.asarray(self.test_labels, dtype=np.int32))
         # write serialized data
         write_pickled(self.serialization_path, self.get_all_raw())
 

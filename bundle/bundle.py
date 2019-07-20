@@ -49,8 +49,8 @@ class Bundle:
         """
         debug("Removing demand {}-{} from bundle {}".format(chain_name, component_name, self.get_full_name()))
         error("Attempted to clear data after run of non-registered chain {}".format(chain_name), chain_name not in self.demand)
-        error("Attempted to clear data after run of non-registered component {} of chain {}".format(
-            component_name, chain_name), component_name not in self.demand[chain_name])
+        error("Attempted to clear data after run of non-registered component {} of chain {}. Registered components are {}.".format(
+            component_name, chain_name, self.demand[chain_name]), component_name not in self.demand[chain_name])
         self.demand[chain_name].remove(component_name)
         if not self.demand[chain_name]:
             del self.demand[chain_name]

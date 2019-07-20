@@ -87,7 +87,7 @@ class Learner(Component):
             error("No test data or cross/portion-validation setting specified.")
 
         # configure and sanity-check evaluator
-        self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
+        self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training, self.validation_exists)
         if self.validation_exists and not self.use_validation_for_training:
             # calculate the majority label from the training data -- label counts already computed
             self.evaluator.majority_label = label_counts[0][0]
@@ -135,14 +135,15 @@ class Learner(Component):
                     if existing_predictions is not None:
                         if not self.use_validation_for_training:
                             labels = np.concatenate(self.train_labels)[test_instance_indexes]
-                            self.evaluator.configure(labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
+                            self.evaluator.configure(labels, self.num_labels, self.do_multilabel, self.use_validation_for_training, self.validation_exists)
                         self.evaluator.evaluate_learning_run(existing_predictions, instance_indexes=test_instance_indexes)
                         continue
                 # if no test data is available, use the validation data
                 if self.validation_exists and not self.use_validation_for_training:
+                    validation_description += " used for testing"
                     train_idx, val_idx = trainval_idx
                     self.test, self.test_labels = self.train[val_idx], self.train_labels[val_idx]
-                    self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
+                    self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training, self.validation_exists)
                     self.test_instance_indexes = val_idx
                     self.count_samples()
                     trainval_idx = (train_idx, [])
@@ -162,19 +163,18 @@ class Learner(Component):
 
             if self.validation_exists and not self.use_validation_for_training:
                 # pass the entire training labels
-                self.evaluator.configure(self.train_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
+                self.evaluator.configure(self.train_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training, self.validation_exists)
             self.evaluator.report_overall_results(validation_description, len(self.train), self.results_folder)
 
     # evaluate a model on the test set
     def do_test(self, model):
-        print_results = self.do_folds and self.config.print.folds or not self.folds
         test_data = self.process_input(self.test)
         info("Test data {}".format(test_data.shape))
         error("No test data supplied!", len(test_data) == 0)
         predictions = self.test_model(test_data, model)
         # get baseline performances
         self.evaluator.evaluate_learning_run(predictions, self.test_instance_indexes)
-        if print_results:
+        if self.do_folds and self.config.print.folds:
             self.evaluator.print_run_performance(self.current_run_descr, self.fold_index)
         # write fold predictions
         predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")

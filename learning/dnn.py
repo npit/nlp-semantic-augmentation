@@ -190,25 +190,19 @@ class LSTM(DNN):
     # make network
     def make(self):
         info("Building dnn: {}".format(self.name))
-        error("Need fixes on seqlens")
         DNN.make(self)
-        # make sure embedding aggregation is compatible
-        # with the sequence-based lstm model
-        self.input_shape = (self.sequence_length, self.input_dim)
-        aggregation = self.config.representation.aggregation
-        # sanity checks
-        # sequence-based aggregation
-        if aggregation not in ["pad"]:
-            error("Aggregation [{}] incompatible with [{}] model.".format(aggregation, self.name))
 
         # non constant instance element num
-        set_instance_lengths = [set(x) for x in representation.get_elements_per_instance()]
-        if any([len(x) != 1 for x in set_instance_lengths]):
-            error("[{}] needs a constant number of elements per instance per dataset, but got lengths: {}".format(self.name, set_instance_lengths))
-        # non-unity elements per instance
-        unit_instance_indexes = [[i for i in range(len(x)) if x[i] <= 1] for x in representation.get_elements_per_instance()]
-        if any(unit_instance_indexes):
-            error("[{}] not compatible with unit instance indexes: {}.".format(self.name, unit_instance_indexes))
+        if not all(np.all(x==x[0]) for x in self.elements_per_instance):
+            error("Unequal elements per instance encountered.")
+
+        epi_train, epi_test = [x[0] for x in self.elements_per_instance]
+        if epi_train != epi_test:
+            error("Unequal elements per instance for train ({}) and test ({})".format(epi_train, epi_test))
+        error("[{}] not compatible with unit instance indexes.".format(self.name), epi_train == 1)
+        self.sequence_length = epi_train
+        self.input_shape = (self.sequence_length, self.input_dim)
+
         # sequence length data / label matching
         if self.num_train != self.num_train_labels and (self.num_train != self.sequence_length * self.num_train_labels):
             error("Irreconcilable lengths of training data and labels: {}, {} with learning sequence length of {}.".
@@ -254,8 +248,13 @@ class LSTM(DNN):
                       optimizer='adam',
                       metrics=['accuracy'])
 
-        if self.config.is_debug():
-            debug("Inputs: {}".format(model.inputs))
-            model.summary()
-            debug("Outputs: {}".format(model.outputs))
+        # if self.config.is_debug():
+        #     debug("Inputs: {}".format(model.inputs))
+        #     model.summary()
+        #     debug("Outputs: {}".format(model.outputs))
         return model
+
+    # component functions
+    def process_component_inputs(self):
+        self.elements_per_instance = self.inputs.get_vectors(single=True).elements_per_instance
+        super().process_component_inputs()

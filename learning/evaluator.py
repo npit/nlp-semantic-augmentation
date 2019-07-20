@@ -36,6 +36,9 @@ class Evaluator:
     print_precision = "{:.03f}"
     do_multilabel = None
 
+    # validation opts
+    validation_exists = None
+    use_validation_for_training = None
     # error analysis
     error_analysis = None
     error_print_types = None
@@ -52,11 +55,12 @@ class Evaluator:
         self.predictions_instance_indexes = []
         self.label_distribution = {}
 
-    def configure(self, test_labels, num_labels, do_multilabel, use_validation_for_training):
+    def configure(self, test_labels, num_labels, do_multilabel, use_validation_for_training, validation_exists):
         """Label setter method"""
         self.do_multilabel = do_multilabel
         self.num_labels = num_labels
         self.use_validation_for_training = use_validation_for_training
+        self.validation_exists = validation_exists
         if len(test_labels) > 0:
             self.test_labels = test_labels
             # squeeze to ndarray if necessary
@@ -168,7 +172,7 @@ class Evaluator:
         if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr is None or aggr in self.preferred_label_aggregations]):
             scores_str = self.get_score_stats_string(self.performance[run_type][measure][aggr])
             # print
-            header = " ".join(["{:10}".format(x) for x in [run_type, aggr, measure, scores_str] if x is not None])
+            header = " ".join(["{:10}".format(x) for x in [run_type, aggr, measure] if x is not None])
             info("{} : {}".format(header, scores_str))
             return True
         return False
@@ -387,7 +391,7 @@ class Evaluator:
         if not self.do_multilabel:
             res = {"instances": {}, "labels": {}}
 
-            if not self.use_validation_for_training:
+            if not self.use_validation_for_training and self.validation_exists:
                 # instances vary across folds -- consolidate
                 self.consolidate_folded_test_results(num_total_train)
 

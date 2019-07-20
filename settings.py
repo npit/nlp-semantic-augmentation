@@ -54,7 +54,6 @@ class Config:
         class_limit = None
 
     class print_conf:
-        log_dir = None
         run_types = None
         fold_aggregations = None
         label_aggregations = None
@@ -142,6 +141,8 @@ class Config:
         # read global configuration
 
         self.read_config(configuration)
+        if self.run_id is None:
+            self.run_id = utils.datetime_str()
         self.make_directories()
         # copy configuration to run folder
         if type(configuration) is str:
@@ -170,7 +171,6 @@ class Config:
 
     # logging initialization
     def setup_logging(self):
-        os.makedirs(self.print.log_dir, exist_ok=True)
         formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)7s | %(message)s')
 
         # console handler
@@ -373,12 +373,11 @@ class Config:
                 self.print.measures = self.get_value("measures", base=print_opts)
                 self.print.label_aggregations = self.get_value("label_aggregations", base=print_opts)
                 self.print.folds = self.get_value("folds", base=print_opts, default=False)
-                self.print.training_progress = self.get_value("training_progress", base=print_opts, default=False)
+                self.print.training_progress = self.get_value("training_progress", base=print_opts, default=True)
                 self.print.fold_aggregations = self.get_value("fold_aggregations", base=print_opts)
                 self.print.error_analysis = self.get_value("error_analysis", base=print_opts, default=True)
                 self.print.top_k = self.get_value("top_k", base=print_opts, default=3, expected_type=int)
                 self.print.log_level = self.get_value("log_level", base=print_opts, default="info")
-                self.print.log_dir = self.get_value("log_dir", base=print_opts, default="logs")
                 self.print.label_distribution = self.get_value("label_distribution", base=print_opts, default="logs")
                 field = self.print
 

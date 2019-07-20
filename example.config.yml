@@ -106,7 +106,6 @@ train:
 
 print:
   log_level: debug
-  log_dir: logs
   # evaluation metrics: f1, accuracy, precision, recall
   measures: ["f1-score"]
   # evaluation metric aggregations: macro, micro, weighted
@@ -120,6 +119,8 @@ print:
   fold_aggregations: ["mean", "var"]
   # instance / labelwise error stats
   error_analysis: False
+  # training details
+  training_progress: True
 
 folders:
   # run folder
