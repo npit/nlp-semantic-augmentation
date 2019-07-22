@@ -1,6 +1,7 @@
 from os.path import join, exists, isabs, basename, splitext
 from os import makedirs
 import subprocess
+from collections import OrderedDict
 import yaml
 import pickle
 import pandas as pd
@@ -12,7 +13,7 @@ import smtplib
 import logging
 import os
 import getpass
-from utils import info, error, datetime_str, as_list, setup_simple_logging
+from utils import info, error, datetime_str, as_list, setup_simple_logging, ordered_load, ordered_dump, warning
 
 """Script to produce large-scale semantic neural augmentation experiments
 
@@ -20,8 +21,44 @@ The experiment variation parameters should be in a "params" field in the configu
 Values in a list are interpreted as different parameters (so for list literal values, add an additional list wrap)
 """
 
-exlogger = logging.getLogger("experiments")
+class VariableConf(OrderedDict):
+    id = None
 
+    @staticmethod
+    def get_copy(instance):
+        new_instance = deepcopy(OrderedDict(instance))
+        new_instance = VariableConf(new_instance)
+        new_instance.id = instance.id
+        return new_instance
+
+    def __init__(self, existing=None):
+        if existing is not None:
+            error("Ordered dict required for variable config. ", type(existing) != OrderedDict)
+            super().__init__(existing)
+        else:
+            super().__init__()
+        self.id = ""
+
+    def add_variable(self, keys, value):
+        info("Setting variable field: {} / value: {}".format(keys, value))
+        conf = self
+        for key in keys[:-1]:
+            conf = conf[key]
+        if  keys[-1] in conf:
+            error("Variable key already in configuration!")
+        conf[keys[-1]] = value
+
+        # use the last key for the id -- revisit if there's ambiguity
+        # self.id = "_".join(keys) + "_" + str(value)
+        if type(value) == list:
+            strvalue = "_".join(map(str,value))
+        strvalue = strvalue.replace("/", "_")
+        self.id += keys[-1] + "_" + strvalue
+
+    def __str__(self):
+        return self.id + " : " + super().__str__()
+
+exlogger = logging.getLogger("experiments")
 
 def sendmail(mail, passw, msg, title="nle"):
     # email me
@@ -46,7 +83,6 @@ def sendmail(mail, passw, msg, title="nle"):
         info('Error sending mail to [%s]' % recipient)
         error(x)
 
-
 def traverse_dict(ddict, key, prev_keys):
     res = []
     if key is None:
@@ -64,7 +100,6 @@ def traverse_dict(ddict, key, prev_keys):
         res = (val, prev_keys + [key])
     return res
 
-
 def keyseq_exists(key_seq, ddict):
     # make sure no key sequence param exists in the base config
     for key in key_seq:
@@ -74,58 +109,81 @@ def keyseq_exists(key_seq, ddict):
             return False
     return True
 
+def parse_variable_component(var):
+    variable_name = var["name"]
+    variable_components = var["values"]
+    error("Variable components of length 1, for name {}".format(variable_name), len(variable_components) == 1)
+
+def expand_configs(configs, keys, values):
+    info("Propagating values {} for field: {}".format(values, keys))
+    num = len(values)
+    for _ in range(len(configs) * (num-1)):
+        configs.append(VariableConf.get_copy(configs[0]))
+    num_per_value = len(configs) / num
+    # partition into num_values
+    conf_idx, value_idx, assignment_count = 0, 0, 0
+    while conf_idx < len(configs):
+        if assignment_count == num_per_value:
+            value_idx += 1
+            assignment_count = 0
+        conf = configs[conf_idx]
+        conf.add_variable(keys, values[value_idx])
+        assignment_count += 1
+        conf_idx += 1
+    error("Value index error after expansion: {} but values are {}".format(value_idx, len(values)), value_idx != len(values) -1)
+
+def populate_configs(configs, chain_name, component_name, field_name, field_value):
+    # info("Setting regular field: {} {} {} {}".format(chain_name, component_name, field_name, field_value))
+    for conf in configs:
+        if chain_name not in conf["chains"]:
+            conf["chains"][chain_name] = {}
+        if component_name not in conf["chains"][chain_name]:
+            conf["chains"][chain_name][component_name] = {}
+        if field_value is None:
+            conf["chains"][chain_name][component_name] = field_name
+        else:
+            conf["chains"][chain_name][component_name][field_name] = field_value
+
 def make_configs(base_config, run_dir, sources_dir="./"):
-    vars = []
-    params = base_config["params"]
-    base_raw_folder = base_config["folders"]["raw_data"]
-    base_serialization_folder = base_config["folders"]["serialization"]
-    for val in sorted(params.keys()):
-        seqs = traverse_dict(params, val, [])
-        vars.extend(seqs)
-    configs, run_ids = [], []
-    vars = sorted(vars, key=lambda x: str(x)[2])
+    # read chains
+    configs = [VariableConf()]
+    configs[0]["chains"] = {}
 
-    values = [v[0] for v in vars]
-    names = [v[1] for v in vars]
+    chains = base_config["chains"]
+    for chain_name, chain_body in chains.items():
+        print(OrderedDict(configs[0]))
+        for component_name, component_body in chain_body.items():
+            if type(component_body) not in [dict, OrderedDict]:
+                populate_configs(configs, chain_name, component_name, component_body, None)
+                continue
+            for  field_name, field_value in component_body.items():
+                if field_name == "variable":
+                    variable_field_name = component_body[field_name]["name"]
+                    variable_field_values = component_body[field_name]["values"]
+                    # expand configurations
+                    expand_configs(configs, ["chains", chain_name, component_name, variable_field_name], variable_field_values)
+                else:
+                    populate_configs(configs, chain_name, component_name, field_name, field_value)
 
-    for name_seq in names:
-        if keyseq_exists(name_seq, base_config):
-            error("Key sequence {} exists both in the base config and the variable params".format(name_seq))
+    info("Expansion resulted in {} configurations.".format(len(configs)))
+    # parsed chains -- copy rest of values
+    for key in base_config:
+        if key in ["experiments", "chains"]:
+            continue
+        for conf in configs:
+            conf[key] = deepcopy(base_config[key])
 
-    for combo in itertools.product(*values):
-        conf = deepcopy(base_config)
-        del conf['params']
-        name_components = []
-        for v, value in enumerate(combo):
-            lconf = conf
-            # make sure it's directory-friendly
-            if type(value) is list:
-                val = "-".join(list(map(str, value)))
-                name_components.append(val)
-            else:
-                name_components.append(basename(splitext(str(value))[0]))
-            key_chain = names[v]
-            for key in key_chain[:-1]:
-                if key not in lconf:
-                    lconf[key] = {}
-                lconf = lconf[key]
-            lconf[key_chain[-1]] = value
-        # dirs
-        run_id = "_".join(name_components)
-        print("Built run id:", run_id)
-        conf["folders"]["run"] = join(run_dir, run_id)
-        if isabs(base_serialization_folder):
-            conf["folders"]["serialization"] = base_serialization_folder
-        else:
-            conf["folders"]["serialization"] = join(sources_dir, base_serialization_folder)
-        if isabs(base_raw_folder):
-            conf["folders"]["raw_data"] = base_raw_folder
-        else:
-            conf["folders"]["raw_data"] = join(sources_dir, base_raw_folder)
-        configs.append(conf)
-        run_ids.append(run_id)
-    return configs, run_ids
-
+    # set misc
+    for conf in configs:
+        conf["folders"]["run"] = join(run_dir, conf.id)
+        # cases for explicit serialization and raw data folders
+        ser_folder, raw_folder = conf["folders"]["serialization"], conf["folders"]["raw_data"]
+        if not isabs(ser_folder):
+            conf["folders"]["serialization"] = join(sources_dir, ser_folder)
+        if not isabs(raw_folder):
+            conf["folders"]["raw_data"] = join(sources_dir, raw_folder)
+        conf["misc"]["run_id"] = conf.id
+    return sorted(configs, key=lambda x: x.id)
 
 # make a run id name out of a list of nested dict keys and a configuration dict
 def make_run_ids(keychains, confs):
@@ -144,13 +202,13 @@ def get_kseq_value(kseq, ddict):
         res = res[k]
     return res
 
-def filter_testing(configs, run_ids, config_file):
+def filter_testing(configs, config_file):
     # discard configurations with incompatible components
-    out_conf, out_run_ids = [], []
+    out_conf = []
     # read bad combos
     with open(join(config_file + ".bad_combos")) as f:
         bad_combos_lists = yaml.load(f, Loader=yaml.SafeLoader)
-    for conf, run in zip(configs, run_ids):
+    for conf in zip(configs):
         bad_conf = False
         for bad_combo in bad_combos_lists:
             # if all bad key-value pairs exist in the conf, drop it
@@ -159,14 +217,13 @@ def filter_testing(configs, run_ids, config_file):
                     for (keyseq, value) in bad_combo]
             if all(combo_components_exist):
                 bad_conf = True
-                info("Omitting incompatible config {} with bad entries: {}".format(run, bad_combo))
+                info("Omitting incompatible config {} with bad entries: {}".format(conf.id, bad_combo))
                 break
         if not bad_conf:
             out_conf.append(conf)
-            out_run_ids.append(run)
-    return out_conf, out_run_ids
+    return out_conf
 
-def main(config_file="large.config.yml", is_testing_run=False):
+def main(config_file="chain.large.config.yml", is_testing_run=False):
     # settable parameters
     ############################################################
 
@@ -176,14 +233,31 @@ def main(config_file="large.config.yml", is_testing_run=False):
     ############################################################
 
     # set the expeirment parameters via a configuration list
-    conf = yaml.load(open(config_file), Loader=yaml.SafeLoader)
+    with open(config_file) as f:
+        conf = ordered_load(f, Loader=yaml.SafeLoader)
+
     exps = conf["experiments"]
 
     # folder to run experiments in
     run_dir = exps["run_folder"]
 
+    # dir checks
+    # ----------
+    # virtualenv folder
+    venv_dir = conf["experiments"]["venv"] if "venv" in conf["experiments"] else None
+    # results csv file
+    # results_file = conf["experiments"]["results_file"]
+    results_file = join(run_dir, "run_results.csv")
+
+    if venv_dir and not exists(venv_dir):
+        error("Virtualenv dir {} not found".format(venv_dir))
+    if not exists(run_dir):
+        info("Run dir {} not found, creating.".format(run_dir))
+        makedirs(run_dir)
+
     # logging
-    setup_simple_logging(conf["log_level"], logging_dir=run_dir)
+    os.makedirs(run_dir, exist_ok=True)
+    setup_simple_logging(conf["print"]["log_level"], logging_dir=run_dir)
 
     info("Generating configurations from source file {}".format(config_file))
 
@@ -194,50 +268,45 @@ def main(config_file="large.config.yml", is_testing_run=False):
     run_types = as_list(exps["run_types"]) if "run_types" in exps else ["run"]
 
     # folder where run scripts are
-    sources_dir = exps["sources_dir"] if "sources_dir" in exps else "./"
+    sources_dir = exps["sources_dir"] if "sources_dir" in exps else os.getcwd()
+    warning("Defaulting sources folder to the current directory: {}".format(sources_dir))
+    error("Main module: {} not found. Is the sources dir ok?".format(join(sources_dir, "main.py")), not exists(join(sources_dir, "main.py")))
 
-    configs, run_ids = make_configs(conf, run_dir, sources_dir)
+    configs = make_configs(conf, run_dir, sources_dir)
+    # check run id uniqueness
+    if len(set([c.id for c in configs])) != len(configs):
+        error("Dulicate run folders from the input: {}".format([c.id for c in configs]))
+    if len(set([c['folders']['run'] for c in configs])) != len(configs):
+        error("Dulicate run folders from the input: {}".format([c["folders"]["run"] for c in configs]))
     # if we're running a testing suite, filter out incompatible configs
     if is_testing_run:
-        configs, run_ids = filter_testing(configs, run_ids, config_file)
-
-    # virtualenv folder
-    venv_dir = conf["experiments"]["venv"] if "venv" in conf["experiments"] else None
-    # results csv file
-    # results_file = conf["experiments"]["results_file"]
-    results_file = join(run_dir, "run_results.csv")
+        configs = filter_testing(configs, config_file)
 
     # mail
     do_send_mail = exps["send_mail"] if "send_mail" in exps else None
     if do_send_mail:
         passw = getpass.getpass()
 
-    # dir checks
-    if venv_dir and not exists(venv_dir):
-        error("Virtualenv dir {} not found".format(venv_dir))
-    if not exists(run_dir):
-        info("Run dir {} not found, creating.".format(run_dir))
-        makedirs(run_dir)
-
     # copy the configuration file in the target directory
     copied_conf = join(run_dir, basename(config_file))
     if exists(copied_conf):
         # make sure it's the same effing config
         with open(copied_conf) as f:
-            cconf = yaml.load(f, Loader=yaml.SafeLoader)
+            cconf = ordered_load(f, Loader=yaml.SafeLoader)
         if cconf != conf:
             error("The original config differs from the one in the experiment directory!")
     else:
         info("Copying experiments configuration at {}".format(copied_conf))
         with open(copied_conf, "w") as f:
-            yaml.dump(conf, f)
+            ordered_dump(OrderedDict(conf), f)
 
     results = {}
 
     #################################################################################
 
     # prelim experiments
-    for conf_index, (conf, run_id) in enumerate(zip(configs, run_ids)):
+    for conf_index, conf in enumerate(configs):
+        run_id = conf.id
         info("Running experimens for configuration {}/{}: {}".format(conf_index + 1, len(configs), run_id))
         experiment_dir = conf["folders"]["run"]
         completed_file = join(experiment_dir, "completed")
@@ -250,13 +319,14 @@ def main(config_file="large.config.yml", is_testing_run=False):
         if exists(completed_file):
             info("Skipping completed experiment {}".format(run_id))
         else:
+            # run it
             if exists(error_file):
                 os.remove(error_file)
             makedirs(experiment_dir, exist_ok=True)
 
             conf_path = join(experiment_dir, "config.yml")
             with open(conf_path, "w") as f:
-                yaml.dump(conf, f)
+                ordered_dump(OrderedDict(conf), f)
             # write the run script file
             script_path = join(experiment_dir, "run.sh")
             with open(script_path, "w") as f:

@@ -7,7 +7,7 @@ import yaml
 import utils
 import defs
 import nltk
-from utils import need, error, info
+from utils import need, error, info, ordered_load
 import shutil
 
 from component.chain import Chain
@@ -227,7 +227,7 @@ class Config:
             try:
                 # it's a yaml file
                 with open(input_config) as f:
-                    self.conf = Config.ordered_load(f, Loader=yaml.SafeLoader)
+                    self.conf = utils.ordered_load(f, Loader=yaml.SafeLoader)
                     # self.conf = yaml.load(f, Loader=yaml.SafeLoader)
             except yaml.parser.ParserError as p:
                 error("Failed to parse input config file: {}".format(input_config))
@@ -248,19 +248,6 @@ class Config:
         # clear up read order
         return Chain(chain_name, list(chain_configuration_dict.keys()), read_order)
 
-    @staticmethod
-    def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
-        class OrderedLoader(Loader):
-            pass
-
-        def construct_mapping(loader, node):
-            loader.flatten_mapping(node)
-            return object_pairs_hook(loader.construct_pairs(node))
-        OrderedLoader.add_constructor(
-            yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-            construct_mapping)
-        return yaml.load(stream, OrderedLoader)
-
     # read yaml configuration
     def read_config(self, input_config):
         # read yml file
@@ -268,7 +255,7 @@ class Config:
             try:
                 # it's a yaml file
                 with open(input_config) as f:
-                    self.conf = Config.ordered_load(f, Loader=yaml.SafeLoader)
+                    self.conf = ordered_load(f, Loader=yaml.SafeLoader)
                     # self.conf = yaml.load(f, Loader=yaml.SafeLoader)
             except yaml.parser.ParserError as p:
                 error("Failed to parse input config file: {}".format(input_config))
