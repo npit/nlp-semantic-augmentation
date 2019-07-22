@@ -2,6 +2,7 @@ from learning.learner import Learner
 from utils import error, one_hot, ill_defined, warning
 import numpy as np
 from sklearn.naive_bayes import GaussianNB
+from sklearn.dummy import DummyClassifier
 
 
 class Classifier(Learner):
@@ -28,7 +29,6 @@ class SKLClassifier(Classifier):
     # split train/val labels, do *not* convert to one-hot
     def prepare_labels(self, trainval_idx):
         train_idx, val_idx = trainval_idx
-        train_labels = self.train_labels
         if len(train_idx) > 0:
             train_labels = [self.train_labels[i] for i in train_idx]
         else:
@@ -39,7 +39,7 @@ class SKLClassifier(Classifier):
             val_labels = np.empty((0,))
         return train_labels, val_labels
 
-    def train_model(self, train_data, train_labels, val_data_labels):
+    def train_model(self, train_data, train_labels, val_data, val_labels):
         model = self.model()
         model.fit(train_data, np.asarray(train_labels).ravel())
         return model
@@ -57,6 +57,19 @@ class NaiveBayes(SKLClassifier):
     def __init__(self, config):
         self.config = config
         self.model = GaussianNB
+        SKLClassifier.__init__(self)
+
+    def make(self):
+        # if dataset.is_multilabel():
+        #     error("Cannot apply {} to multilabel data.".format(self.name))
+        warning("Add multilabel check")
+        SKLClassifier.make(self)
+
+class Dummy(SKLClassifier):
+    name = "dummy"
+    def __init__(self, config):
+        self.config = config
+        self.model = DummyClassifier
         SKLClassifier.__init__(self)
 
     def make(self):

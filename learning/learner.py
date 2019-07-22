@@ -174,6 +174,7 @@ class Learner(Component):
                 test_data, test_labels = test
                 val_data, val_labels = val if val else (None, None)
 
+                self.evaluator.update_reference_labels(test_labels, train_labels)
                 # check if the run is completed already and load existing results, if allowed
                 predictions = None
                 if self.allow_prediction_loading:
@@ -194,9 +195,6 @@ class Learner(Component):
                             model = self.load_model(path)
                     if not model:
                         model = self.train_model(train_data, train_labels, val_data, val_labels)
-
-                    if self.validation_exists:
-                        self.evaluator.set_fold_info(train_labels)
 
                 # test the model
                 with tictoc("Testing {} on {} instances.".format(self.validation.descr, self.num_test_labels)):
@@ -226,7 +224,6 @@ class Learner(Component):
             error("No test data supplied!", len(test_data) == 0)
             predictions = self.test_model(test_data, model)
         # get baseline performances
-        self.evaluator.update_reference_labels(test_labels)
         self.evaluator.evaluate_learning_run(predictions, test_instance_indexes)
         if self.do_folds and self.config.print.folds:
             self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)

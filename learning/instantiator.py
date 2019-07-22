@@ -1,6 +1,6 @@
 from learning.dnn import MLP, LSTM
 from learning.clusterer import KMeansClusterer
-from learning.classifier import NaiveBayes
+from learning.classifier import NaiveBayes, Dummy
 from utils import error
 
 
@@ -10,7 +10,7 @@ class Instantiator:
     def create(config):
         """Function to instantiate a learning"""
         name = config.learner.name
-        candidates = [MLP, LSTM, KMeansClusterer, NaiveBayes]
+        candidates = [MLP, LSTM, KMeansClusterer, NaiveBayes, Dummy]
         for candidate in candidates:
             if name == candidate.name:
                 return candidate(config)

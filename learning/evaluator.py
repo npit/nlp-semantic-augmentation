@@ -1,5 +1,6 @@
 
 import pickle
+import random
 from os.path import join
 
 import numpy as np
@@ -25,7 +26,7 @@ class Evaluator:
     # available measures, aggregations and run types
     singlelabel_measures = ["precision", "recall", "f1-score", "accuracy"]
     fold_aggregations = ["mean", "var", "std", "folds"]
-    run_types = ["random", "majority", "run"]
+    run_types = ["random", "dummy", "majority", "run"]
     multilabel_measures = ["ap", "roc_auc"]
     label_aggregations = ["macro", "micro", "classwise", "weighted"]
 
@@ -57,15 +58,15 @@ class Evaluator:
         self.confusion_matrices = {rt: [] for rt in self.run_types}
         self.predictions_instance_indexes = []
         self.label_distribution = {}
-        self.train_labels = []
 
-    def update_reference_labels(self, labels):
-        if len(labels) > 0:
-            # squeeze to ndarray if necessary
-            if not self.do_multilabel and type(labels) is list:
-                labels = np.squeeze(np.concatenate(labels))
-        self.test_labels = labels
+    def update_reference_labels(self, test_labels, train_labels):
+        # squeeze to ndarray if necessary
+        if not self.do_multilabel and type(test_labels) is list:
+            test_labels = np.squeeze(np.concatenate(test_labels))
+            train_labels = np.squeeze(np.concatenate(train_labels))
 
+        self.test_labels = test_labels
+        self.train_labels = train_labels
 
     def configure(self, test_labels, num_labels, do_multilabel, use_validation_for_training, validation_exists):
         """Label setter method"""
@@ -332,11 +333,6 @@ class Evaluator:
         if do_show:
             self.show_label_distribution(self.label_distribution, message="Test label distribution:")
 
-    def set_fold_info(self, train_labels):
-        # store train labels, if submitted
-        if train_labels is not None:
-            self.train_labels.append(train_labels)
-
     # evaluate predictions and add baselines
     def evaluate_learning_run(self, predictions, instance_indexes=None):
         # # get multiclass performance
@@ -351,13 +347,19 @@ class Evaluator:
         # compute single-label baselines
         # add run performance wrt argmax predictions
         self.evaluate_predictions("run", predictions)
-        # majority classifier
+
+        # majority classifier - always predicts the majority label
         if self.majority_label is None:
             self.majority_label = count_label_occurences(self.test_labels, return_only_majority=True)
             info("Majority label: {}".format(self.majority_label))
         majpred = np.zeros(predictions.shape, np.float32)
         majpred[:, self.majority_label] = 1.0
         self.evaluate_predictions("majority", majpred)
+
+        # dummy classifier - predicts wrt the training label distribution
+        dummypred = one_hot(random.sample(list(self.train_labels), len(self.test_labels)), self.num_labels)
+        self.evaluate_predictions("dummy", dummypred)
+
         # random classifier
         randpred = np.random.rand(*predictions.shape)
         self.evaluate_predictions("random", randpred)
@@ -369,6 +371,7 @@ class Evaluator:
         self.predictions["run"].append(predictions)
         self.predictions["random"].append(randpred)
         self.predictions["majority"].append(majpred)
+        self.predictions["dummy"].append(dummypred)
 
     # applies the threshold to the probabilistic predictions, extracting decision indices
     def apply_decision_threshold(self, proba, thresh):
