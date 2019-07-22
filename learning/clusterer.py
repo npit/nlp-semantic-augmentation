@@ -36,15 +36,13 @@ class KMeansClusterer(Clusterer):
         Clusterer.make(self)
 
     # train a model on training & validation data portions
-    def train_model(self, trainval_idx):
-        # labels
-        train_data, train_labels, _ = self.get_trainval_data(trainval_idx)
+    def train_model(self, train_data, train_labels, val_data_labels):
         # define the model
         model = KMeans(self.num_clusters)
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
-        if val_datalabels is not None:
-            debug("Using validation shapes: {} {}".format(*[v.shape if v is not None else "none" for v in val_datalabels]))
+        if val_data_labels is not None:
+            debug("Using validation shapes: {} {}".format(*[v.shape if v is not None else "none" for v in val_data_labels]))
         model.fit(train_data)
         return model
 

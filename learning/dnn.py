@@ -9,7 +9,7 @@ import sys
 # import keras with this disgusting hack to get rid of the "Using xxxx backend" message
 stderr = sys.stderr
 sys.stderr = open('/dev/null', 'w')
-from keras.models import Sequential
+from keras.models import Sequential, model_from_json
 from keras.layers import Activation, Dense, Dropout
 from keras.layers import LSTM as keras_lstm
 from keras import callbacks
@@ -19,7 +19,7 @@ sys.stderr = stderr
 import tensorflow.python.util.deprecation as deprecation
 deprecation._PRINT_DEPRECATION_WARNINGS = False
 
-from utils import info, debug, error, write_pickled
+from utils import info, debug, error, write_pickled, one_hot
 
 # from keras import backend
 # import tensorflow as tf
@@ -105,19 +105,23 @@ class DNN(Classifier):
             write_pickled(self.model_path + ".early_stopping", self.early_stopping.stopped_epoch)
 
     # train a model on training & validation data portions
-    def train_model(self, trainval_idx):
-        # get data chunks
-        train_data, train_labels, val_datalabels = self.get_trainval_data(trainval_idx)
+    def train_model(self, train_data, train_labels, val_data, val_labels):
         # define the model
         model = self.get_model()
+        train_labels = one_hot(train_labels, self.num_labels)
+        if val_data is not None:
+            val_labels = one_hot(val_labels, self.num_labels)
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
-        if val_datalabels is not None:
-            debug("Using validation shapes: {} {}".format(*[v.shape if v is not None else "none" for v in val_datalabels]))
+        if val_data is not None:
+            debug("Using validation shapes: {} {}".format(val_data.shape, val_labels.shape))
+            val = (val_data, val_labels)
+        else:
+            val = None
         model.fit(train_data, train_labels,
                   batch_size=self.batch_size,
                   epochs=self.epochs,
-                  validation_data=val_datalabels,
+                  validation_data=val,
                   verbose=self.verbosity,
                   callbacks=self.get_callbacks())
         self.report_early_stopping()
@@ -139,6 +143,17 @@ class DNN(Classifier):
 
     def get_model_path(self):
         return self.model_saver.filepath
+
+    def save_model(self):
+        # handled by the model saver callback
+        pass
+
+    def load_model(self, model_path, weights_path):
+        # handled by the model saver callback
+        with open(model_path) as f:
+            model = model_from_json(f)
+        model.load_weights(weights_path)
+        return model
 
 
 class MLP(DNN):

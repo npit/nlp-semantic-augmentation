@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn import metrics
 
-from utils import (error, get_majority_label, info, numeric_to_string, one_hot, warning)
+from utils import (error, count_label_occurences, info, numeric_to_string, one_hot, warning)
 
 
 class Evaluator:
@@ -45,6 +45,9 @@ class Evaluator:
     label_distribution = None
     top_k = 3
 
+    # training labels
+    train_labels = None
+
     # constructor
     def __init__(self, config):
         """Evaluator constructor method"""
@@ -54,6 +57,15 @@ class Evaluator:
         self.confusion_matrices = {rt: [] for rt in self.run_types}
         self.predictions_instance_indexes = []
         self.label_distribution = {}
+        self.train_labels = []
+
+    def update_reference_labels(self, labels):
+        if len(labels) > 0:
+            # squeeze to ndarray if necessary
+            if not self.do_multilabel and type(labels) is list:
+                labels = np.squeeze(np.concatenate(labels))
+        self.test_labels = labels
+
 
     def configure(self, test_labels, num_labels, do_multilabel, use_validation_for_training, validation_exists):
         """Label setter method"""
@@ -181,7 +193,10 @@ class Evaluator:
     def report_overall_results(self, validation_description, num_total_train, write_folder):
         """Function to report learning results
         """
-        self.show_label_distribution(self.test_labels)
+        # compute predicted label occurences (fold average)
+        fold_predictions = count_label_occurences(np.concatenate([np.argmax(x, axis=1) for x in self.predictions['run']]))
+        fold_predictions = list(map(lambda x: (x[0], x[1] / len(self.predictions['run'])), fold_predictions))
+        self.show_label_distribution(fold_predictions, message="Predicted label distribution")
         info("==============================")
         self.analyze_overall_errors(num_total_train)
         info("==============================")
@@ -288,21 +303,39 @@ class Evaluator:
             self.performance[run_type]["accuracy"]["classwise"]["folds"].append(cw_acc)
             self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
 
+    def show_label_distribution(self, distr=None, message="Test label distribution:"):
+        info("==============================")
+        info(message)
+        info("------------------------------")
+        if distr is None:
+            if not self.label_distribution:
+                self.compute_label_distribution()
+            distr = self.label_distribution
+            message += "[stored distr.]"
+        local_max_lbl = max(distr, key=lambda x: x[1])[0]
+        for lbl, freq in distr:
+            maj = " - [input majority]" if lbl == self.majority_label else ""
+            localmaj = " - [local majority]" if lbl == local_max_lbl else ""
+            info("Label {} : {}{}{}".format(lbl, freq, localmaj, maj))
+
     # show labels distribution
-    def show_label_distribution(self, labels=None, do_show=True):
+    def compute_label_distribution(self, labels=None, do_show=False):
         if not self.config.print.label_distribution:
             return
-        if not self.label_distribution:
-            if labels is not None:
-                self.test_labels = labels
-            self.label_distribution = get_majority_label(self.test_labels, return_counts=True)
+        # when labels supplied, always compute
+        if labels is not None:
+            self.label_distribution = count_label_occurences(labels)
+        else:
+            labels = self.test_labels
+            if not self.label_distribution:
+                self.label_distribution = count_label_occurences(labels)
         if do_show:
-            info("==============================")
-            info("Label distribution:")
-            info("------------------------------")
-            for lbl, freq in self.label_distribution:
-                maj = " - [majority]" if lbl == self.majority_label else ""
-                info("Label {} : {}{}".format(lbl, freq, maj))
+            self.show_label_distribution(self.label_distribution, message="Test label distribution:")
+
+    def set_fold_info(self, train_labels):
+        # store train labels, if submitted
+        if train_labels is not None:
+            self.train_labels.append(train_labels)
 
     # evaluate predictions and add baselines
     def evaluate_learning_run(self, predictions, instance_indexes=None):
@@ -312,7 +345,6 @@ class Evaluator:
         #     self.performance["run"]["AP"][av] = ap
         #     self.performance["run"]["AUC"][av] = auc
 
-
         if len(predictions) != len(self.test_labels):
             error("Inconsistent shapes of predictions: {} and labels: {} lengths during evaluation"
                   .format(len(predictions), len(self.test_labels)))
@@ -321,7 +353,7 @@ class Evaluator:
         self.evaluate_predictions("run", predictions)
         # majority classifier
         if self.majority_label is None:
-            self.majority_label = get_majority_label(self.test_labels)
+            self.majority_label = count_label_occurences(self.test_labels, return_only_majority=True)
             info("Majority label: {}".format(self.majority_label))
         majpred = np.zeros(predictions.shape, np.float32)
         majpred[:, self.majority_label] = 1.0
@@ -342,7 +374,7 @@ class Evaluator:
     def apply_decision_threshold(self, proba, thresh):
         decisions = []
         for row in proba:
-            idxs = np.where(row > thresh)
+            idxs, _ = np.where(row > thresh)
             decisions.append(idxs)
         return decisions
 
@@ -395,6 +427,7 @@ class Evaluator:
                 # instances vary across folds -- consolidate
                 self.consolidate_folded_test_results(num_total_train)
 
+            info(self.test_labels.shape)
             for run_type in self.predictions:
                 # instance-wise
                 aggregate = np.zeros((len(self.test_labels),), np.float32)

@@ -82,6 +82,9 @@ class ManualDataset(Dataset):
                 [list(map(str, sorted(unique_labels[tt]))) for tt in ["train", "test"]]
         if max_num_instance_labels > 1:
             self.multilabel = True
+            # labels to ndarray lists
+            self.train_labels = [np.asarray(x) for x in self.train_labels]
+            self.test_labels = [np.asarray(x) for x in self.test_labels]
         else:
             # labels to ndarray
             self.train_labels = np.squeeze(np.asarray(self.train_labels, dtype=np.int32))

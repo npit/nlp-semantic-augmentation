@@ -109,7 +109,8 @@ class Config:
         csv_separator = ","
         independent_component = None
         allow_deserialization = None
-        allow_load_predictions = None
+        allow_learning_loading = None
+        allow_prediction_loading = None
 
     def __init__(self, conf_file=None):
         "Configuration object constructor"
@@ -387,8 +388,9 @@ class Config:
                     for kname, kvalue in misc_opts['keys'].items():
                         self.misc.keys[kname] = kvalue
                 self.misc.independent = self.get_value("independent_component", base=misc_opts, default=False)
-                self.misc.deserialization_allowed = self.get_value("deserialization_allowed", base=misc_opts, default=True)
-                self.misc.predictions_loading_allowed = self.get_value("predictions_loading_allowed", base=misc_opts, default=False)
+                self.misc.allow_deserialization = self.get_value("deserialization_allowed", base=misc_opts, default=True)
+                self.misc.allow_predictions_loading = self.get_value("predictions_loading_allowed", base=misc_opts, default=False)
+                self.misc.allow_learning_loading = self.get_value("learning_loading_allowed", base=misc_opts, default=False)
                 self.misc.csv_separator = self.get_value("csv_separator", base=misc_opts, default=",")
                 self.misc.run_id = self.get_value("run_id", base=misc_opts, default="run_" + utils.datetime_str())
                 field = self.misc

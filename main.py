@@ -27,10 +27,10 @@ def main(config_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("config_file", help="Configuration .yml file for the run.")
+    parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?", default="chain.config.yml")
     args = parser.parse_args()
     if args.config_file is None:
-        config_file = "config.yml"
+        config_file = "chain.config.yml"
     else:
         config_file = args.config_file
 

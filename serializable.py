@@ -61,7 +61,7 @@ class Serializable(Component):
         self.loaded_preprocessed = False
         self.loaded_aggregated = False
         self.multiple_config_names = None
-        self.deserialization_allowed = self.config.misc.deserialization_allowed
+        self.deserialization_allowed = self.config.misc.allow_deserialization
         self.set_multiple_config_names()
 
     def loaded(self):

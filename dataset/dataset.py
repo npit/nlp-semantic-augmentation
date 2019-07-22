@@ -162,13 +162,13 @@ class Dataset(Serializable):
             # remove by index of index
             idx_idx = maxfreq_label_idx.index(idx)
             del maxfreq_label_idx[idx_idx]
-        return data, labels
+        return data, np.asarray(labels)
 
     def limit_data_simple(num_limit, data, labels):
         idxs = random.sample(list(range(len(data))), num_limit)
         data = [data[i] for i in idxs]
         labels = [labels[i] for i in idxs]
-        return data, labels
+        return data, np.asarray(labels)
 
     def apply_data_limit(self, name):
         lim = self.config.dataset.data_limit

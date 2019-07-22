@@ -3,6 +3,7 @@ import pickle
 import logging
 import numpy as np
 import os
+from os.path import exists
 from collections import namedtuple, Counter, OrderedDict
 import nltk
 
@@ -20,7 +21,6 @@ def match_labels_to_instances(elements_per_instance, labels):
         times = elements_per_instance[i]
         res.extend([elements_per_instance[i] for _ in range(times)])
     return res
-
 
 
 # check for zero length on variable input args
@@ -215,8 +215,7 @@ def align_index(input_list, reference):
     # return np.array_split(np.array(output), len(output))
     return output
 
-
-def get_majority_label(labels, return_counts=False):
+def count_label_occurences(labels, return_only_majority=False):
     """Gets majority (in terms of frequency) label in (potentially multilabel) input
     """
     counts = Counter()
@@ -228,10 +227,10 @@ def get_majority_label(labels, return_counts=False):
     except AttributeError:
         # non-iterable labels
         counts = Counter(labels)
-    if return_counts:
-        return sorted(list(counts.most_common()), key= lambda x: x[1], reverse=True)
     # just the max label
-    return counts.most_common(1)[0][0]
+    if return_only_majority:
+        return counts.most_common(1)[0][0]
+    return sorted(list(counts.most_common()), key= lambda x: x[1], reverse=True)
 
 
 # split lists into sublists
@@ -295,11 +294,13 @@ def warning(msg):
     logger = logging.getLogger()
     logger.warning("[!] " + msg)
 
-
 # read pickled data
-def read_pickled(path):
+def read_pickled(path, defaultNone=False):
     """Pickle deserializer function
     """
+    if defaultNone:
+        if not exists(path):
+            return None
     info("Reading serialized from {}".format(path))
     with open(path, "rb") as f:
         return pickle.load(f)

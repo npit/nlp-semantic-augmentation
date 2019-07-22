@@ -103,7 +103,7 @@ class Transform(Serializable):
         data_dim = data.shape[-1]
         if data_dim != self.dimension:
             error("{} result dimension {} does not match the prescribed input dimension {}".format(self.name, data_dim, self.dimension))
-        nans = np.where(np.isnan(data))
+        nans, _ = np.where(np.isnan(data))
         if np.size(nans) != 0:
             error("{} result contains nan elements in :{}".format(self.name, nans))
 

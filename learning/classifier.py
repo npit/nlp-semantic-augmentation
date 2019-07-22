@@ -39,9 +39,8 @@ class SKLClassifier(Classifier):
             val_labels = np.empty((0,))
         return train_labels, val_labels
 
-    def train_model(self, trainval_idx):
+    def train_model(self, train_data, train_labels, val_data_labels):
         model = self.model()
-        train_data, train_labels, _ = self.get_trainval_data(trainval_idx)
         model.fit(train_data, np.asarray(train_labels).ravel())
         return model
 
