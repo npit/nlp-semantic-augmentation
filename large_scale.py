@@ -1,4 +1,5 @@
 from os.path import join, exists, isabs, basename, splitext
+import argparse
 from os import makedirs
 import subprocess
 from collections import OrderedDict
@@ -40,7 +41,7 @@ class VariableConf(OrderedDict):
         self.id = ""
 
     def add_variable(self, keys, value):
-        info("Setting variable field: {} / value: {}".format(keys, value))
+        info("Setting variable field: {} / value: {} -- current conf id: {}".format(keys, value, self.id))
         conf = self
         for key in keys[:-1]:
             conf = conf[key]
@@ -51,12 +52,19 @@ class VariableConf(OrderedDict):
         # use the last key for the id -- revisit if there's ambiguity
         # self.id = "_".join(keys) + "_" + str(value)
         if type(value) == list:
-            strvalue = "_".join(map(str,value))
+            strvalue = "_".join(map(str, value))
+        else:
+            strvalue = str(value)
         strvalue = strvalue.replace("/", "_")
+
+        if len(self.id) > 0:
+            self.id += "_"
         self.id += keys[-1] + "_" + strvalue
+        info("Final conf id: {}".format(self.id))
 
     def __str__(self):
         return self.id + " : " + super().__str__()
+
 
 exlogger = logging.getLogger("experiments")
 
@@ -116,10 +124,16 @@ def parse_variable_component(var):
 
 def expand_configs(configs, keys, values):
     info("Propagating values {} for field: {}".format(values, keys))
-    num = len(values)
-    for _ in range(len(configs) * (num-1)):
-        configs.append(VariableConf.get_copy(configs[0]))
-    num_per_value = len(configs) / num
+    num_values = len(values)
+    if len(configs) > 0:
+        info("Current config ids: {}".format([c.id for c in configs]))
+    new_configs = []
+    for _ in range(num_values -1):
+        for conf in configs:
+            new_configs.append(VariableConf.get_copy(conf))
+    configs += new_configs
+
+    num_per_value = len(configs) / num_values
     # partition into num_values
     conf_idx, value_idx, assignment_count = 0, 0, 0
     while conf_idx < len(configs):
@@ -157,11 +171,10 @@ def make_configs(base_config, run_dir, sources_dir="./"):
                 populate_configs(configs, chain_name, component_name, component_body, None)
                 continue
             for  field_name, field_value in component_body.items():
-                if field_name == "variable":
-                    variable_field_name = component_body[field_name]["name"]
-                    variable_field_values = component_body[field_name]["values"]
-                    # expand configurations
-                    expand_configs(configs, ["chains", chain_name, component_name, variable_field_name], variable_field_values)
+                if field_name == "variables":
+                    for variable_field_name, variable_field_values in component_body[field_name].items():
+                        # expand configurations
+                        expand_configs(configs, ["chains", chain_name, component_name, variable_field_name], variable_field_values)
                 else:
                     populate_configs(configs, chain_name, component_name, field_name, field_value)
 
@@ -275,9 +288,9 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
     configs = make_configs(conf, run_dir, sources_dir)
     # check run id uniqueness
     if len(set([c.id for c in configs])) != len(configs):
-        error("Dulicate run folders from the input: {}".format([c.id for c in configs]))
+        error("Duplicate run folders from the input: {}".format([c.id for c in configs]))
     if len(set([c['folders']['run'] for c in configs])) != len(configs):
-        error("Dulicate run folders from the input: {}".format([c["folders"]["run"] for c in configs]))
+        error("Duplicate run folders from the input: {}".format([c["folders"]["run"] for c in configs]))
     # if we're running a testing suite, filter out incompatible configs
     if is_testing_run:
         configs = filter_testing(configs, config_file)
@@ -385,4 +398,7 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?", default="large.config.yml")
+    args = parser.parse_args()
+    main(args.config_file)

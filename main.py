@@ -25,13 +25,9 @@ def main(config_file):
         info("Logfile is at: {}".format(conf.logfile))
     tictoc.log(conf.logfile + ".timings")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?", default="chain.config.yml")
     args = parser.parse_args()
-    if args.config_file is None:
-        config_file = "chain.config.yml"
-    else:
-        config_file = args.config_file
-
-    main(config_file)
+    main(args.config_file)
