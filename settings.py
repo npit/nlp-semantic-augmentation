@@ -7,7 +7,7 @@ import yaml
 import utils
 import defs
 import nltk
-from utils import need, error, info, ordered_load
+from utils import need, error, info, ordered_load, warning
 import shutil
 
 from component.chain import Chain
@@ -21,7 +21,6 @@ class Config:
     seed_file = "seed.txt"
     # logger_name = "root"
     logger = None
-    seed = None
     conf = {}
     run_id = None
 
@@ -109,7 +108,7 @@ class Config:
         csv_separator = ","
         independent_component = None
         allow_deserialization = None
-        allow_learning_loading = None
+        allow_model_loading = None
         allow_prediction_loading = None
 
     def __init__(self, conf_file=None):
@@ -152,7 +151,6 @@ class Config:
                 shutil.copy(configuration, config_copy)
 
         self.setup_logging()
-        self.setup_seed()
 
         # read chains
         self.read_chains(configuration)
@@ -194,33 +192,9 @@ class Config:
         self.logger = logger
         return logger
 
-    # random seed initialization
-    def setup_seed(self):
-        # return already acquired seed
-        if self.seed is not None:
-            return self.seed
-
-        if os.path.isfile(self.seed_file):
-            # read existing from seed file
-            with open(self.seed_file) as f:
-                seed = f.readlines()[0]
-            self.logger.info("Read seed from file {} : {}".format(self.seed_file, seed))
-            self.seed = int(seed)
-        else:
-            # generate new seed
-            self.seed = random.randint(0, 5000)
-            self.logger.info("Generated seed {}, writing to file {}".format(self.seed, self.seed_file))
-            with open(self.seed_file, "w") as f:
-                f.write("{}".format(self.seed))
-        return self.seed
-
     # logger fetcher
     def get_logger(self):
         return self.logger
-
-    # seed fetcher
-    def get_seed(self):
-        return self.seed
 
     def read_chains(self, input_config):
         self.pipeline = Pipeline()
@@ -376,14 +350,19 @@ class Config:
                         self.misc.keys[kname] = kvalue
                 self.misc.independent = self.get_value("independent_component", base=misc_opts, default=False)
                 self.misc.allow_deserialization = self.get_value("deserialization_allowed", base=misc_opts, default=True)
-                self.misc.allow_predictions_loading = self.get_value("predictions_loading_allowed", base=misc_opts, default=False)
-                self.misc.allow_learning_loading = self.get_value("learning_loading_allowed", base=misc_opts, default=False)
+                self.misc.allow_prediction_loading = self.get_value("prediction_loading_allowed", base=misc_opts, default=False)
+                self.misc.allow_model_loading = self.get_value("model_loading_allowed", base=misc_opts, default=False)
                 self.misc.csv_separator = self.get_value("csv_separator", base=misc_opts, default=",")
                 self.misc.run_id = self.get_value("run_id", base=misc_opts, default="run_" + utils.datetime_str())
+
+                if not self.has_value("keys", base=misc_opts):
+                    self.misc.seed = random.randint(0, 5000)
+                    warning("No random seed submitted, randomly generated: {}".format(self.misc.seed))
+                else:
+                    self.misc.seed = self.get_value("seed", base=misc_opts)
                 field = self.misc
 
             read_order.append(self)
-
 
         info("Read configuration for run / chain: {} from the file {}".format(self.run_id, input_config if type(input_config) is str else input_config.keys()))
         return read_order

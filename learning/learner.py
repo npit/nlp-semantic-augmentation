@@ -26,7 +26,7 @@ class Learner(Component):
     test_instance_indexes = None
     validation = None
 
-    allow_learning_loading = None
+    allow_model_loading = None
     allow_prediction_loading = None
 
     def __init__(self):
@@ -66,7 +66,7 @@ class Learner(Component):
         self.count_samples()
         self.input_dim = self.train[0].shape[-1]
         self.allow_prediction_loading = self.config.misc.allow_prediction_loading
-        self.allow_learning_loading = self.config.misc.allow_learning_loading
+        self.allow_model_loading = self.config.misc.allow_model_loading
         self.sequence_length = self.config.learner.sequence_length
         self.results_folder = self.config.folders.results
         self.models_folder = join(self.results_folder, "models")
@@ -82,7 +82,7 @@ class Learner(Component):
         self.validation = Learner.ValidatonSetting(self.folds, self.validation_portion, self.test_data_available(), self.do_multilabel)
         self.validation.assign_data(self.train, self.train_labels, self.test, self.test_labels)
 
-        self.seed = self.config.get_seed()
+        self.seed = self.config.misc.seed
         np.random.seed(self.seed)
 
         self.batch_size = self.config.train.batch_size
@@ -112,7 +112,7 @@ class Learner(Component):
 
     def get_existing_predictions(self):
         path = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pickle"
-        return read_pickled(path) if exists(path) else None
+        return read_pickled(path) if exists(path) else (None, None)
 
     def get_existing_trainval_indexes(self):
         """Check if the current training run is already completed."""
@@ -126,7 +126,7 @@ class Learner(Component):
                 error("Mismatch between max instances in training data ({}) and loaded max index ({}).".format(self.num_train, max_idx))
 
     def get_existing_model_path(self):
-        path = self.validation.modify_suffix(join(self.results_folder, "models", "{}".format(self.name))) + ".model"
+        path = self.get_current_model_path()
         return path if exists(path) else None
 
     def test_data_available(self):
@@ -136,8 +136,8 @@ class Learner(Component):
     def get_trainval_indexes(self):
         trainval_idx = None
         # get training / validation indexes
-        if self.allow_learning_loading:
-            ret = self.get_existing_run_data()
+        if self.allow_model_loading:
+            ret = self.get_existing_model_path()
             if ret:
                 trainval_idx, self.existing_model_paths = ret
         if not trainval_idx:
@@ -163,9 +163,9 @@ class Learner(Component):
                 train, val, test, test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
 
                 # show training data statistics
-                self.evaluator.show_label_distribution(count_label_occurences(train[1]), "Training label distr:" +  self.validation.get_current_descr())
+                self.evaluator.show_label_distribution(count_label_occurences(train[1]), "Training label distribution for validation setting: " +  self.validation.get_current_descr())
                 if val:
-                    self.evaluator.show_label_distribution(count_label_occurences(val[1]), "Validation label distr:" +  self.validation.get_current_descr())
+                    self.evaluator.show_label_distribution(count_label_occurences(val[1]), "Validation label distribution for validation setting: " +  self.validation.get_current_descr())
 
                 # preprocess data and labels
                 train, val, test = self.preprocess_data_labels(train, val, test)
@@ -173,32 +173,40 @@ class Learner(Component):
                 train_data, train_labels = train
                 test_data, test_labels = test
                 val_data, val_labels = val if val else (None, None)
+                self.count_samples()
 
                 self.evaluator.update_reference_labels(test_labels, train_labels)
                 # check if the run is completed already and load existing results, if allowed
-                predictions = None
+                model, predictions = None, None
                 if self.allow_prediction_loading:
                     # get predictions and instance indexes they correspond to
                     existing_preds, existing_instance_indexes = self.get_existing_predictions()
-                    error("Different instance indexes loaded than the ones generated.", existing_instance_indexes != test_instance_indexes)
-                    existing_test_labels = self.validation.get_test_labels(test_instance_indexes)
-                    error("Different instance labels loaded than the ones generated.", existing_test_labels != test_labels)
-                    predictions = existing_instance_indexes
+                    if existing_preds is not None:
+                        info("Loaded existing predictions.")
+                        error("Different instance indexes loaded than the ones generated.", not np.all(np.equal(existing_instance_indexes, test_instance_indexes)))
+                        existing_test_labels = self.validation.get_test_labels(test_instance_indexes)
+                        error("Different instance labels loaded than the ones generated.", not np.all(np.equal(existing_test_labels, test_labels)))
+                        test_instance_indexes = existing_instance_indexes
 
                 # train the model
-                with tictoc("Training run {} on train data: {} and val data: {}.".format(self.validation, len(train_labels), len(val[1]) if val else "none")):
-                    # check if a trained model already exists
-                    model = None
-                    if self.allow_learning_loading:
-                        path = self.get_existing_model_path()
-                        if path:
-                            model = self.load_model(path)
-                    if not model:
-                        model = self.train_model(train_data, train_labels, val_data, val_labels)
+                if predictions is None:
+                    with tictoc("Training run [{}] on {} training and {} val data.".format(self.validation, len(train_labels), len(val[1]) if val else "none")):
+                        # check if a trained model already exists
+                        if self.allow_model_loading:
+                            model = self.load_model()
+                        if not model:
+                            model = self.train_model(train_data, train_labels, val_data, val_labels)
+                            # create directories
+                            makedirs(self.models_folder, exist_ok=True)
+                            self.save_model(model)
+                        else:
+                            info("Skipping training due to existing model successfully loaded.")
+                else:
+                    info("Skipping training due to existing predictions successfully loaded.")
 
                 # test the model
-                with tictoc("Testing {} on {} instances.".format(self.validation.descr, self.num_test_labels)):
-                    self.do_test(model, test_data, test_labels, test_instance_indexes, predictions)
+                with tictoc("Testing run [{}] on {} test data.".format(self.validation.descr, self.num_test_labels)):
+                    self.do_test_evaluate(model, test_data, test_labels, test_instance_indexes, predictions)
                     model_paths.append(self.get_current_model_path())
 
                 if self.validation_exists and not self.use_validation_for_training:
@@ -211,14 +219,16 @@ class Learner(Component):
             if self.validation.use_validation_for_testing:
                 # for the final evaluation, pass the entire training labels
                 self.evaluator.configure(self.train_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training, self.validation_exists)
+                # show the overall training label distribution
+                self.evaluator.show_label_distribution(message="Overall training label distribution")
             else:
-                # show test label distribution
+                # show the test label distribution
                 self.evaluator.show_label_distribution()
             self.evaluator.report_overall_results(self.validation.descr, len(self.train), self.results_folder)
 
     # evaluate a model on the test set
-    def do_test(self, model, test_data, test_labels, test_instance_indexes, predictions=None):
-        if not predictions:
+    def do_test_evaluate(self, model, test_data, test_labels, test_instance_indexes, predictions=None):
+        if predictions is None:
             # evaluate the model
             info("Test data {}".format(test_data.shape))
             error("No test data supplied!", len(test_data) == 0)
@@ -228,16 +238,11 @@ class Learner(Component):
         if self.do_folds and self.config.print.folds:
             self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)
         # write fold predictions
-        predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
+        predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pickle"
         write_pickled(predictions_file, [predictions, test_instance_indexes])
 
     def get_current_model_path(self):
-        filepath = join(self.models_folder, "{}".format(self.name))
-        if self.do_folds:
-            filepath += "_fold{}".format(self.fold_index)
-        if self.do_validate_portion:
-            filepath += "_valportion{}".format(self.validation_portion)
-        return filepath
+        return self.validation.modify_suffix(join(self.results_folder, "models", "{}".format(self.name))) + ".model"
 
     def get_trainval_serialization_file(self):
         return join(self.results_folder, basename(self.get_current_model_path()) + ".trainval.pickle")
@@ -301,10 +306,17 @@ class Learner(Component):
             fold_data[i] = np.ndarray.flatten(stacked, order='F')
         return fold_data
 
-    def save_model(self):
-        error("Attempted to access base save model function")
+    def save_model(self, model):
+        path = self.get_current_model_path()
+        info("Saving model to {}".format(path))
+        write_pickled(path, model)
+
     def load_model(self):
-        error("Attempted to access base load model function")
+        path = self.get_current_model_path()
+        if not path or not exists(path):
+            return None
+        info("Loading existing learning model from {}".format(path))
+        return read_pickled(self.get_current_model_path())
 
     # region: component functions
     def run(self):
@@ -366,16 +378,14 @@ class Learner(Component):
 
         def modify_suffix(self, base_path):
             if self.do_folds:
-                return base_path + "fold{}.model".format(self.current_fold)
+                return base_path + "_fold{}".format(self.current_fold)
             elif self.do_portion:
-                base_path += "valportion{}.model".format(self.portion)
+                base_path += "_valportion{}".format(self.portion)
             return base_path
 
         def assign_data(self, train, train_labels, test, test_labels):
-            self.train = train
-            self.train_labels = train_labels
-            self.test = test
-            self.test_labels = test_labels
+            self.train, self.train_labels = train, train_labels
+            self.test, self.test_labels = test, test_labels
 
         # get training, validation, test data chunks, given the input indexes and validation setting
         def get_run_data(self, iteration_index, trainval_idx):

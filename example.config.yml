@@ -136,4 +136,5 @@ misc:
   keys:
     googleapi: my-google-api-key 
   deserialization_allowed: True
-  predictions_loading_allowed: False
+  model_loading_allowed: False
+  prediction_loading_allowed: False

@@ -54,7 +54,7 @@ class Dataset(Serializable):
     # dataset creation
     def __init__(self, skip_init=False):
         Component.__init__(self, produces=[Text.name])
-        random.seed(self.config.get_seed())
+        random.seed(self.config.misc.seed)
         if skip_init or self.config is None:
             return
         Serializable.__init__(self, self.dir_name)

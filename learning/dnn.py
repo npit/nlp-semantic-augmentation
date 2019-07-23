@@ -1,4 +1,4 @@
-from os.path import join, basename
+from os.path import join, basename, exists
 from sklearn.exceptions import UndefinedMetricWarning
 import warnings
 from os import makedirs
@@ -144,14 +144,24 @@ class DNN(Classifier):
     def get_model_path(self):
         return self.model_saver.filepath
 
-    def save_model(self):
-        # handled by the model saver callback
-        pass
+    def save_model(self, model):
+        if self.use_validation_for_training:
+            # handled by the model saver callback
+            return
+        # serialize model
+        model_path, weights_path = [self.get_current_model_path() + suff for suff in (".model", ".weights")]
+        with open(model_path, "w") as json_file:
+            json_file.write(model.to_json())
+        # serialize weights (h5)
+        model.save_weights(weights_path)
 
-    def load_model(self, model_path, weights_path):
-        # handled by the model saver callback
+    def load_model(self):
+        path = self.get_current_model_path()
+        model_path, weights_path = [path + suff for suff in (".model", ".weights")]
+        if any(x is None or not exists(x) for x in (model_path, weights_path)):
+            return None
         with open(model_path) as f:
-            model = model_from_json(f)
+            model = model_from_json(f.read())
         model.load_weights(weights_path)
         return model
 

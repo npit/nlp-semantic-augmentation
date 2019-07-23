@@ -1,5 +1,5 @@
 from learning.learner import Learner
-from utils import error, one_hot, ill_defined, warning
+from utils import error, one_hot, ill_defined, warning, write_pickled, read_pickled
 import numpy as np
 from sklearn.naive_bayes import GaussianNB
 from sklearn.dummy import DummyClassifier

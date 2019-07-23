@@ -197,7 +197,7 @@ class Evaluator:
         # compute predicted label occurences (fold average)
         fold_predictions = count_label_occurences(np.concatenate([np.argmax(x, axis=1) for x in self.predictions['run']]))
         fold_predictions = list(map(lambda x: (x[0], x[1] / len(self.predictions['run'])), fold_predictions))
-        self.show_label_distribution(fold_predictions, message="Predicted label distribution")
+        self.show_label_distribution(fold_predictions, message="Predicted label (average) distribution")
         info("==============================")
         self.analyze_overall_errors(num_total_train)
         info("==============================")
@@ -341,9 +341,10 @@ class Evaluator:
         #     self.performance["run"]["AP"][av] = ap
         #     self.performance["run"]["AUC"][av] = auc
 
-        if len(predictions) != len(self.test_labels):
+        num_train, num_test = len(self.train_labels), len(self.test_labels)
+        if len(predictions) != num_test:
             error("Inconsistent shapes of predictions: {} and labels: {} lengths during evaluation"
-                  .format(len(predictions), len(self.test_labels)))
+                  .format(len(predictions), num_test))
         # compute single-label baselines
         # add run performance wrt argmax predictions
         self.evaluate_predictions("run", predictions)
@@ -357,7 +358,10 @@ class Evaluator:
         self.evaluate_predictions("majority", majpred)
 
         # dummy classifier - predicts wrt the training label distribution
-        dummypred = one_hot(random.sample(list(self.train_labels), len(self.test_labels)), self.num_labels)
+        # handle cases with a larger training set
+        num_tile = np.ceil(num_test / num_train)
+        sample_pool = np.tile(self.train_labels, int(num_tile))[:num_test]
+        dummypred = one_hot(random.sample(list(sample_pool), num_test), self.num_labels)
         self.evaluate_predictions("dummy", dummypred)
 
         # random classifier
@@ -430,7 +434,6 @@ class Evaluator:
                 # instances vary across folds -- consolidate
                 self.consolidate_folded_test_results(num_total_train)
 
-            info(self.test_labels.shape)
             for run_type in self.predictions:
                 # instance-wise
                 aggregate = np.zeros((len(self.test_labels),), np.float32)
