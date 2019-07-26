@@ -47,8 +47,7 @@ class VariableConf(OrderedDict):
             if key not in conf:
                 error("Key not present in configuration and it's not a parent component name.", k != len(keys) -2)
                 conf[key] = {}
-            else:
-                conf = conf[key]
+            conf = conf[key]
         if  keys[-1] in conf:
             error("Variable key already in configuration!")
         conf[keys[-1]] = value
