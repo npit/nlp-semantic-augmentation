@@ -101,7 +101,7 @@ def get_type_name(data):
 def as_list(x):
     """Convert the input to a single-element list, if it's not a list
     """
-    return [x] if type(x) != list else x
+    return [x] if type(x) is not list else x
 
 def is_multilabel(labels):
     try:

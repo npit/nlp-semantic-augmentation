@@ -1,3 +1,4 @@
+from augmentation.augmentation import LabelledDataAugmentation
 from bundle.bundle import BundleList, Bundle
 from bundle.datatypes import Vectors, Labels
 from component.component import Component
@@ -7,6 +8,7 @@ import numpy as np
 from os.path import join, dirname, exists, basename
 from learning.evaluator import Evaluator
 from os import makedirs
+import defs
 
 
 """
@@ -81,6 +83,17 @@ class Learner(Component):
 
         self.validation = Learner.ValidatonSetting(self.folds, self.validation_portion, self.test_data_available(), self.do_multilabel)
         self.validation.assign_data(self.train, self.train_labels, self.test, self.test_labels)
+
+        # sampling
+        self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
+        self.do_sampling = self.sampling_method is not None
+        if self.do_sampling:
+            if type(self.sampling_ratios[0]) is not list:
+                self.sampling_ratios = [self.sampling_ratios ]
+            freqs = count_label_occurences([x for y in self.sampling_ratios for x in y[:2]])
+            max_label_constraint_participation = max(freqs, key=lambda x: x[1])
+            error("Sampling should be applied on binary classification or constraining ratio should not be overlapping",
+                  self.num_labels > 2 and max_label_constraint_participation[1] > 1)
 
         self.seed = self.config.misc.seed
         np.random.seed(self.seed)
@@ -163,7 +176,11 @@ class Learner(Component):
                 train, val, test, test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
 
                 # show training data statistics
-                self.evaluator.show_label_distribution(count_label_occurences(train[1]), "Training label distribution for validation setting: " +  self.validation.get_current_descr())
+                self.evaluator.show_label_distribution(count_label_occurences(train[1]), "Training label distribution for validation setting: " +
+
+
+
+                                                       self.validation.get_current_descr())
                 if val:
                     self.evaluator.show_label_distribution(count_label_occurences(val[1]), "Validation label distribution for validation setting: " +  self.validation.get_current_descr())
 
@@ -245,7 +262,9 @@ class Learner(Component):
         return self.validation.modify_suffix(join(self.results_folder, "models", "{}".format(self.name))) + ".model"
 
     def get_trainval_serialization_file(self):
-        return join(self.results_folder, basename(self.get_current_model_path()) + ".trainval.pickle")
+        sampling_suffix = "{}.trainvalidx.pickle".format("" if not self.do_sampling else
+                                                         "{}_{}".format(self.sampling_method, "_".join(map(str,self.sampling_ratios))))
+        return self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + sampling_suffix
 
     # produce training / validation splits, with respect to sample indexes
     def compute_trainval_indexes(self):
@@ -271,6 +290,33 @@ class Learner(Component):
 
         # generate. for multilabel K-fold, stratification is not usable
         splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
+
+        # do sampling processing
+        if self.do_sampling:
+            for split_index, (tr, vl) in enumerate(splits):
+                aug_indexes = []
+                orig_tr_size = len(tr)
+                ldaug = LabelledDataAugmentation()
+                if self.sampling_method == defs.sampling.oversample:
+                    for (label1, label2, ratio) in self.sampling_ratios:
+                        aug_indexes.append(ldaug.oversample_to_ratio(self.train, self.train_labels,
+                                           [label1, label2], ratio, only_indexes=True, limit_to_indexes=tr))
+                        info("Sampled via {}, to ratio {}, for labels {},{}. Modification size: {} instances.".format(self.sampling_method, ratio, label1, label2, len(aug_indexes[-1])))
+                    aug_indexes = np.concatenate(aug_indexes)
+                    tr = np.append(tr, aug_indexes)
+                    info("Total size change: from {} to {} training instances".format(orig_tr_size, len(tr)))
+                elif self.sampling_method == defs.sampling.undersample:
+                    for (label1, label2, ratio) in self.sampling_ratios:
+                        aug_indexes.append(ldaug.undersample_to_ratio(self.train_data, self.train_labels,
+                                           [label1, label2], ratio, only_indexes=True))
+                        info("Sampled via {}, to ratio {}, for labels {},{}. Modification size: {} instances.".format(self.sampling_method, ratio, label1, label2, len(aug_indexes[-1])))
+                    aug_indexes = np.concatenate(aug_indexes)
+                    tr = np.delete(tr, aug_indexes)
+                    info("Total size change: from {} to {} training instances".format(orig_tr_size, len(tr)))
+                else:
+                    error("Undefined augmentation method: {} -- available are {}".format(self.sampling_method, defs.avail_sampling))
+                splits[split_index] = (tr, vl)
+
         # save and return the splitter splits
         makedirs(dirname(trainval_serialization_file), exist_ok=True)
         write_pickled(trainval_serialization_file, splits)
@@ -334,7 +380,6 @@ class Learner(Component):
 
         self.train, self.test = self.inputs.get_vectors(single=True).instances
         self.train_labels, self.test_labels = self.inputs.get_labels(single=True).instances
-
 
     class ValidatonSetting:
         def __init__(self, folds, portion, test_present, do_multilabel):

@@ -100,6 +100,12 @@ train:
   validation_portion: 0.1
   early_stopping_patience: 20
   batch_size: 20
+  # process samples: oversample or delete
+  sampling_method: oversample
+  # desired resulting label ratios.
+  # label1_index, label2_index, label1: label2 ratio
+  sampling_ratios: [0,1,2]
+
 
 
 

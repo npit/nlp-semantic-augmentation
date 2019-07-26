@@ -389,15 +389,16 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
                             val = round(results[run_id].loc[m][run][ag]["std"], decimals=4)
                         print_vals[run_id][header] = val
         # print'em
+        info("SCORES:")
         df = pd.DataFrame.from_dict(print_vals, orient='index')
-        # print(df.to_string())
+        print(df.to_string())
 
-        argmaxes = [df[x].idxmax() for x in list(df.columns)]
-        argmaxes = pd.DataFrame([argmaxes], columns=list(df.columns), index=["argmax"])
-        maxes = [df[x].max() for x in list(df.columns)]
-        maxes = pd.DataFrame([maxes], columns=list(df.columns), index=["max"])
 
-        print(pd.concat((df, argmaxes, maxes)).to_string())
+        info("RANKS:")
+        ranked = pd.concat([df[c].rank(ascending=False) for c in [x for x in df.columns if x.startswith('run')]], axis=1)
+        avg_rank = sum([ranked[x].values for x in ranked.columns])
+        ranked['avg rank'] = pd.Series(avg_rank, index=ranked.index)
+        print(ranked.to_string())
 
         total_results[stat] = print_vals
     info("Writing these results to file {}".format(results_file))

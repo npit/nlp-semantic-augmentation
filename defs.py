@@ -15,6 +15,7 @@ avail_weights = ["frequencies", "tfidf"]
 avail_disam = ["first", "pos"]
 avail_limit = ["frequency", "top", "none"]
 avail_alias = ["none", "link"]
+avail_sampling = ["oversample", "undersample"]
 
 aggregation = make_def("aggregation")
 sequence_length = make_def("sequence_length")
@@ -22,6 +23,7 @@ disam = make_def("disam")
 limit = make_def("limit")
 alias = make_def("alias")
 weights = make_def("weights")
+sampling = make_def("sampling")
 
 def is_none(elem):
     return elem == '' or elem is None or elem == alias.none or not elem

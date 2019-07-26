@@ -101,6 +101,8 @@ class Config:
         early_stopping_patience = None
         validation_portion = None
         batch_size = None
+        sampling_method = None
+        sampling_ratios = None
 
     class misc_conf:
         seed = None
@@ -317,6 +319,8 @@ class Config:
                 self.train.validation_portion = self.get_value("validation_portion", default=None, base=training_opts)
                 self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=training_opts)
                 self.train.batch_size = training_opts["batch_size"]
+                self.train.sampling_method = self.get_value("sampling_method", default=None, base=training_opts)
+                self.train.sampling_ratios = self.get_value("sampling_ratios", default=None, base=training_opts, expected_type=list)
                 field = self.train
 
             elif field == "folders":
@@ -384,7 +388,7 @@ class Config:
             base = self.conf
         value = base[name] if name in base else default
         if expected_type is not None and value is not None:
-            if type(value) != expected_type:
+            if type(value) is not expected_type:
                 error("Argument {} got value {} which is of type {}, but {} is required."
                       .format(name, value, type(value), expected_type))
         return value

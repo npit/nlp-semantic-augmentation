@@ -152,7 +152,7 @@ class Dataset(Serializable):
         # fix up any remaining inconsistency
         while not len({num_limit, len(data), len(labels)}) == 1:
             # get label, label_indexes tuple list
-            counts = [(x, [i for i in range(len(labels)) if x in labels[i]]) for x in set(flatten(labels))]
+            counts = [(x, [i for i in range(len(labels)) if x == labels[i]]) for x in labels]
             # get most populous label
             maxfreq_label, maxfreq_label_idx = max(counts, key=lambda x: len(x[1]))
             # drop one from it
