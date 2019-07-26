@@ -103,7 +103,7 @@ def traverse_dict(ddict, key, prev_keys):
         res = traverse_dict(ddict[key], None, prev_keys)
     else:
         val = ddict[key]
-        if type(val) != list:
+        if type(val) is not list:
             val = [val]
         res = (val, prev_keys + [key])
     return res
@@ -225,8 +225,8 @@ def filter_testing(configs, config_file):
         bad_conf = False
         for bad_combo in bad_combos_lists:
             # if all bad key-value pairs exist in the conf, drop it
-            combo_components_exist = [ \
-                    keyseq_exists(keyseq, conf) and value == get_kseq_value(keyseq, conf) if type(value) != list else get_kseq_value(keyseq, conf) in value \
+            combo_components_exist = [
+                    keyseq_exists(keyseq, conf) and value == get_kseq_value(keyseq, conf) if type(value) is not list else get_kseq_value(keyseq, conf) in value \
                     for (keyseq, value) in bad_combo]
             if all(combo_components_exist):
                 bad_conf = True
@@ -276,8 +276,8 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
 
     # evaluation measures
     eval_measures = as_list(exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
-    aggr_measures = as_list(exps["aggregation"]) if "aggregation" in exps else ["macro", "micro"]
-    stat_functions = as_list(exps["stats"]) if "stats" in exps else ["mean"]
+    aggr_measures = as_list(exps["label_aggregation"]) if "label_aggregation" in exps else ["macro", "micro"]
+    stat_functions = as_list(exps["fold_aggregation"]) if "fold_aggregation" in exps else ["mean"]
     run_types = as_list(exps["run_types"]) if "run_types" in exps else ["run"]
 
     # folder where run scripts are
@@ -303,11 +303,15 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
     # copy the configuration file in the target directory
     copied_conf = join(run_dir, basename(config_file))
     if exists(copied_conf):
+        config_to_copy = OrderedDict({k: v for (k, v) in conf.items() if k != "experiments"})
         # make sure it's the same effing config
         with open(copied_conf) as f:
             cconf = ordered_load(f, Loader=yaml.SafeLoader)
-        if cconf != conf:
-            error("The original config differs from the one in the experiment directory!")
+        cconf = OrderedDict({k: v for (k, v) in cconf.items() if k != "experiments"})
+        if config_to_copy != cconf:
+            print(config_to_copy, cconf)
+            print([x.keys() for x in [config_to_copy, cconf]])
+            error("The workflow contents derived from the original config [{}] differ from the ones in the experiment directory: [{}]!".format(config_file, copied_conf))
     else:
         info("Copying experiments configuration at {}".format(copied_conf))
         with open(copied_conf, "w") as f:
@@ -386,7 +390,15 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
                         print_vals[run_id][header] = val
         # print'em
         df = pd.DataFrame.from_dict(print_vals, orient='index')
-        print(df.to_string())
+        # print(df.to_string())
+
+        argmaxes = [df[x].idxmax() for x in list(df.columns)]
+        argmaxes = pd.DataFrame([argmaxes], columns=list(df.columns), index=["argmax"])
+        maxes = [df[x].max() for x in list(df.columns)]
+        maxes = pd.DataFrame([maxes], columns=list(df.columns), index=["max"])
+
+        print(pd.concat((df, argmaxes, maxes)).to_string())
+
         total_results[stat] = print_vals
     info("Writing these results to file {}".format(results_file))
     total_df = pd.DataFrame.from_dict(total_results, orient='index')
@@ -401,4 +413,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?", default="large.config.yml")
     args = parser.parse_args()
-    main(args.config_file)
+    # main(args.config_file)
+    main("multiling.large.config.yml")
