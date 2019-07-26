@@ -43,8 +43,12 @@ class VariableConf(OrderedDict):
     def add_variable(self, keys, value):
         info("Setting variable field: {} / value: {} -- current conf id: {}".format(keys, value, self.id))
         conf = self
-        for key in keys[:-1]:
-            conf = conf[key]
+        for k, key in enumerate(keys[:-1]):
+            if key not in conf:
+                error("Key not present in configuration and it's not a parent component name.", k != len(keys) -2)
+                conf[key] = {}
+            else:
+                conf = conf[key]
         if  keys[-1] in conf:
             error("Variable key already in configuration!")
         conf[keys[-1]] = value
