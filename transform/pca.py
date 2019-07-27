@@ -7,7 +7,7 @@ class PCA(Transform):
 
     Based on the truncated SVD implementation of sklearn.
     """
-    base_name = "lsa"
+    base_name = "pca"
 
     def __init__(self, config):
         """PCA constructor"""
