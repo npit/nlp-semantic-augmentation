@@ -10,9 +10,9 @@ class KMeansClustering(Transform):
     """
     base_name = "kmeans"
 
-    def __init__(self, representation):
+    def __init__(self, config):
         """Kmeans-clustering constructor"""
-        Transform.__init__(self, representation)
+        Transform.__init__(self, config)
         self.transformer = KMeans(self.dimension)
         self.process_func_train = self.fit
         self.process_func_test = self.do_transform
