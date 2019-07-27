@@ -103,7 +103,8 @@ class BagRepresentation(Representation):
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         # intead of undefined word index, get the term list
-        self.dataset_vectors, self.dataset_words, self.term_list = [preprocessed[n] for n in self.data_names]
+        self.term_list = preprocessed["term_list"]
+        super().handle_preprocessed(preprocessed)
         # set misc required variables
         self.set_constant_elements_per_instance()
 
@@ -151,7 +152,6 @@ class BagRepresentation(Representation):
             debug("Skippping {} mapping due to preloading".format(self.base_name))
             return
 
-        self.dataset_words = [self.term_list, None]
         self.dataset_vectors = []
 
         train, test = self.text
