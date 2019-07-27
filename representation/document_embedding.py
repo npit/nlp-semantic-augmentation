@@ -3,6 +3,7 @@ from gensim.models.doc2vec import TaggedDocument
 
 import defs
 from representation.embedding import Embedding
+from representation.representation import Representation
 import numpy as np
 from utils import info, tictoc, write_pickled
 
@@ -44,14 +45,18 @@ class DocumentEmbedding(Embedding):
         del self.embeddings
         return model
 
-    def map_text(self, dset):
+    def map_text(self):
         if self.loaded_preprocessed or self.loaded_aggregated:
             return
-        info("Mapping dataset: {} to {} embeddings.".format(dset.name, self.name))
-        word_lists = dset.get_word_lists()
-        d2v = self.fit_doc2vec(word_lists[0], dset.train_labels)
+        info("Mapping to {} embeddings.".format(self.name))
+        word_lists = self.text
+        labels = self.labels[0]
+        if type(labels[0]) is not list:
+            labels = [[l] for l in labels]
+        train_words = [wp[0] for doc in word_lists[0] for wp in doc]
+        d2v = self.fit_doc2vec(train_words, labels)
 
-        text_bundles = dset.train, dset.test
+        text_bundles = self.text
         self.dataset_vectors = [[], []]
 
         # loop over input text bundles (e.g. train & test)
@@ -59,8 +64,9 @@ class DocumentEmbedding(Embedding):
             dset_word_list = word_lists[dset_idx]
             with tictoc("Embedding mapping for text bundle {}/{}".format(dset_idx + 1, len(text_bundles))):
                 info("Mapping text bundle {}/{}: {} texts".format(dset_idx + 1, len(text_bundles), len(text_bundles[dset_idx])))
-                num_documents = len(text_bundles[dset_idx])
-                for doc_words in dset_word_list:
+                # num_documents = len(text_bundles[dset_idx])
+                for doc_word_pos in dset_word_list:
+                    doc_words = [wp[0] for wp in doc_word_pos]
                     # debug("Inferring word list:{}".format(doc_words))
                     self.dataset_vectors[dset_idx].append(d2v.infer_vector(doc_words))
             self.dataset_vectors[dset_idx] = np.array(self.dataset_vectors[dset_idx])
@@ -74,9 +80,13 @@ class DocumentEmbedding(Embedding):
         pass
 
     def set_params(self):
+        Embedding.set_params(self)
         # define compatible aggregations
         self.compatible_aggregations = [defs.alias.none, None]
         self.compatible_sequence_lengths = [defs.sequence_length.unit]
-        Embedding.set_params(self)
 
-
+    def process_component_inputs(self):
+        Representation.process_component_inputs(self)
+        if self.loaded_aggregated or self.loaded_preprocessed:
+            return
+        self.labels = self.inputs.get_labels().instances

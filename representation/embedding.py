@@ -37,7 +37,7 @@ class Embedding(Representation):
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.dataset_vectors, self.elements_per_instance, self.undefined_word_index = [preprocessed[n] for n in self.data_names]
+        self.dataset_vectors, self.elements_per_instance = [preprocessed[n] for n in self.data_names]
         debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
 
     # endregion

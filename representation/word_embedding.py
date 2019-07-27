@@ -94,6 +94,7 @@ class WordEmbedding(Embedding):
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
         self.present_words = preprocessed["present_words"]
+        self.undefined_word_index = preprocessed["undefined_word_index"]
         Embedding.handle_preprocessed(self, preprocessed)
 
     # transform input texts to embeddings

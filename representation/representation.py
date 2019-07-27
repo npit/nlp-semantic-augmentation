@@ -1,7 +1,7 @@
 from bundle.bundle import Bundle
 from bundle.datatypes import Vectors, Text
 from component.component import Component
-from utils import error, debug, shapes_list, one_hot
+from utils import error, debug, shapes_list, one_hot, info
 import numpy as np
 from serializable import Serializable
 import defs
@@ -34,6 +34,14 @@ class Representation(Serializable):
         self.set_resources()
         # fetch the required data
         self.acquire_data()
+        # restore name, maybe
+        if self.multiple_config_names:
+            self.set_params()
+            self.set_name()
+            Component.configure_name(self)
+            self.check_params()
+            info("Restored reprsentation name to {}".format(self.name))
+
 
 
     # region # serializable overrides
@@ -88,14 +96,16 @@ class Representation(Serializable):
     # shortcut for reading configuration values
     def set_params(self):
         self.aggregation = self.config.representation.aggregation
-        if self.aggregation not in self.compatible_aggregations:
-            error("{} aggregation incompatible with {}. Compatible ones are: {}!".format(self.aggregation, self.base_name, self.compatible_aggregations))
 
         self.dimension = self.config.representation.dimension
         self.dataset_name = self.source_name
         self.base_name = self.name
 
         self.sequence_length = self.config.representation.sequence_length
+
+    def check_params(self):
+        if self.aggregation not in self.compatible_aggregations:
+            error("{} aggregation incompatible with {}. Compatible ones are: {}!".format(self.aggregation, self.base_name, self.compatible_aggregations))
         error("Unset sequence length compatibility for representation {}".format(self.base_name), not self.compatible_sequence_lengths)
         if defs.get_sequence_length_type(self.sequence_length) not in self.compatible_sequence_lengths:
             error("Incompatible sequence length {} with {}. Compatibles are {}".format(
@@ -138,6 +148,7 @@ class Representation(Serializable):
         self.source_name = self.inputs.get_source_name()
         self.set_params()
         self.set_name()
+        self.check_params()
         Component.configure_name(self)
 
     def run(self):
