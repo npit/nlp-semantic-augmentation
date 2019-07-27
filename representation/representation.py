@@ -46,6 +46,10 @@ class Representation(Serializable):
 
     # region # serializable overrides
 
+    def handle_preprocessed(self, preprocessed):
+        self.loaded_preprocessed = True
+        self.dataset_vectors, self.elements_per_instance = [preprocessed[n] for n in Representation.data_names]
+
     # add exra representations-specific serialization paths
     def set_additional_serialization_sources(self):
         # compute names
@@ -73,9 +77,6 @@ class Representation(Serializable):
     # region # getter functions
     def get_zero_pad_element(self):
         return np.zeros((1, self.dimension), np.float32)
-
-    def get_vocabulary_size(self):
-        return len(self.dataset_words[0])
 
     def get_data(self):
         return self.dataset_vectors
