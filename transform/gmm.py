@@ -9,9 +9,9 @@ class GMMClustering(Transform):
     """
     base_name = "gmm"
 
-    def __init__(self, representation):
+    def __init__(self, config):
         """GMM-clustering constructor"""
-        Transform.__init__(self, representation)
+        Transform.__init__(self, config)
         self.transformer = GaussianMixture(self.dimension)
         self.process_func_train = self.fit_predict_proba
         self.process_func_test = self.transformer.predict_proba
