@@ -43,8 +43,9 @@ class Config:
 
         return c
 
-    class fusion:
+    class manip:
         name = None
+        times = None
 
     class dataset_conf:
         name = None
@@ -280,10 +281,11 @@ class Config:
                 self.transform.dimension = transform_opts["dimension"]
                 field = self.transform
 
-            elif field == "fusion":
-                fusion_opts = self.conf["fusion"]
-                self.fusion.name = fusion_opts["name"]
-                field = self.fusion
+            elif field == "manip":
+                manip_opts = self.conf["manip"]
+                self.manip.name = manip_opts["name"]
+                self.manip.times = self.get_value("times", base=manip_opts, default=None)
+                field = self.manip
 
 
             elif field == "semantic":

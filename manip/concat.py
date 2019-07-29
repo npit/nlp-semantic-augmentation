@@ -1,8 +1,8 @@
-from fusion.fusion import Fusion
+from manip.fusion import Fusion
 from utils import shapes_list, error, data_summary
 import numpy as np
 
-"""Vector concatenation fusion
+"""Vector concatenation manip
 Only vectors are affected
 """
 class Concatenation(Fusion):
@@ -17,6 +17,6 @@ class Concatenation(Fusion):
         try:
             return np.concatenate(input_list, axis=1)
         except:
-            msg = "Error during {} fusion.".format(self.name)
+            msg = "Error during {} manip.".format(self.name)
             error(msg)
         return None

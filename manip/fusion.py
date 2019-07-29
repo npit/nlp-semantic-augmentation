@@ -1,21 +1,16 @@
 from bundle.bundle import Bundle, BundleList
 from bundle.datatypes import Vectors
-from component.component import Component
+from manip.manip import Manipulation
 from utils import error, shapes_list, info, warning
 import numpy as np
 """Class that implements the combination of two chains"""
 
 
-class Fusion(Component):
-    component_name = "fusion"
+class Fusion(Manipulation):
 
-    def __init__(self, config):
-        Component.__init__(self, consumes=Vectors.name, produces=Vectors.name)
-        pass
-        # self.num_inputs = len(config.fusion.inputs)
-
-    def load_inputs(self, inputs):
-        self.inputs = inputs
+    def __init__(self, _):
+        Manipulation.__init__(self)
+        # self.num_inputs = len(config.manip.inputs)
 
     def fuse(self):
         error("Attempted to call abstract fuse() from component {}".format(self.name))
@@ -37,12 +32,12 @@ class Fusion(Component):
 
     def process_component_inputs(self):
         # make sure input is a collection of bundles
-        self.vectors = [x.get_instances() for x in self.inputs.get_vectors()]
+        Manipulation.process_component_inputs(self)
         # epis = [x.elements_per_instance for x in self.inputs.get_vectors()]
-        # error("Unequal elements per instance during {} fusion".format(str(epis)), np.all(np.diff(epis)) == 0)
+        # error("Unequal elements per instance during {} manip".format(str(epis)), np.all(np.diff(epis)) == 0)
         error("{} can only fuse a collection of bundles".format(self.name), type(self.inputs) is not BundleList)
         for v, vecs in enumerate(self.vectors):
             if vecs is None:
                 bund = self.inputs.get(v)
-                error("Specified {} fusion for chain {} / bundle {}, which does not contain vectors.".format(
+                error("Specified {} manip for chain {} / bundle {}, which does not contain vectors.".format(
                     self.name, bund.get_chain_name(), bund.get_source_name()))

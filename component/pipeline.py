@@ -35,13 +35,18 @@ class Pipeline:
         run_pool = list(self.chains.keys())
         while run_pool:
             chain = self.chains[run_pool.pop(0)]
+            required_input_chains = chain.get_required_finished_chains()
             # check if the chain requires inputs from other chains
-            if not chain.ready(chain_outputs.get_chain_names()):
-                run_pool.append(chain.get_name())
-                continue
+            if required_input_chains:
+                undefined_inputs = [x for x in required_input_chains if x not in self.chains]
+                if undefined_inputs:
+                    error("Chain {} requires an input from the non-existing chain(s): {}".format(chain.get_name(), undefined_inputs))
+                if not chain.ready(chain_outputs.get_chain_names()):
+                    run_pool.append(chain.get_name())
+                    debug("Postponing configuring names for chain {}".format(chain.get_name()))
+                    continue
             data_bundle = None
             chain.load_inputs(chain_outputs)
-            required_input_chains = chain.get_required_finished_chains()
             if required_input_chains:
                 # the first component requires an input from another chain -- check if it's loaded
                 error("Chain [{}] requires input(s), but none are available.".format(chain.get_name()), chain.inputs is None)
