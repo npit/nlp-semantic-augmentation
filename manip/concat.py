@@ -1,5 +1,5 @@
 from manip.fusion import Fusion
-from utils import shapes_list, error, data_summary
+from utils import shapes_list, error, data_summary, debug
 import numpy as np
 
 """Vector concatenation manip
@@ -15,6 +15,7 @@ class Concatenation(Fusion):
 
     def fuse(self, input_list):
         try:
+            debug("Concatenating input list {}".format(shapes_list(input_list)))
             return np.concatenate(input_list, axis=1)
         except:
             msg = "Error during {} manip.".format(self.name)

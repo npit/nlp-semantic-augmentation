@@ -22,18 +22,23 @@ class Fusion(Manipulation):
         self.vectors = list(filter(lambda x: x is not None, self.vectors))
         num_vector_collections = list(map(len, self.vectors))
         error("Inconsistent number of vector collections to fuse: {}".format(num_vector_collections), len(set(num_vector_collections)) != 1)
+        error("Inconsistent number of vector collections to fuse: {}".format(num_vector_collections), len(set(num_vector_collections)) != 1)
         self.vectors = list(zip(*self.vectors))
         for v, vecs in enumerate(self.vectors):
             msg = "Fusing input collection {}/{} with shapes: {} to".format(v + 1, len(self.vectors), shapes_list(vecs))
             self.vectors[v] = self.fuse(vecs)
             info(msg + " {}".format(self.vectors[v].shape))
 
-        self.outputs.set_vectors(Vectors(vecs=self.vectors))
+        self.outputs.set_vectors(Vectors(vecs=self.vectors, epi=[np.ones(len(vecs), np.int32) * self.num_elements_per_instance for vecs in self.vectors]))
 
     def process_component_inputs(self):
         # make sure input is a collection of bundles
         Manipulation.process_component_inputs(self)
-        # epis = [x.elements_per_instance for x in self.inputs.get_vectors()]
+        all_epis = np.concatenate(np.concatenate([x.elements_per_instance for x in self.inputs.get_vectors()]))
+        all_epis = np.unique(all_epis)
+        error("Cannot fuse inputs with different elements per instance: {}".format(all_epis), len(all_epis) > 1)
+        self.num_elements_per_instance = all_epis[0]
+
         # error("Unequal elements per instance during {} manip".format(str(epis)), np.all(np.diff(epis)) == 0)
         error("{} can only fuse a collection of bundles".format(self.name), type(self.inputs) is not BundleList)
         for v, vecs in enumerate(self.vectors):
