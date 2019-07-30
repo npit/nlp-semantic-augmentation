@@ -71,6 +71,23 @@ class VariableConf(OrderedDict):
 
 exlogger = logging.getLogger("experiments")
 
+def compare_dicts(dict1, dict2):
+    for k,v in dict1.items():
+        if k not in dict2:
+            return False, "The key [{}] in first dict: {} missing from the second dict: {}".format(k, dict1, dict2)
+        if type(v) in [dict, OrderedDict]:
+            eq, diff =  compare_dicts(dict1[k], dict2[k])
+            if not eq:
+                return eq, diff
+        if v != dict2[k]:
+            return False, "Differing values: {} and {}, in dicts {}, {} with key {}".format(v, dict2[k], dict1, dict2, key)
+        else:
+            pass
+            # print("same values: {} for dict parts {}".format(v, dict1))
+    return True, None
+            
+    
+
 def sendmail(mail, passw, msg, title="nle"):
     # email me
     TO = mail
@@ -251,11 +268,14 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
     # set the expeirment parameters via a configuration list
     with open(config_file) as f:
         conf = ordered_load(f, Loader=yaml.SafeLoader)
+    print(conf['chains']['fuse'])
 
     exps = conf["experiments"]
 
     # folder to run experiments in
     run_dir = exps["run_folder"]
+    if not isabs(run_dir):
+        run_dir = join(os.getcwd(), run_dir)
 
     # dir checks
     # ----------
@@ -303,21 +323,20 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
     if do_send_mail:
         passw = getpass.getpass()
 
-    # copy the configuration file in the target directory
-    copied_conf = join(run_dir, basename(config_file))
-    if exists(copied_conf):
-        config_to_copy = OrderedDict({k: v for (k, v) in conf.items() if k != "experiments"})
+    # copy the experiments configuration file in the target directory
+    experiments_conf_path = join(run_dir, basename(config_file))
+    if exists(experiments_conf_path):
         # make sure it's the same effing config
-        with open(copied_conf) as f:
-            cconf = ordered_load(f, Loader=yaml.SafeLoader)
-        cconf = OrderedDict({k: v for (k, v) in cconf.items() if k != "experiments"})
-        if config_to_copy != cconf:
-            print(config_to_copy, cconf)
-            print([x.keys() for x in [config_to_copy, cconf]])
-            error("The workflow contents derived from the original config [{}] differ from the ones in the experiment directory: [{}]!".format(config_file, copied_conf))
+        config_to_copy = OrderedDict({k: v for (k, v) in conf.items() if k != "experiments"})
+        with open(experiments_conf_path) as f:
+            existing_exp_conf = ordered_load(f, Loader=yaml.SafeLoader)
+        existing_exp_conf = OrderedDict({k: v for (k, v) in existing_exp_conf.items() if k != "experiments"})
+        equal, diff = compare_dicts(config_to_copy, existing_exp_conf)
+        if not equal:
+            error("The workflow contents derived from the original config [{}] differ from the ones in the experiment directory: [{}]!\nDifference is: {}".format(config_file, experiments_conf_path, diff))
     else:
-        info("Copying experiments configuration at {}".format(copied_conf))
-        with open(copied_conf, "w") as f:
+        info("Copying experiments configuration at {}".format(experiments_conf_path))
+        with open(experiments_conf_path, "w") as f:
             ordered_dump(OrderedDict(conf), f)
 
     results = {}
@@ -345,8 +364,18 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
             makedirs(experiment_dir, exist_ok=True)
 
             conf_path = join(experiment_dir, "config.yml")
-            with open(conf_path, "w") as f:
-                ordered_dump(OrderedDict(conf), f)
+            if exists(conf_path):
+                warning("Configuration file at {} already exists!".format(conf_path))
+                with open(conf_path) as f:
+                    existing = ordered_load(f)
+                equal, diff = compare_dicts(existing, conf)
+                if not equal:
+                    error("Different local config encountered: {} \nDifference: {}".format(config_path, diff))
+                #if not (OrderedDict(conf) == existing):
+                #    error("Different local config encountered at {}".format(conf_path))
+            else:
+                with open(conf_path, "w") as f:
+                    ordered_dump(OrderedDict(conf), f)
             info("Configuration file: {}".format(conf_path))
             # write the run script file
             script_path = join(experiment_dir, "run.sh")
@@ -418,5 +447,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?", default="large.config.yml")
     args = parser.parse_args()
-    # main(args.config_file)
-    main("multiling.large.config.yml")
+    main(args.config_file)
