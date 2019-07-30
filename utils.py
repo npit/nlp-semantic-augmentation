@@ -306,7 +306,6 @@ def read_pickled(path, defaultNone=False):
     with open(path, "rb") as f:
         return pickle.load(f)
 
-
 # write pickled data
 def write_pickled(path, data):
     """Pickle serializer function
