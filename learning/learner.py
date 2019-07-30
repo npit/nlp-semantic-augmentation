@@ -9,6 +9,7 @@ from os.path import join, dirname, exists, basename
 from learning.evaluator import Evaluator
 from os import makedirs
 import defs
+from copy import deepcopy
 
 
 """
@@ -158,6 +159,7 @@ class Learner(Component):
 
         # handle indexes for multi-instance data
         if self.num_train != self.num_train_labels:
+            self.validation.set_trainval_label_index(deepcopy(trainval_idx))
             trainval_idx = self.expand_index_to_sequence(trainval_idx)
         return trainval_idx
 
@@ -328,12 +330,12 @@ class Learner(Component):
         # one-hot label computation is delayed until it's required
         train_data, train_labels = train
         # train_labels = one_hot(train_labels, self.num_labels)
-        train = np.vstack(self.process_input(train_data)), train_labels
+        train = self.process_input(train_data), train_labels
 
         if val is not None:
             val_data, val_labels = val
             # val_labels = one_hot(val_labels, self.num_labels)
-            val = np.vstack(self.process_input(val_data)), val_labels
+            val = self.process_input(val_data), val_labels
 
         test_data, test_labels = test
         test = self.process_input(test_data), test_labels
@@ -342,14 +344,17 @@ class Learner(Component):
     # handle multi-vector items, expanding indexes to the specified sequence length
     def expand_index_to_sequence(self, fold_data):
         # map to indexes in the full-sequence data (e.g. times sequence_length)
-        fold_data = list(map(lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
+        # fold_data = list(map(lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
         for i in range(len(fold_data)):
             if fold_data[i] is None:
                 continue
             # expand with respective sequence members (add an increment, vstack)
-            stacked = np.vstack([fold_data[i] + incr for incr in range(self.sequence_length)])
             # reshape to a single vector, in the vertical (column) direction, that increases incrementally
-            fold_data[i] = np.ndarray.flatten(stacked, order='F')
+            fold_data[i] = tuple([
+                np.ndarray.flatten(
+                    np.vstack([(x * self.sequence_length) + incr if x is not None else None
+                               for incr in range(self.sequence_length)])
+                    , order='F') for x in fold_data[i]])
         return fold_data
 
     def save_model(self, model):
@@ -382,7 +387,9 @@ class Learner(Component):
         self.train_labels, self.test_labels = self.inputs.get_labels(single=True).instances
 
     class ValidatonSetting:
+
         def __init__(self, folds, portion, test_present, do_multilabel):
+            self.label_indexes = None
             self.do_multilabel = do_multilabel
             self.do_folds = folds is not None
             self.folds = folds
@@ -438,8 +445,10 @@ class Learner(Component):
             if self.do_folds:
                 error("Iteration index: {} / fold index: {} mismatch in validation coordinator.".format(iteration_index, self.current_fold), iteration_index != self.current_fold)
             train_idx, val_idx = trainval_idx
+
+            train_labels, val_labels = self.get_trainval_labels(iteration_index, trainval_idx)
+
             if len(train_idx) > 0:
-                train_labels = [np.asarray(self.train_labels[i]) for i in train_idx]
                 if not self.do_multilabel:
                     train_labels = np.asarray(train_labels)
                 train_data = np.vstack([self.train[idx] for idx in train_idx])
@@ -447,10 +456,8 @@ class Learner(Component):
                 train_data, train_labels = np.empty((0,)), np.empty((0))
 
             if len(val_idx) > 0:
-                val_labels = [np.asarray(self.train_labels[i]) for i in val_idx]
                 if not self.do_multilabel:
                     val_labels = np.asarray(val_labels)
-
                 val_data = np.vstack([self.train[idx] for idx in val_idx])
                 val = val_data, val_labels
             else:
@@ -475,3 +482,12 @@ class Learner(Component):
                       instance_indexes != range(len(self.test_labels)))
                 return self.test_labels
 
+        def set_trainval_label_index(self, trainval_idx):
+            self.label_indexes = trainval_idx
+
+        def get_trainval_labels(self, iteration_index, trainval_idx):
+            if self.label_indexes is not None:
+                train_idx, val_idx = self.label_indexes[iteration_index]
+            else:
+                train_idx, val_idx = trainval_idx
+            return [[np.asarray(self.train_labels[i]) for i in idx] if idx is not None else None for idx in [train_idx, val_idx]]

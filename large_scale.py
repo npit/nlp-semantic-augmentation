@@ -347,6 +347,7 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
             conf_path = join(experiment_dir, "config.yml")
             with open(conf_path, "w") as f:
                 ordered_dump(OrderedDict(conf), f)
+            info("Configuration file: {}".format(conf_path))
             # write the run script file
             script_path = join(experiment_dir, "run.sh")
             with open(script_path, "w") as f:
