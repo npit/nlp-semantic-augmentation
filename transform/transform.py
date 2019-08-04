@@ -190,4 +190,4 @@ class Transform(Serializable):
         self.populate()
         self.input_dimension = self.input_vectors[0].shape[-1]
         self.compute()
-        self.outputs.set_vectors(Vectors(vecs=self.vectors))
+        self.outputs.set_vectors(Vectors(vecs=self.vectors, epi=self.elements_per_instance))

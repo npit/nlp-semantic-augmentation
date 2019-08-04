@@ -5,7 +5,7 @@ from os.path import basename, exists, join
 
 import numpy as np
 # tf deprecation warnings
-import tensorflow.python.util.deprecation as deprecation
+# import tensorflow.python.util.deprecation as deprecation
 from keras import callbacks
 from keras.layers import LSTM as keras_lstm
 from keras.layers import Activation, Bidirectional, Dense, Dropout
@@ -20,7 +20,11 @@ stderr = sys.stderr
 sys.stderr = open('/dev/null', 'w')
 sys.stderr = stderr
 
-deprecation._PRINT_DEPRECATION_WARNINGS = False
+# tf deprecation warnings
+# import tensorflow.python.util.deprecation as deprecation
+# deprecation._PRINT_DEPRECATION_WARNINGS = False
+# 
+from utils import info, debug, error, write_pickled, one_hot
 
 # from keras import backend
 # import tensorflow as tf

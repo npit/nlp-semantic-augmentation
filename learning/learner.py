@@ -158,7 +158,8 @@ class Learner(Component):
             trainval_idx = self.compute_trainval_indexes()
 
         # handle indexes for multi-instance data
-        if self.num_train != self.num_train_labels:
+        if self.sequence_length > 1:
+            # if self.num_train != self.num_train_labels:
             self.validation.set_trainval_label_index(deepcopy(trainval_idx))
             trainval_idx = self.expand_index_to_sequence(trainval_idx)
         return trainval_idx

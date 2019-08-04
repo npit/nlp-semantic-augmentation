@@ -62,6 +62,13 @@ class Representation(Serializable):
         self.loaded_aggregated = True
         debug("Read aggregated embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
 
+
+    def handle_preprocessed(self, preprocessed):
+        self.loaded_preprocessed = True
+        self.dataset_vectors, self.elements_per_instance = [preprocessed[n] for n in Representation.data_names]
+        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
+
+
     def handle_raw(self, raw_data):
         pass
 

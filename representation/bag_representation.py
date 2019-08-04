@@ -14,7 +14,7 @@ class BagRepresentation(Representation):
     term_list = None
     do_limit = None
 
-    data_names = ["dataset_vectors", "elements_per_instance", "term_list"]
+    data_names = Representation.data_names + ["term_list"]
 
     def __init__(self, config):
         self.config = config

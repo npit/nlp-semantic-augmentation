@@ -8,6 +8,13 @@ class Manipulation(Component):
     def __init__(self):
         Component.__init__(self, produces=Vectors, consumes=Vectors)
 
+    def configure_name(self):
+        self.source_name = self.inputs.get_source_name()
+        if type(self.source_name) in [list, tuple]:
+            self.source_name = "_".join(self.source_name)
+        self.name = "{}_{}".format(self.source_name, self.name)
+        Component.configure_name(self)
+
     def process_component_inputs(self):
         if type(self.inputs) is BundleList:
             self.vectors = [x.get_instances() for x in self.inputs.get_vectors()]
