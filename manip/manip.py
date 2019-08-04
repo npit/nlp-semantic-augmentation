@@ -5,6 +5,7 @@ from component.component import Component
 from utils import error
 
 class Manipulation(Component):
+    component_name = "manipulation"
     def __init__(self):
         Component.__init__(self, produces=Vectors, consumes=Vectors)
 

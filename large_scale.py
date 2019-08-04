@@ -1,6 +1,6 @@
-from os.path import join, exists, isabs, basename, splitext
+from os.path import join, exists, isabs, basename, isdir
 import argparse
-from os import makedirs
+from os import makedirs, listdir
 import subprocess
 from collections import OrderedDict
 import yaml
@@ -68,11 +68,10 @@ class VariableConf(OrderedDict):
     def __str__(self):
         return self.id + " : " + super().__str__()
 
-
 exlogger = logging.getLogger("experiments")
 
 def compare_dicts(dict1, dict2):
-    for k,v in dict1.items():
+    for k, v in dict1.items():
         if k not in dict2:
             return False, "The key [{}] in first dict: {} missing from the second dict: {}".format(k, dict1, dict2)
         if type(v) in [dict, OrderedDict]:
@@ -80,13 +79,11 @@ def compare_dicts(dict1, dict2):
             if not eq:
                 return eq, diff
         if v != dict2[k]:
-            return False, "Differing values: {} and {}, in dicts {}, {} with key {}".format(v, dict2[k], dict1, dict2, key)
+            return False, "Differing values: {} and {}, in dicts {}, {} with key {}".format(v, dict2[k], dict1, dict2, k)
         else:
             pass
             # print("same values: {} for dict parts {}".format(v, dict1))
     return True, None
-            
-    
 
 def sendmail(mail, passw, msg, title="nle"):
     # email me
@@ -218,16 +215,6 @@ def make_configs(base_config, run_dir, sources_dir="./"):
         conf["misc"]["run_id"] = conf.id
     return sorted(configs, key=lambda x: x.id)
 
-# make a run id name out of a list of nested dict keys and a configuration dict
-def make_run_ids(keychains, confs):
-    names = []
-    for conf in confs:
-        name_components = []
-        for keychain in keychains:
-            name_components.append(reduce(dict.get, keychain, conf))
-        names.append("_".join(map(str, name_components)))
-    return names
-
 # get a nested dict value from a list of keys
 def get_kseq_value(kseq, ddict):
     res = ddict
@@ -256,7 +243,7 @@ def filter_testing(configs, config_file):
             out_conf.append(conf)
     return out_conf
 
-def main(config_file="chain.large.config.yml", is_testing_run=False):
+def main(input_path, only_report=False, is_testing_run=False):
     # settable parameters
     ############################################################
 
@@ -265,7 +252,17 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
 
     ############################################################
 
-    # set the expeirment parameters via a configuration list
+    # set the experiment parameters
+    error("Non-existent input path: {} ".format(input_path), not exists(input_path))
+    if isdir(input_path):
+        # assume a single .yml file in the directory
+        ymls = [x for x in listdir(input_path) if any(x.endswith(suff) for suff in [".yaml", ".yml"])]
+        error("Input path is a directory with no yaml configuration files.".format(input_path), not ymls)
+        error("Input path is a directory with more than one yaml configuration files.".format(input_path), len(ymls) > 1)
+        config_file = ymls[0]
+    else:
+        config_file = input_path
+
     with open(config_file) as f:
         conf = ordered_load(f, Loader=yaml.SafeLoader)
     print(conf['chains']['fuse'])
@@ -335,11 +332,15 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
         if not equal:
             error("The workflow contents derived from the original config [{}] differ from the ones in the experiment directory: [{}]!\nDifference is: {}".format(config_file, experiments_conf_path, diff))
     else:
-        info("Copying experiments configuration at {}".format(experiments_conf_path))
-        with open(experiments_conf_path, "w") as f:
-            ordered_dump(OrderedDict(conf), f)
+        if not only_report:
+            info("Copying experiments configuration at {}".format(experiments_conf_path))
+            with open(experiments_conf_path, "w") as f:
+                ordered_dump(OrderedDict(conf), f)
+        else:
+            info("Only-report run: will not copy experiment configuration at {}".format(experiments_conf_path))
 
-    results = {}
+
+    results, result_paths = {}, {}
 
     #################################################################################
 
@@ -357,6 +358,8 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
 
         if exists(completed_file):
             info("Skipping completed experiment {}".format(run_id))
+        elif only_report:
+            info("Only-report execution: skipping non-completed experiment {}".format(run_id))
         else:
             # run it
             if exists(error_file):
@@ -370,7 +373,7 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
                     existing = ordered_load(f)
                 equal, diff = compare_dicts(existing, conf)
                 if not equal:
-                    error("Different local config encountered: {} \nDifference: {}".format(config_path, diff))
+                    error("Different local config encountered: {} \nDifference: {}".format(conf_path, diff))
                 #if not (OrderedDict(conf) == existing):
                 #    error("Different local config encountered at {}".format(conf_path))
             else:
@@ -398,6 +401,7 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
         with open(exp_res_file, "rb") as f:
             res_data = pickle.load(f)["results"]
         results[run_id] = res_data
+        result_paths[run_id] = exp_res_file
 
     # messages = []
     total_results = {}
@@ -426,7 +430,6 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
         df = pd.DataFrame.from_dict(print_vals, orient='index')
         print(df.to_string())
 
-
         info("RANKS:")
         ranked = pd.concat([df[c].rank(ascending=False) for c in [x for x in df.columns if x.startswith('run')]], axis=1)
         avg_rank = sum([ranked[x].values for x in ranked.columns])
@@ -446,5 +449,6 @@ def main(config_file="chain.large.config.yml", is_testing_run=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?", default="large.config.yml")
+    parser.add_argument("--only-report", help="Do not run, just report results.", action="store_true", dest="only_report")
     args = parser.parse_args()
-    main(args.config_file)
+    main(args.config_file, args.only_report)
