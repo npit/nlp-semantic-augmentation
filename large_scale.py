@@ -10,7 +10,7 @@ from collections import OrderedDict
 from copy import deepcopy
 from functools import reduce
 from os import listdir, makedirs
-from os.path import basename, exists, isabs, isdir, join
+from os.path import basename, dirname, exists, isabs, isdir, join
 
 import pandas as pd
 import yaml
@@ -211,7 +211,7 @@ def make_configs(base_config, run_dir, sources_dir="./"):
 
     chains = base_config["chains"]
     for chain_name, chain_body in chains.items():
-        print(OrderedDict(configs[0]))
+        # print(OrderedDict(configs[0]))
         for component_name, component_body in chain_body.items():
             if type(component_body) not in [dict, OrderedDict]:
                 populate_configs(configs, chain_name, component_name,
@@ -294,6 +294,9 @@ def print_existing_csv_results(path):
 
 
 def print_dataframe_results(dict_scores):
+    if not dict_scores:
+        print("<empty scores!>")
+        return
     df = pd.DataFrame.from_dict(dict_scores, orient='index')
     # print'em
     info("SCORES:")
@@ -309,7 +312,7 @@ def print_dataframe_results(dict_scores):
     print(ranked.to_string())
 
 
-def main(input_path, only_report=False, is_testing_run=False):
+def main(input_path, only_report=False, force_dir=False, is_testing_run=False):
     # settable parameters
     ############################################################
 
@@ -334,7 +337,7 @@ def main(input_path, only_report=False, is_testing_run=False):
             "Input path is a directory with more than one yaml configuration files."
             .format(input_path),
             len(ymls) > 1)
-        config_file = ymls[0]
+        config_file = join(input_path, ymls[0])
     else:
         config_file = input_path
 
@@ -345,12 +348,16 @@ def main(input_path, only_report=False, is_testing_run=False):
 
     with open(config_file) as f:
         conf = ordered_load(f, Loader=yaml.SafeLoader)
-    print(conf['chains']['fuse'])
 
     exps = conf["experiments"]
 
     # folder to run experiments in
     run_dir = exps["run_folder"]
+    if force_dir:
+        warning(
+            "Overriding experiment folder from yml value: {} to current dir: {}, due to force-dir"
+            .format(run_dir, dirname(run_dir)))
+        run_dir = dirname(input_path)
     if not isabs(run_dir):
         run_dir = join(os.getcwd(), run_dir)
 
@@ -444,6 +451,7 @@ def main(input_path, only_report=False, is_testing_run=False):
     results, result_paths = {}, {}
 
     #################################################################################
+    skipped_configs = []
 
     # prelim experiments
     for conf_index, conf in enumerate(configs):
@@ -458,11 +466,14 @@ def main(input_path, only_report=False, is_testing_run=False):
         if not isabs(respath):
             conf["folders"]["results"] = join(experiment_dir, respath)
 
+        print(completed_file)
         if exists(completed_file):
             info("Skipping completed experiment {}".format(run_id))
         elif only_report:
             info("Only-report execution: skipping non-completed experiment {}".
                  format(run_id))
+            skipped_configs.append(run_id)
+            continue
         else:
             # run it
             if exists(error_file):
@@ -546,7 +557,15 @@ def main(input_path, only_report=False, is_testing_run=False):
         total_results[stat] = print_vals
     info("Writing these results to file {}".format(results_file))
     total_df = pd.DataFrame.from_dict(total_results, orient='index')
-    total_df.to_csv(results_file)
+    if total_df.size == 0:
+        info("No results parsed.")
+    else:
+        total_df.to_csv(results_file)
+
+    if skipped_configs:
+        for s, sk in enumerate(skipped_configs):
+            info("Skipped incomplete config: {}/{} : {}".format(
+                s + 1, len(skipped_configs), sk))
 
     # [info(msg) for msg in messages]
     if do_send_mail:
@@ -563,5 +582,12 @@ if __name__ == "__main__":
                         help="Do not run, just report results.",
                         action="store_true",
                         dest="only_report")
+    parser.add_argument(
+        "--force-dir",
+        help=
+        "Force the experiment directory to the relevant input argument (yml path or basedir)",
+        action="store_true",
+        dest="force_dir")
+
     args = parser.parse_args()
-    main(args.config_file, args.only_report)
+    main(args.config_file, args.only_report, args.force_dir)
