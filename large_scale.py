@@ -1,21 +1,27 @@
+""" Large-scale experiment runner module for smaug """
 import argparse
 import getpass
 import itertools
 import logging
 import os
 import pickle
+import shutil
 import smtplib
 import subprocess
 from collections import OrderedDict
 from copy import deepcopy
 from functools import reduce
+from itertools import product
 from os import listdir, makedirs
 from os.path import basename, dirname, exists, isabs, isdir, join
+from shutil import rmtree
 
 import pandas as pd
 import yaml
 from numpy import round
 
+import stattests
+from stattests import instantiator
 from utils import (as_list, datetime_str, error, info, ordered_dump,
                    ordered_load, setup_simple_logging, warning)
 
@@ -34,7 +40,9 @@ class VariableConf(OrderedDict):
     def get_copy(instance):
         new_instance = deepcopy(OrderedDict(instance))
         new_instance = VariableConf(new_instance)
+        # copy extraneous fields of the class
         new_instance.id = instance.id
+        new_instance.ddict = deepcopy(instance.ddict)
         return new_instance
 
     def __init__(self, existing=None):
@@ -45,6 +53,7 @@ class VariableConf(OrderedDict):
         else:
             super().__init__()
         self.id = ""
+        self.ddict = {}
 
     def add_variable(self, keys, value):
         info("Setting variable field: {} / value: {} -- current conf id: {}".
@@ -73,6 +82,9 @@ class VariableConf(OrderedDict):
             self.id += "_"
         self.id += keys[-1] + "_" + strvalue
         info("Final conf id: {}".format(self.id))
+        # use a dict with variables - values assignments
+        self.ddict["id"] = self.id
+        self.ddict[keys[-1]] = value
 
     def __str__(self):
         return self.id + " : " + super().__str__()
@@ -209,9 +221,13 @@ def make_configs(base_config, run_dir, sources_dir="./"):
     configs = [VariableConf()]
     configs[0]["chains"] = {}
 
+    variable_identifiable_substrings = set()
+    variables_dict = {}
+    variables_2runids = {}
+
     chains = base_config["chains"]
     for chain_name, chain_body in chains.items():
-        # print(OrderedDict(configs[0]))
+
         for component_name, component_body in chain_body.items():
             if type(component_body) not in [dict, OrderedDict]:
                 populate_configs(configs, chain_name, component_name,
@@ -219,6 +235,7 @@ def make_configs(base_config, run_dir, sources_dir="./"):
                 continue
             for field_name, field_value in component_body.items():
                 if field_name == "variables":
+                    print(component_body[field_name])
                     for variable_field_name, variable_field_values in component_body[
                             field_name].items():
                         # expand configurations
@@ -226,6 +243,12 @@ def make_configs(base_config, run_dir, sources_dir="./"):
                             "chains", chain_name, component_name,
                             variable_field_name
                         ], variable_field_values)
+                        # update list variables
+                        variable_identifiable_substrings.add(variable_field_name)
+                        variables_dict[variable_field_name] = variable_field_values
+                        if variable_field_name not in variables_2runids:
+                            variables_2runids[variable_field_name] = []
+                        # variables_2runids[variable_field_name].append(config.id) # << this is wrong -- howto group?
                 else:
                     populate_configs(configs, chain_name, component_name,
                                      field_name, field_value)
@@ -249,7 +272,7 @@ def make_configs(base_config, run_dir, sources_dir="./"):
         if not isabs(raw_folder):
             conf["folders"]["raw_data"] = join(sources_dir, raw_folder)
         conf["misc"]["run_id"] = conf.id
-    return sorted(configs, key=lambda x: x.id)
+    return sorted(configs, key=lambda x: x.id), variable_identifiable_substrings
 
 
 # get a nested dict value from a list of keys
@@ -312,7 +335,7 @@ def print_dataframe_results(dict_scores):
     print(ranked.to_string())
 
 
-def main(input_path, only_report=False, force_dir=False, is_testing_run=False):
+def main(input_path, only_report=False, force_dir=False, no_config_check=False, restart=False, is_testing_run=False):
     # settable parameters
     ############################################################
 
@@ -331,7 +354,7 @@ def main(input_path, only_report=False, force_dir=False, is_testing_run=False):
                 x.endswith(suff) for suff in [".yaml", ".yml"])
         ]
         error(
-            "Input path is a directory with no yaml configuration files.".
+            "Input path {} is a directory with no yaml configuration files.".
             format(input_path), not ymls)
         error(
             "Input path is a directory with more than one yaml configuration files."
@@ -375,6 +398,12 @@ def main(input_path, only_report=False, force_dir=False, is_testing_run=False):
     if not exists(run_dir):
         info("Run dir {} not found, creating.".format(run_dir))
         makedirs(run_dir)
+    else:
+        error("Specified a non-dir path as the running directory: {}".format(run_dir), not isdir(run_dir))
+        if restart:
+            warning("Specified restart, and experiment dir {} exists. Deleting!")
+            rmtree(run_dir)
+            makedirs(run_dir)
 
     # logging
     os.makedirs(run_dir, exist_ok=True)
@@ -383,15 +412,31 @@ def main(input_path, only_report=False, force_dir=False, is_testing_run=False):
     info("Generating configurations from source file {}".format(config_file))
 
     # evaluation measures
-    eval_measures = as_list(
-        exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
-    aggr_measures = as_list(
-        exps["label_aggregation"]) if "label_aggregation" in exps else [
-            "macro", "micro"
-        ]
-    stat_functions = as_list(
-        exps["fold_aggregation"]) if "fold_aggregation" in exps else ["mean"]
-    run_types = as_list(exps["run_types"]) if "run_types" in exps else ["run"]
+    try:
+        eval_measures = as_list(
+            exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
+        aggr_measures = as_list(exps["label_aggregation"]) if "label_aggregation" in exps \
+            else ["macro", "micro"]
+        stat_functions = as_list(
+            exps["fold_aggregation"]) if "fold_aggregation" in exps else ["mean"]
+        run_types = as_list(exps["run_types"]) if "run_types" in exps else ["run"]
+        do_sstests = "sstests" in exps
+        if not do_sstests:
+            while True:
+                ans = input("No statistical tests specified -- are you sure? [Y/n]").strip()
+                if not ans or ans == "y":
+                    break
+                if ans.lower() not in "y n".split():
+                    continue
+                elif ans == "n":
+                    info("Aborting.")
+                    exit(1)
+        else:
+            sstests = ["tukeyhsd"] if "names" not in exps["sstests"] else as_list(exps["sstests"]["names"])
+            sstests_measures = ["f1"] if "measures" not in exps["sstests"] else as_list(exps["sstests"]["measures"])
+            sstests_aggregations = ["macro"] if "aggregations" not in exps["sstests"] else as_list(exps["sstests"]["aggregations"])
+    except Exception as ex:
+        error("Failed to read evaluation / testing options {}".format(ex))
 
     # folder where run scripts are
     sources_dir = exps["sources_dir"] if "sources_dir" in exps else os.getcwd()
@@ -402,7 +447,7 @@ def main(input_path, only_report=False, force_dir=False, is_testing_run=False):
             join(sources_dir, "main.py")),
         not exists(join(sources_dir, "main.py")))
 
-    configs = make_configs(conf, run_dir, sources_dir)
+    configs, variable_identifiable_substrings = make_configs(conf, run_dir, sources_dir)
     # check run id uniqueness
     if len(set([c.id for c in configs])) != len(configs):
         error("Duplicate run folders from the input: {}".format(
@@ -422,21 +467,22 @@ def main(input_path, only_report=False, force_dir=False, is_testing_run=False):
     # copy the experiments configuration file in the target directory
     experiments_conf_path = join(run_dir, basename(config_file))
     if exists(experiments_conf_path):
-        # make sure it's the same effing config
-        config_to_copy = OrderedDict(
-            {k: v
-             for (k, v) in conf.items() if k != "experiments"})
-        with open(experiments_conf_path) as f:
-            existing_exp_conf = ordered_load(f, Loader=yaml.SafeLoader)
-        existing_exp_conf = OrderedDict({
-            k: v
-            for (k, v) in existing_exp_conf.items() if k != "experiments"
-        })
-        equal, diff = compare_dicts(config_to_copy, existing_exp_conf)
-        if not equal:
-            error(
-                "The workflow contents derived from the original config [{}] differ from the ones in the experiment directory: [{}]!\nDifference is: {}"
-                .format(config_file, experiments_conf_path, diff))
+        # make sure it's the same effing config, unless check is overriden
+        if not no_config_check:
+            config_to_copy = OrderedDict(
+                {k: v
+                for (k, v) in conf.items() if k != "experiments"})
+            with open(experiments_conf_path) as f:
+                existing_exp_conf = ordered_load(f, Loader=yaml.SafeLoader)
+            existing_exp_conf = OrderedDict({
+                k: v
+                for (k, v) in existing_exp_conf.items() if k != "experiments"
+            })
+            equal, diff = compare_dicts(config_to_copy, existing_exp_conf)
+            if not equal:
+                error(
+                    "The workflow contents derived from the original config [{}] differ from the ones in the experiment directory: [{}]!\nDifference is: {}"
+                    .format(config_file, experiments_conf_path, diff))
     else:
         if not only_report:
             info("Copying experiments configuration at {}".format(
@@ -567,17 +613,45 @@ def main(input_path, only_report=False, force_dir=False, is_testing_run=False):
             info("Skipped incomplete config: {}/{} : {}".format(
                 s + 1, len(skipped_configs), sk))
 
+    if do_sstests:
+        do_stat_sig_testing(sstests, sstests_measures, sstests_aggregations, configs, results)
+
     # [info(msg) for msg in messages]
     if do_send_mail:
         sendmail(email, passw, "run complete.")
 
+def do_stat_sig_testing(methods, measures, label_aggregations, configs, results, run_mode="run"):
+    for method, measure, label_aggregation in product(methods, measures, label_aggregations):
+        info("Running statistical testing via {} on {}-{}".format(method, measure, label_aggregation))
+        # get ids and variable values per configuration
+        df_inputs = []
+        try:
+            for run_id in results:
+                # find corresp. configuration
+                conf = [c for c in configs if c.id == run_id]
+                error("Num configurations found with id: {} is: {} during stat-testing!".format(run_id, len(conf)), len(conf) != 1)
+                conf = conf[0]
+                # get variables
+                df_row = {k: v for (k, v) in conf.ddict.items() if k != "id"}
+                for score in  results[run_id][run_mode][measure][label_aggregation]['folds']:
+                    df_row["score"] = score
+                    df_inputs.append(deepcopy(df_row))
+        except:
+            warning("Encountered invalid results accessors: {}".format(*(run_mode, measure, label_aggregation)))
+            continue
+        data = pd.DataFrame(df_inputs)
+        inst = instantiator.Instantiator()
+        stat_test = inst.create(method)
+        for variable in [d for d in data.columns if d !="score"]:
+            stat_result = stat_test.run(data["score"], data[variable])
+            print()
+
+    pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file",
-                        help="Configuration .yml file for the run.",
-                        nargs="?",
-                        default="large.config.yml")
+                        help="Configuration .yml file for the run.")
     parser.add_argument("--only-report",
                         help="Do not run, just report results.",
                         action="store_true",
@@ -589,5 +663,18 @@ if __name__ == "__main__":
         action="store_true",
         dest="force_dir")
 
+    parser.add_argument(
+        "--no-config-check",
+        help=
+        "Do not examine that the input configuration matches the one in the experiment directory, if it exists.",
+        action="store_true",
+        dest="no_config_check")
+
+    parser.add_argument(
+        "--restart",
+        help= "Restart the expeirments from scratch, deleting the output experiments directory.",
+        action="store_true",
+        dest="restart")
+
     args = parser.parse_args()
-    main(args.config_file, args.only_report, args.force_dir)
+    main(args.config_file, args.only_report, args.force_dir, args.no_config_check, args.restart)
