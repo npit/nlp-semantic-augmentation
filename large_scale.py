@@ -37,13 +37,6 @@ Values in a list are interpreted as different parameters (so for list literal va
 exlogger = logging.getLogger("experiments")
 
 
-def parse_variable_component(var):
-    variable_name = var["name"]
-    variable_components = var["values"]
-    error("Variable components of length 1, for name {}".format(variable_name),
-          len(variable_components) == 1)
-
-
 def expand_configs(configs, keys, values):
     info("Propagating values {} for field: {}".format(values, keys))
     num_values = len(values)
@@ -91,10 +84,6 @@ def make_configs(base_config, run_dir, sources_dir="./"):
     configs = [VariableConf()]
     configs[0]["chains"] = {}
 
-    variable_identifiable_substrings = set()
-    variables_dict = {}
-    variables_2runids = {}
-
     chains = base_config["chains"]
     for chain_name, chain_body in chains.items():
 
@@ -113,12 +102,6 @@ def make_configs(base_config, run_dir, sources_dir="./"):
                             "chains", chain_name, component_name,
                             variable_field_name
                         ], variable_field_values)
-                        # update list variables
-                        variable_identifiable_substrings.add(variable_field_name)
-                        variables_dict[variable_field_name] = variable_field_values
-                        if variable_field_name not in variables_2runids:
-                            variables_2runids[variable_field_name] = []
-                        # variables_2runids[variable_field_name].append(config.id) # << this is wrong -- howto group?
                 else:
                     populate_configs(configs, chain_name, component_name,
                                      field_name, field_value)
@@ -142,8 +125,7 @@ def make_configs(base_config, run_dir, sources_dir="./"):
         if not isabs(raw_folder):
             conf["folders"]["raw_data"] = join(sources_dir, raw_folder)
         conf["misc"]["run_id"] = conf.id
-    return sorted(configs, key=lambda x: x.id), variable_identifiable_substrings
-
+    return sorted(configs, key=lambda x: x.id)
 
 
 def print_existing_csv_results(path):
@@ -288,7 +270,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
             join(sources_dir, "main.py")),
         not exists(join(sources_dir, "main.py")))
 
-    configs, variable_identifiable_substrings = make_configs(conf, run_dir, sources_dir)
+    configs = make_configs(conf, run_dir, sources_dir)
     # check run id uniqueness
     if len(set([c.id for c in configs])) != len(configs):
         error("Duplicate run folders from the input: {}".format(
