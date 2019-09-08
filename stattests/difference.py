@@ -1,6 +1,7 @@
+"""Statistical significance differene tests."""
 from scipy.stats import f_oneway
-
 from statsmodels.stats.multicomp import MultiComparison, pairwise_tukeyhsd
+
 from stattests.stattest import StatisticalTest
 
 
@@ -20,6 +21,6 @@ class TukeyHSD(Difference):
     def run(self, data, groups):
         mc = MultiComparison(data, groups)
         result = mc.tukeyhsd()
-        return result, mc.groupsunique
+        return result.__str__(), mc.groupsunique
         # print(result)
         # print(mc.groupsunique)

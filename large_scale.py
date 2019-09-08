@@ -6,7 +6,6 @@ import logging
 import os
 import pickle
 import shutil
-import smtplib
 import subprocess
 from collections import OrderedDict
 from copy import deepcopy
@@ -21,10 +20,12 @@ import yaml
 from numpy import round
 
 import stattests
+from experiments.utils import (compare_dicts, filter_testing, keyseq_exists,
+                               sendmail)
+from experiments.variable_config import VariableConf
 from stattests import instantiator
 from utils import (as_list, datetime_str, error, info, ordered_dump,
                    ordered_load, setup_simple_logging, warning)
-
 
 """Script to produce large-scale semantic neural augmentation experiments
 
@@ -33,138 +34,7 @@ Values in a list are interpreted as different parameters (so for list literal va
 """
 
 
-class VariableConf(OrderedDict):
-    id = None
-
-    @staticmethod
-    def get_copy(instance):
-        new_instance = deepcopy(OrderedDict(instance))
-        new_instance = VariableConf(new_instance)
-        # copy extraneous fields of the class
-        new_instance.id = instance.id
-        new_instance.ddict = deepcopy(instance.ddict)
-        return new_instance
-
-    def __init__(self, existing=None):
-        if existing is not None:
-            error("Ordered dict required for variable config. ",
-                  type(existing) != OrderedDict)
-            super().__init__(existing)
-        else:
-            super().__init__()
-        self.id = ""
-        self.ddict = {}
-
-    def add_variable(self, keys, value):
-        info("Setting variable field: {} / value: {} -- current conf id: {}".
-             format(keys, value, self.id))
-        conf = self
-        for k, key in enumerate(keys[:-1]):
-            if key not in conf:
-                error(
-                    "Key not present in configuration and it's not a parent component name.",
-                    k != len(keys) - 2)
-                conf[key] = {}
-            conf = conf[key]
-        if keys[-1] in conf:
-            error("Variable key already in configuration!")
-        conf[keys[-1]] = value
-
-        # use the last key for the id -- revisit if there's ambiguity
-        # self.id = "_".join(keys) + "_" + str(value)
-        if type(value) == list:
-            strvalue = "_".join(map(str, value))
-        else:
-            strvalue = str(value)
-        strvalue = strvalue.replace("/", "_")
-
-        if len(self.id) > 0:
-            self.id += "_"
-        self.id += keys[-1] + "_" + strvalue
-        info("Final conf id: {}".format(self.id))
-        # use a dict with variables - values assignments
-        self.ddict["id"] = self.id
-        self.ddict[keys[-1]] = value
-
-    def __str__(self):
-        return self.id + " : " + super().__str__()
-
-
 exlogger = logging.getLogger("experiments")
-
-
-def compare_dicts(dict1, dict2):
-    for k, v in dict1.items():
-        if k not in dict2:
-            return False, "The key [{}] in first dict: {} missing from the second dict: {}".format(
-                k, dict1, dict2)
-        if type(v) in [dict, OrderedDict]:
-            eq, diff = compare_dicts(dict1[k], dict2[k])
-            if not eq:
-                return eq, diff
-        if v != dict2[k]:
-            return False, "Differing values: {} and {}, in dicts {}, {} with key {}".format(
-                v, dict2[k], dict1, dict2, k)
-        else:
-            pass
-            # print("same values: {} for dict parts {}".format(v, dict1))
-    return True, None
-
-
-def sendmail(mail, passw, msg, title="nle"):
-    # email me
-    TO = mail
-    SUBJECT = title
-    TEXT = msg
-    # Gmail Sign In
-    gmail_sender = mail
-    recipient = mail
-    gmail_passwd = passw
-
-    server = smtplib.SMTP('smtp.gmail.com', 587)
-    server.ehlo()
-    server.starttls()
-    server.login(gmail_sender, gmail_passwd)
-
-    BODY = '\r\n'.join([
-        'To: %s' % TO,
-        'From: %s' % gmail_sender,
-        'Subject: %s' % SUBJECT, '', TEXT
-    ])
-    try:
-        server.sendmail(gmail_sender, [TO], BODY)
-        info('Email sent to [%s]' % recipient)
-    except Exception as x:
-        info('Error sending mail to [%s]' % recipient)
-        error(x)
-
-
-def traverse_dict(ddict, key, prev_keys):
-    res = []
-    if key is None:
-        for key in ddict:
-            rres = traverse_dict(ddict, key, prev_keys)
-            res.append(rres)
-        return res
-    if type(ddict[key]) is dict:
-        prev_keys.append(key)
-        res = traverse_dict(ddict[key], None, prev_keys)
-    else:
-        val = ddict[key]
-        if type(val) is not list:
-            val = [val]
-        res = (val, prev_keys + [key])
-    return res
-
-
-def keyseq_exists(key_seq, ddict):
-    # make sure no key sequence param exists in the base config
-    for key in key_seq:
-        try:
-            ddict = ddict[key]
-        except KeyError:
-            return False
-    return True
 
 
 def parse_variable_component(var):
@@ -274,36 +144,6 @@ def make_configs(base_config, run_dir, sources_dir="./"):
         conf["misc"]["run_id"] = conf.id
     return sorted(configs, key=lambda x: x.id), variable_identifiable_substrings
 
-
-# get a nested dict value from a list of keys
-def get_kseq_value(kseq, ddict):
-    res = ddict
-    for k in kseq:
-        res = res[k]
-    return res
-
-
-def filter_testing(configs, config_file):
-    # discard configurations with incompatible components
-    out_conf = []
-    # read bad combos
-    with open(join(config_file + ".bad_combos")) as f:
-        bad_combos_lists = yaml.load(f, Loader=yaml.SafeLoader)
-    for conf in zip(configs):
-        bad_conf = False
-        for bad_combo in bad_combos_lists:
-            # if all bad key-value pairs exist in the conf, drop it
-            combo_components_exist = [
-                    keyseq_exists(keyseq, conf) and value == get_kseq_value(keyseq, conf) if type(value) is not list else get_kseq_value(keyseq, conf) in value \
-                    for (keyseq, value) in bad_combo]
-            if all(combo_components_exist):
-                bad_conf = True
-                info("Omitting incompatible config {} with bad entries: {}".
-                     format(conf.id, bad_combo))
-                break
-        if not bad_conf:
-            out_conf.append(conf)
-    return out_conf
 
 
 def print_existing_csv_results(path):
@@ -435,6 +275,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
             sstests = ["tukeyhsd"] if "names" not in exps["sstests"] else as_list(exps["sstests"]["names"])
             sstests_measures = ["f1"] if "measures" not in exps["sstests"] else as_list(exps["sstests"]["measures"])
             sstests_aggregations = ["macro"] if "aggregations" not in exps["sstests"] else as_list(exps["sstests"]["aggregations"])
+            sstests_limit_vars = None if "limit_variables" not in exps["sstests"] else as_list(exps["sstests"]["limit_variables"])
     except Exception as ex:
         error("Failed to read evaluation / testing options {}".format(ex))
 
@@ -614,15 +455,15 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
                 s + 1, len(skipped_configs), sk))
 
     if do_sstests:
-        do_stat_sig_testing(sstests, sstests_measures, sstests_aggregations, configs, results)
+        do_stat_sig_testing(sstests, sstests_measures, sstests_aggregations, configs, results, sstests_limit_vars)
 
     # [info(msg) for msg in messages]
     if do_send_mail:
         sendmail(email, passw, "run complete.")
 
-def do_stat_sig_testing(methods, measures, label_aggregations, configs, results, run_mode="run"):
+def do_stat_sig_testing(methods, measures, label_aggregations, configs, results, limit_variables=None, run_mode="run"):
     for method, measure, label_aggregation in product(methods, measures, label_aggregations):
-        info("Running statistical testing via {} on {}-{}".format(method, measure, label_aggregation))
+        info("Running statistical testing via {} on {} {}".format(method, label_aggregation, measure))
         # get ids and variable values per configuration
         df_inputs = []
         try:
@@ -643,8 +484,18 @@ def do_stat_sig_testing(methods, measures, label_aggregations, configs, results,
         inst = instantiator.Instantiator()
         stat_test = inst.create(method)
         for variable in [d for d in data.columns if d !="score"]:
+            if limit_variables is not None:
+                if variable not in limit_variables:
+                    continue
+            if len(data[variable]) == len(set(data[variable])):
+                warning("Skipping testing for parameter [{}] due to having only 1 observation per value".format(variable))
+                continue
+            if len(set(data[variable])) == 1:
+                warning("Skipping testing for parameter [{}] due to having only 1 unique parameter value: {}".format(variable, data[variable].values[0]))
+                continue
             stat_result = stat_test.run(data["score"], data[variable])
-            print()
+            print(stat_result[0])
+            print(stat_result[1])
 
     pass
 
