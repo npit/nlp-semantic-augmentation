@@ -181,8 +181,8 @@ def shapes_list(thelist):
         return [len(x) for x in thelist]
 
 def get_shape(element):
-    """numpy shape fetcher, handling empty inputs"""
-    return element.shape if len(element) > 0 else ()
+    """numpy / scipy csr shape fetcher, handling empty inputs"""
+    return element.shape if element.size > 0 else ()
 
 def lens_list(thelist):
     return [len(x) for x in thelist]

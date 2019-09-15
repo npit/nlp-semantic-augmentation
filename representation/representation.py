@@ -1,10 +1,11 @@
-from bundle.bundle import Bundle
-from bundle.datatypes import Vectors, Text
-from component.component import Component
-from utils import error, debug, shapes_list, one_hot, info
 import numpy as np
-from serializable import Serializable
+
 import defs
+from bundle.bundle import Bundle
+from bundle.datatypes import Text, Vectors
+from component.component import Component
+from serializable import Serializable
+from utils import debug, error, info, one_hot, shapes_list
 
 
 class Representation(Serializable):
@@ -40,7 +41,7 @@ class Representation(Serializable):
             self.set_name()
             Component.configure_name(self)
             self.check_params()
-            info("Restored reprsentation name to {}".format(self.name))
+            info("Restored representation name to {}".format(self.name))
 
 
 
@@ -107,7 +108,6 @@ class Representation(Serializable):
 
         self.dimension = self.config.representation.dimension
         self.dataset_name = self.source_name
-        self.base_name = self.name
 
         self.sequence_length = self.config.representation.sequence_length
 
