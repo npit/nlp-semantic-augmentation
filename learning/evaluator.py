@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 from sklearn import metrics
 
-from utils import (error, count_label_occurences, info, numeric_to_string, one_hot, warning)
+from utils import (count_label_occurences, error, info, numeric_to_string,
+                   one_hot, warning)
 
 
 class Evaluator:
@@ -317,7 +318,7 @@ class Evaluator:
         for lbl, freq in distr:
             maj = " - [input majority]" if lbl == self.majority_label else ""
             localmaj = " - [local majority]" if lbl == local_max_lbl else ""
-            info("Label {} : {}{}{}".format(lbl, freq, localmaj, maj))
+            info("Label {} : {:.3f}{}{}".format(lbl, freq, localmaj, maj))
 
     # show labels distribution
     def compute_label_distribution(self, labels=None, do_show=False):

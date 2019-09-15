@@ -94,7 +94,7 @@ def make_configs(base_config, run_dir, sources_dir="./"):
                 continue
             for field_name, field_value in component_body.items():
                 if field_name == "variables":
-                    print(component_body[field_name])
+                    # print(component_body[field_name])
                     for variable_field_name, variable_field_values in component_body[
                             field_name].items():
                         # expand configurations
@@ -444,6 +444,10 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
         sendmail(email, passw, "run complete.")
 
 def do_stat_sig_testing(methods, measures, label_aggregations, configs, results, limit_variables=None, run_mode="run"):
+    testable_variables = list(configs[0].ddict.keys())
+    if limit_variables:
+        testable_variables = [x for x in testable_variables if x in limit_variables]
+    info("Running statistical tests on{} variables: {}".format(" all" if limit_variables is None else " specified", testable_variables))
     for method, measure, label_aggregation in product(methods, measures, label_aggregations):
         info("Running statistical testing via {} on {} {}".format(method, label_aggregation, measure))
         # get ids and variable values per configuration
@@ -465,7 +469,9 @@ def do_stat_sig_testing(methods, measures, label_aggregations, configs, results,
         data = pd.DataFrame(df_inputs)
         inst = instantiator.Instantiator()
         stat_test = inst.create(method)
-        for variable in [d for d in data.columns if d !="score"]:
+ 
+        for v, variable in enumerate(testable_variables):
+            info("Experiment variable {}/{}: {}".format(v+1, len(testable_variables), variable))
             if limit_variables is not None:
                 if variable not in limit_variables:
                     continue
@@ -476,10 +482,8 @@ def do_stat_sig_testing(methods, measures, label_aggregations, configs, results,
                 warning("Skipping testing for parameter [{}] due to having only 1 unique parameter value: {}".format(variable, data[variable].values[0]))
                 continue
             stat_result = stat_test.run(data["score"], data[variable])
-            print(stat_result[0])
-            print(stat_result[1])
+            stat_test.report()
 
-    pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -43,12 +43,12 @@ chains:
 
 # training settings 
 train:
-  epochs: 10
+  epochs: 2
   # if test data is supplied, trainset is split to folds / val. portion
   # the val. data is used to augment training, if supported by the learning
   # mean performance across folds is reported.
   # if test data is NOT supplied, the validation portion is held out for testing only
-  folds: 5
+  folds: 3
   # validation_portion: 0.1
   early_stopping_patience: 20
   batch_size: 20
