@@ -1,9 +1,11 @@
-import defs
-from representation.representation import Representation
-from utils import error, info, debug, get_shape, shapes_list, warning
 import numpy as np
 import pandas as pd
 from pandas.errors import ParserError
+
+import defs
+from representation.representation import Representation
+from utils import (debug, error, get_shape, info, realign_embedding_index,
+                   shapes_list, warning)
 
 
 class Embedding(Representation):
@@ -15,6 +17,7 @@ class Embedding(Representation):
     dimension = None
     # word - word_index map
     embedding_vocabulary_index = {}
+    undefined_element_index = None
 
 
     # region # serializable overrides
@@ -31,8 +34,7 @@ class Embedding(Representation):
             info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
 
     def get_all_preprocessed(self):
-        return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
-                "undefined_word_index": None}
+        return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance, "undefined_element_index": self.undefined_element_index, "embeddings": self.embeddings}
 
     # endregion
 
@@ -92,21 +94,26 @@ class Embedding(Representation):
         aggr_str = self.aggregation
         if self.aggregation == defs.aggregation.pad: aggr_str += "_seq{}".format(self.sequence_length)
         info("Aggregating embeddings to single-vector-instances via the [{}] method.".format(aggr_str))
-        # use words per document for the aggregation, aggregating function as an argument
-        # stats
+        # use words per document for the aggregation, aggregating function as an argument stats
         aggregation_stats = [0, 0]
 
+        if self.do_train_vectors:
+            error("Vector training TODO", True)
+        # change embedding matrix to represent new vectors here!
+
+        if self.do_train_vectors:
+            pass
+
+
         for dset_idx in range(len(self.dataset_vectors)):
-            aggregated_dataset_vectors = np.ndarray((0, self.dimension), np.float32)
-            info("Aggregating embedding vectors for collection {}/{} with shape {}".format(
-                dset_idx + 1, len(self.dataset_vectors), get_shape(self.dataset_vectors[dset_idx])))
+            # aggregated_dataset_vectors = np.ndarray((0, self.dimension), np.float32)
+            aggregated_indices = []
+            info("Aggregating embedding vectors for collection {}/{}".format(dset_idx + 1, len(self.dataset_vectors)))
 
             new_numel_per_instance = []
             curr_idx = 0
-            for inst_idx, inst_len in enumerate(self.elements_per_instance[dset_idx]):
-                curr_instance = self.dataset_vectors[dset_idx][curr_idx: curr_idx + inst_len]
-                if np.size(curr_instance) == 0:
-                    error("Empty slice! Current index: {} / {}, instance numel: {}".format(curr_idx, len(self.dataset_vectors[dset_idx]), inst_len))
+            for inst_idx, curr_instance in enumerate(self.dataset_vectors[dset_idx]):
+                curr_instance = self.dataset_vectors[dset_idx][inst_idx]
 
                 # average aggregation to a single vector
                 if self.aggregation == "avg":
@@ -114,35 +121,37 @@ class Embedding(Representation):
                     new_numel_per_instance.append(1)
                 # padding aggregation to specified vectors per instance
                 elif self.aggregation == "pad":
-                    # filt = self.aggregation[1]
-                    new_numel_per_instance.append(self.sequence_length)
                     num_vectors = len(curr_instance)
                     if self.sequence_length < num_vectors:
                         # truncate
-                        curr_instance = curr_instance[:self.sequence_length, :]
+                        curr_instance = curr_instance[:self.sequence_length]
                         aggregation_stats[0] += 1
                     elif self.sequence_length > num_vectors:
                         # make pad and stack vertically
                         pad_size = self.sequence_length - num_vectors
-                        pad = np.tile(self.get_zero_pad_element(), (pad_size, 1))
-                        curr_instance = np.append(curr_instance, pad, axis=0)
+                        curr_instance += np.append(curr_instance, np.asarray([self.unknown_element_index] * pad_size))
                         aggregation_stats[1] += 1
                 elif self.aggregation == defs.alias.none:
                     pass
                 else:
                     error("Undefined aggregation: {}".format(self.aggregation))
 
-                aggregated_dataset_vectors = np.append(aggregated_dataset_vectors, curr_instance, axis=0)
-                curr_idx += inst_len
+                # aggregated_dataset_vectors = np.append(aggregated_dataset_vectors, curr_instance, axis=0)
+                aggregated_indices.append(curr_instance)
+
+                # curr_idx += inst_len
             # update the dataset vector collection and dimension
-            self.dataset_vectors[dset_idx] = aggregated_dataset_vectors
+            self.dataset_vectors[dset_idx] = aggregated_indices
             # update the elements per instance
             self.elements_per_instance[dset_idx] = np.asarray(new_numel_per_instance, np.int32)
 
             # report stats
             if self.aggregation == "pad":
                 info("Truncated {:.3f}% and padded {:.3f} % items.".format(*[x / len(self.dataset_vectors[dset_idx]) * 100 for x in aggregation_stats]))
-        info("Aggregated shapes: {}".format(shapes_list(self.dataset_vectors)))
+
+        self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.asarray(list(range(len(self.embeddings.index)))))
+        self.embeddings = self.embeddings.iloc[new_embedding_index]
+        info("Aggregated shapes, indices: {}, matrix: {}".format(shapes_list(self.dataset_vectors), self.embeddings.shape))
 
     # shortcut for reading configuration values
     def set_params(self):
@@ -150,3 +159,6 @@ class Embedding(Representation):
         self.compatible_aggregations = defs.aggregation.avail
         self.compatible_sequence_lengths = defs.sequence_length.avail
         Representation.set_params(self)
+
+    def has_word(self, word):
+        return word in self.embeddings.index

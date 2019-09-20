@@ -1,5 +1,6 @@
-from bundle.datatypes import Text, Labels, Vectors
-from utils import info, data_summary, error, debug
+from bundle.datatypes import Labels, Text, Vectors
+from utils import data_summary, debug, error, info
+
 
 """Data container class to pass data around
 """
@@ -9,6 +10,7 @@ class Bundle:
     labels = None
     text = None
     vocabulary = None
+    indices = None
 
     source_name = None
     chain_name = None
@@ -22,13 +24,13 @@ class Bundle:
             parts.append(self.chain_name)
         if self.vectors is not None:
             parts.append(Vectors.name)
-        if self.vectors is not None:
+        if self.labels is not None:
             parts.append(Labels.name)
-        if self.vectors is not None:
+        if self.text is not None:
             parts.append(Text.name)
         return "_".join(parts)
 
-    def __init__(self, source_name=None, vectors=None, labels=None, text=None):
+    def __init__(self, source_name=None, vectors=None, labels=None, text=None, indices=None):
         self.source_name = source_name
         self.content_dict = {}
         self.demand = {}
@@ -41,6 +43,9 @@ class Bundle:
         if text is not None:
             self.content_dict["text"] = text
             self.text = text
+        if indices is not None:
+            self.content_dict["indices"] = indices
+            self.indices = indices
 
     def clear_data(self, chain_name, component_name):
         """Delete unneeded data
@@ -62,7 +67,8 @@ class Bundle:
                 del self.text
             if self.labels is not None:
                 del self.labels
-            pass
+            if self.indices is not None:
+                del self.indices
 
     def get_full_name(self):
         return "({}|{})".format(self.chain_name, self.source_name)
@@ -100,6 +106,9 @@ class Bundle:
     def get_vectors(self):
         return self.vectors
 
+    def get_indices(self):
+        return self.indices
+
     def get_text(self):
         return self.text
     # endregion
@@ -113,6 +122,8 @@ class Bundle:
         return self.vectors is not None
     def has_text(self):
         return self.text is not None
+    def has_indices(self):
+        return self.text is not None
     # endregion
 
     # region: setters
@@ -122,6 +133,8 @@ class Bundle:
         self.vectors = vectors
     def set_labels(self, labels):
         self.labels = labels
+    def set_indices(self, indices):
+        self.indices = indices
     def set_source_name(self, name):
         self.source_name = name
     def set_chain_name(self, name):
@@ -184,6 +197,10 @@ class BundleList:
         res = [x.get_vectors() for x in self.bundles]
         return self.single_filter(res, single)
 
+    def get_indices(self, single=False):
+        res = [x.get_indices() for x in self.bundles]
+        return self.single_filter(res, single)
+
     def get(self, index):
         return self.bundles[index]
 
@@ -219,6 +236,8 @@ class BundleList:
     # endregion
 
     # region : #has'ers - enforce uniqueness
+    def has_indices(self):
+        return any([x.get_indices() is not None for x in self.bundles])
     def has_labels(self):
         return any([x.get_labels() is not None for x in self.bundles])
     def has_chain_name(self):

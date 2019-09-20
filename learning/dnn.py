@@ -13,6 +13,10 @@ from keras.models import Sequential, model_from_json
 from sklearn.exceptions import UndefinedMetricWarning
 
 from learning.classifier import Classifier
+# tf deprecation warnings
+# import tensorflow.python.util.deprecation as deprecation
+# deprecation._PRINT_DEPRECATION_WARNINGS = False
+# 
 from utils import debug, error, info, one_hot, write_pickled
 
 # import keras with this disgusting hack to get rid of the "Using xxxx backend" message
@@ -20,11 +24,6 @@ stderr = sys.stderr
 sys.stderr = open('/dev/null', 'w')
 sys.stderr = stderr
 
-# tf deprecation warnings
-# import tensorflow.python.util.deprecation as deprecation
-# deprecation._PRINT_DEPRECATION_WARNINGS = False
-# 
-from utils import info, debug, error, write_pickled, one_hot
 
 # from keras import backend
 # import tensorflow as tf
@@ -148,6 +147,9 @@ class DNN(Classifier):
             val = (val_data, val_labels)
         else:
             val = None
+
+get actual data here, via a method or sth
+
         model.fit(train_data,
                   train_labels,
                   batch_size=self.batch_size,

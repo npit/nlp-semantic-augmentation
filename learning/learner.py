@@ -51,7 +51,7 @@ class Learner(Component):
 
     def count_samples(self):
         self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
-            map(len, [self.train, self.test, self.train_labels, self.test_labels])
+            map(len, [self.train_index, self.test_index, self.train_labels, self.test_labels])
 
     def make(self):
         self.verbosity = 1 if self.config.print.training_progress else 0
@@ -61,10 +61,10 @@ class Learner(Component):
             error("No training samples for class index {}".format(
                 zero_samples_idx))
         # nan checks
-        nans, _ = np.where(np.isnan(self.train))
+        nans, _ = np.where(np.isnan(self.embeddings))
         if np.size(nans) != 0:
             error("NaNs in training data:{}".format(nans))
-        nans, _ = np.where(np.isnan(self.test))
+        nans, _ = np.where(np.isnan(self.embeddings))
         if np.size(nans) != 0:
             error("NaNs in test data:{}".format(nans))
 
@@ -73,7 +73,7 @@ class Learner(Component):
         label_counts = count_label_occurences(self.train_labels)
         self.num_labels = len(label_counts)
         self.count_samples()
-        self.input_dim = self.train[0].shape[-1]
+        self.input_dim = self.embeddings.shape[-1]
         self.allow_prediction_loading = self.config.misc.allow_prediction_loading
         self.allow_model_loading = self.config.misc.allow_model_loading
         self.sequence_length = self.config.learner.sequence_length
@@ -93,8 +93,7 @@ class Learner(Component):
                                                    self.validation_portion,
                                                    self.test_data_available(),
                                                    self.do_multilabel)
-        self.validation.assign_data(self.train, self.train_labels, self.test,
-                                    self.test_labels)
+        self.validation.assign_data(self.embeddings, self.train_labels, self.test_labels, self.test_index)
 
         # sampling
         self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
@@ -114,8 +113,8 @@ class Learner(Component):
         np.random.seed(self.seed)
 
         self.batch_size = self.config.train.batch_size
-        info("Learner data/labels: train: {} test: {}".format(
-            self.train.shape, self.test.shape))
+        info("Learner data/labels: embeddings: {} train idxs: {} test idxs: {}".format(
+            self.embeddings.shape, len(self.train_index), len(self.test_index)))
 
         # sanity checks
         if self.do_folds and self.do_validate_portion:
@@ -135,7 +134,6 @@ class Learner(Component):
                                      self.use_validation_for_training,
                                      self.validation_exists)
             self.evaluator.compute_label_distribution()
-            # self.evaluator.show_label_distribution(labels=self.train_labels, do_show=False)
         else:
             # count label distribution from majority
             self.evaluator.configure(self.test_labels, self.num_labels,
@@ -175,7 +173,7 @@ class Learner(Component):
         return path if exists(path) else None
 
     def test_data_available(self):
-        return self.test.size > 0
+        return len(self.test_index) > 0
 
     # function to retrieve training data as per the existing configuration
     def get_trainval_indexes(self):
@@ -500,9 +498,9 @@ class Learner(Component):
         error("{} needs label information.".format(self.component_name),
               not self.inputs.has_labels())
 
-        self.train, self.test = self.inputs.get_vectors(single=True).instances
-        self.train_labels, self.test_labels = self.inputs.get_labels(
-            single=True).instances
+        self.train_index, self.test_index = self.inputs.get_indices(single=True).instances
+        self.embeddings = self.inputs.get_vectors(single=True).instances
+        self.train_labels, self.test_labels = self.inputs.get_labels(single=True).instances
 
     class ValidatonSetting:
         def __init__(self, folds, portion, test_present, do_multilabel):
@@ -556,9 +554,10 @@ class Learner(Component):
                 base_path += "_valportion{}".format(self.portion)
             return base_path
 
-        def assign_data(self, train, train_labels, test, test_labels):
-            self.train, self.train_labels = train, train_labels
-            self.test, self.test_labels = test, test_labels
+        def assign_data(self, embeddings, train_labels, test_labels, test_index):
+            self.embeddings = embeddings
+            self.test_index = test_index
+            self.train_labels, self.test_labels = train_labels, test_labels
 
         # get training, validation, test data chunks, given the input indexes and validation setting
         def get_run_data(self, iteration_index, trainval_idx):
@@ -576,28 +575,29 @@ class Learner(Component):
             if len(train_idx) > 0:
                 if not self.do_multilabel:
                     train_labels = np.asarray(train_labels)
-                train_data = np.vstack([self.train[idx] for idx in train_idx])
+                # train_data = [self.train_index[idx] for idx in train_idx]
             else:
-                train_data, train_labels = np.empty((0, )), np.empty((0))
+                # train_data, train_labels = np.empty((0, )), np.empty((0))
+                train_labels = np.empty((0))
 
             if len(val_idx) > 0:
                 if not self.do_multilabel:
                     val_labels = np.asarray(val_labels)
-                val_data = np.vstack([self.train[idx] for idx in val_idx])
-                val = val_data, val_labels
+                # val_data = [self.train_index[idx] for idx in val_idx]
+                val = val_idx, val_labels
             else:
                 val = None
 
             if self.use_validation_for_testing:
                 val, test = None, val
             else:
-                test = self.test, self.test_labels
+                test = self.test_index, self.test_labels
             if len(val_idx) > 0 and self.use_validation_for_testing:
                 # mark the test instance indexes as the val. indexes of the train
                 instance_indexes = val_idx
             else:
                 instance_indexes = range(len(test))
-            return (train_data, train_labels), val, test, instance_indexes
+            return (train_idx, train_labels), val, test, instance_indexes
 
         def get_test_labels(self, instance_indexes):
             if self.use_validation_for_testing:

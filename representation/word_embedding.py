@@ -1,9 +1,12 @@
-import pandas as pd
 import math
-from representation.embedding import Embedding
-from utils import error, info, warning, tictoc, write_pickled, debug
+
 import numpy as np
+import pandas as pd
 import tqdm
+
+from representation.embedding import Embedding
+from utils import (debug, error, info, realign_embedding_index, tictoc,
+                   warning, write_pickled)
 
 
 # generic class to load pickled embedding vectors
@@ -12,7 +15,7 @@ class WordEmbedding(Embedding):
     unknown_word_token = "unk"
     present_words = None
 
-    data_names = Embedding.data_names + ["undefined_word_index"]
+    data_names = Embedding.data_names + ["unknown_element_index"]
 
     # expected raw data path
     def get_raw_path(self):
@@ -94,7 +97,7 @@ class WordEmbedding(Embedding):
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
         self.present_words = preprocessed["present_words"]
-        self.undefined_word_index = preprocessed["undefined_word_index"]
+        self.undefined_word_index = preprocessed["undefined_element_index"]
         Embedding.handle_preprocessed(self, preprocessed)
 
     # transform input texts to embeddings
@@ -104,6 +107,7 @@ class WordEmbedding(Embedding):
         info("Mapping to {} word embeddings.".format(self.name))
 
         self.dataset_vectors = [[], []]
+        self.indices = [[], []]
         self.elements_per_instance = [[], []]
         self.present_words = set()
 
@@ -118,6 +122,8 @@ class WordEmbedding(Embedding):
             warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
             self.embeddings.loc[self.unknown_word_token] = np.zeros(self.dimension)
 
+        unknown_token_index = self.embeddings.index.get_loc(self.unknown_word_token)
+        self.unknown_element_index = unknown_token_index
         # loop over input text bundles (e.g. train & test)
         for dset_idx, docs in enumerate(self.text):
             num_docs = len(docs)
@@ -128,11 +134,24 @@ class WordEmbedding(Embedding):
                     word_list = [wp[0] for wp in doc_wp_list]
                     # debug("Text {}/{} with {} words".format(j + 1, num_documents, len(word_list)))
                     # check present & missing words
+                    doc_indices = []
                     present_map = {}
+                    present_index_map = {}
                     for w, word in enumerate(word_list):
                         word_in_embedding_vocab = word in self.embeddings.index
                         word_stats.update_word_stats(word, word_in_embedding_vocab)
                         present_map[word] = word_in_embedding_vocab
+                        present_map[word] = word_in_embedding_vocab
+                        if not word_in_embedding_vocab:
+                            if not self.map_missing_unks:
+                                continue
+                            else:
+                                word_index = unknown_token_index
+
+                        else:
+                            word_index = self.embeddings.index.get_loc(word)
+                        doc_indices.append(word_index)
+
 
                     # handle missing
                     word_list = [w for w in word_list if present_map[w]] if not self.map_missing_unks else \
@@ -141,21 +160,39 @@ class WordEmbedding(Embedding):
                     self.present_words.update([w for w in present_map if present_map[w]])
                     error("No words present in document.", len(word_list) == 0)
 
-                    # get embeddings
-                    text_embeddings = self.embeddings.loc[word_list]
-                    self.dataset_vectors[dset_idx].append(text_embeddings)
+                    # if not self.do_train_vectors:
+                    #     # get embeddings
+                    #     text_embeddings = self.embeddings.loc[word_list]
+                    #     self.dataset_vectors[dset_idx].append(text_embeddings)
+                    #     num_embeddings = len(text_embeddings)
+                    #     # update present words and their index, per doc
+                    #     error("No embeddings generated for text", num_embeddings == 0)
+                    #     self.elements_per_instance[dset_idx].append(num_embeddings)
+                    # else:
+                    #     # just save indices
+                    #     doc_indices = np.asarray(doc_indices, np.int32)
+                    #     self.dataset_vectors[dset_idx].append(doc_indices)
+                    #     self.elements_per_instance[dset_idx].append(len(doc_indices))
+                    # just save indices
+                    doc_indices = np.asarray(doc_indices, np.int32)
+                    self.dataset_vectors[dset_idx].append(doc_indices)
+                    self.elements_per_instance[dset_idx].append(len(doc_indices))
 
-                    # update present words and their index, per doc
-                    num_embeddings = len(text_embeddings)
-                    error("No embeddings generated for text", num_embeddings == 0)
-                    self.elements_per_instance[dset_idx].append(num_embeddings)
-
-            if len(self.dataset_vectors[dset_idx]) > 0:
-                self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values
+            # if self.do_train_vectors:
+            #     # just use the saved indices
+            #     pass
+            # else:
+            #     if len(self.dataset_vectors[dset_idx]) > 0:
+            #         self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values
 
             word_stats.print_word_stats()
             self.elements_per_instance[dset_idx] = np.asarray(self.elements_per_instance[dset_idx], np.int32)
 
+        # if self.do_train_vectors:
+        #     self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.asarray(list(range(len(self.embeddings.index)))))
+        #     self.embeddings = self.embeddings.iloc[new_embedding_index]
+        self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.asarray(list(range(len(self.embeddings.index)))))
+        self.embeddings = self.embeddings.iloc[new_embedding_index].values
         # write
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())

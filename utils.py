@@ -1,14 +1,34 @@
-import time
-import yaml
-import pickle
 import logging
-import numpy as np
 import os
+import pickle
+import time
+from collections import Counter, OrderedDict, namedtuple
 from os.path import exists
-from collections import namedtuple, Counter, OrderedDict
+
 import nltk
+import numpy as np
+import yaml
 
 num_warnings = 0
+
+def realign_embedding_index(data_indexes, all_indexes):
+    """Check for non-mapped indexes, drop them and realign"""
+    mapped_indexes = np.asarray([False for _ in all_indexes])
+    for data_bundle in data_indexes:
+        for indexes in data_bundle:
+            mapped_indexes[indexes] = True
+    # find unmapped
+    new_indexes = all_indexes[mapped_indexes]
+    old2new_index = {}
+    for idx, oldidx in enumerate(new_indexes):
+        old2new_index[oldidx] = idx
+
+    # remap
+    for d in range(len(data_indexes)):
+        for i in range(len(data_indexes[d])):
+            data_indexes[d][i] = [old2new_index[oldidx] for oldidx in data_indexes[d][i]]
+    debug("Reduced embedding matrix from {} to {} elements.".format(len(all_indexes), len(new_indexes)))
+    return data_indexes, new_indexes
 
 def match_labels_to_instances(elements_per_instance, labels):
     """Expand, if needed, ground truth samples for multi-vector instances

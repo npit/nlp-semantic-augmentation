@@ -1,20 +1,19 @@
-import os
-from copy import deepcopy
-from os.path import join, exists
 import logging
+import os
 import random
-import yaml
-import utils
-import defs
-import nltk
-from utils import need, error, info, ordered_load, warning
 import shutil
+from collections import OrderedDict
+from copy import deepcopy
+from os.path import exists, join
 
+import nltk
+import yaml
+
+import defs
+import utils
 from component.chain import Chain
 from component.pipeline import Pipeline
-
-from collections import OrderedDict
-
+from utils import error, info, need, ordered_load, warning
 
 
 class Config:
@@ -68,6 +67,7 @@ class Config:
         dimension = None
         term_list = None
         aggregation = None
+        train = None
 
     class transform_conf:
         dimension = None
@@ -273,6 +273,7 @@ class Config:
                 self.representation.missing_words = self.get_value("unknown_words", default="unk", base=representation_information)
                 self.representation.term_list = self.get_value("term_list", base=representation_information)
                 self.representation.limit = self.get_value("limit", base=representation_information, default=[])
+                self.representation.train = self.get_value("train", base=representation_information, default=False)
                 field = self.representation
 
             elif field == "transform":

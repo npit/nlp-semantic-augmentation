@@ -2,7 +2,7 @@ import numpy as np
 
 import defs
 from bundle.bundle import Bundle
-from bundle.datatypes import Text, Vectors
+from bundle.datatypes import Indices, Text, Vectors
 from component.component import Component
 from serializable import Serializable
 from utils import debug, error, info, one_hot, shapes_list
@@ -16,16 +16,15 @@ class Representation(Serializable):
     sequence_length = 1
     dataset_vectors = None
 
-    data_names = ["dataset_vectors", "elements_per_instance"]
+    data_names = ["dataset_vectors", "elements_per_instance", "embeddings"]
 
     @staticmethod
     def get_available():
         return [cls.name for cls in Representation.__subclasses__()]
 
     def __init__(self):
-        Component.__init__(self, consumes=Text.name, produces=Vectors.name)
         """Constructor"""
-        pass
+        Component.__init__(self, consumes=Text.name, produces=Vectors.name)
 
     def populate(self):
         Serializable.__init__(self, self.dir_name)
@@ -43,13 +42,12 @@ class Representation(Serializable):
             self.check_params()
             info("Restored representation name to {}".format(self.name))
 
-
-
     # region # serializable overrides
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.dataset_vectors, self.elements_per_instance = [preprocessed[n] for n in Representation.data_names]
+        self.dataset_vectors, self.elements_per_instance, self.embeddings = [preprocessed[n] for n in Representation.data_names]
+        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
 
     # add exra representations-specific serialization paths
     def set_additional_serialization_sources(self):
@@ -62,13 +60,6 @@ class Representation(Serializable):
         self.handle_preprocessed(data)
         self.loaded_aggregated = True
         debug("Read aggregated embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
-
-
-    def handle_preprocessed(self, preprocessed):
-        self.loaded_preprocessed = True
-        self.dataset_vectors, self.elements_per_instance = [preprocessed[n] for n in Representation.data_names]
-        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
-
 
     def handle_raw(self, raw_data):
         pass
@@ -105,11 +96,11 @@ class Representation(Serializable):
     # shortcut for reading configuration values
     def set_params(self):
         self.aggregation = self.config.representation.aggregation
-
         self.dimension = self.config.representation.dimension
         self.dataset_name = self.source_name
 
         self.sequence_length = self.config.representation.sequence_length
+        self.do_train_vectors = self.config.representation.train
 
     def check_params(self):
         if self.aggregation not in self.compatible_aggregations:
@@ -126,9 +117,6 @@ class Representation(Serializable):
     # name setter function, exists for potential overriding
     def set_name(self):
         self.name = Representation.generate_name(self.config, self.source_name)
-
-    def has_word(self, word):
-        return word in self.embeddings.index
 
     # set one element per instance
     def set_constant_elements_per_instance(self, num=1):
@@ -165,7 +153,8 @@ class Representation(Serializable):
         self.map_text()
         self.compute_dense()
         self.aggregate_instance_vectors()
-        self.outputs.set_vectors(Vectors(vecs=self.dataset_vectors, epi=self.elements_per_instance))
+        self.outputs.set_vectors(Vectors(vecs=self.embeddings))
+        self.outputs.set_indices(Indices(self.dataset_vectors))
 
     def process_component_inputs(self):
         if self.loaded_aggregated or self.loaded_preprocessed:
