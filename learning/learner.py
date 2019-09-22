@@ -24,11 +24,13 @@ Abstract class representing a learning model
 class Learner(Component):
 
     component_name = "learner"
+    name = "learner"
     save_dir = "models"
     folds = None
     fold_index = 0
     evaluator = None
     sequence_length = None
+    input_aggregation = None
     train, test, train_labels, test_labels = None, None, None, None
 
     test_instance_indexes = None
@@ -93,7 +95,7 @@ class Learner(Component):
                                                    self.validation_portion,
                                                    self.test_data_available(),
                                                    self.do_multilabel)
-        self.validation.assign_data(self.embeddings, self.train_labels, self.test_labels, self.test_index)
+        self.validation.assign_data(self.embeddings, self.train_index, self.train_labels, self.test_labels, self.test_index)
 
         # sampling
         self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
@@ -190,7 +192,7 @@ class Learner(Component):
         # if self.num_train != self.num_train_labels:
         if self.sequence_length > 1:
             self.validation.set_trainval_label_index(deepcopy(trainval_idx))
-            trainval_idx = self.expand_index_to_sequence(trainval_idx)
+            # trainval_idx = self.expand_index_to_sequence(trainval_idx)
         return trainval_idx
 
     # perfrom a train-test loop
@@ -207,80 +209,55 @@ class Learner(Component):
 
             # iterate over required runs as per the validation setting
             for iteration_index, trainval in enumerate(train_val_idxs):
-                train, val, test, test_instance_indexes = self.validation.get_run_data(
-                    iteration_index, trainval)
+                train_index, train_labels, val_index, val_labels, \
+                test_index, test_labels, test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
 
                 # show training data statistics
                 self.evaluator.show_label_distribution(
-                    count_label_occurences(train[1]),
+                    count_label_occurences(train_labels),
                     "Training label distribution for validation setting: " +
                     self.validation.get_current_descr())
-                if val:
+                if val_index is not None:
                     self.evaluator.show_label_distribution(
-                        count_label_occurences(val[1]),
+                        count_label_occurences(val_labels),
                         "Validation label distribution for validation setting: "
                         + self.validation.get_current_descr())
 
-                # preprocess data and labels
-                train, val, test = self.preprocess_data_labels(
-                    train, val, test)
+                # preprocess data and labels -- we only have indexes here.
                 # assign containers
-                train_data, train_labels = train
-                test_data, test_labels = test
-                val_data, val_labels = val if val else (None, None)
+                # train_index, train_labels = train
+                # test_index, test_labels = test
+                # val_index, val_labels = val if val else (None, None)
                 self.count_samples()
 
+                # for cross-validation testing, gotta keep the ref. labels updated
                 self.evaluator.update_reference_labels(test_labels,
                                                        train_labels)
                 # check if the run is completed already and load existing results, if allowed
                 model, predictions = None, None
                 if self.allow_prediction_loading:
-                    # get predictions and instance indexes they correspond to
-                    existing_preds, existing_instance_indexes = self.get_existing_predictions(
-                    )
-                    if existing_preds is not None:
-                        info("Loaded existing predictions.")
-                        error(
-                            "Different instance indexes loaded than the ones generated.",
-                            not np.all(
-                                np.equal(existing_instance_indexes,
-                                         test_instance_indexes)))
-                        existing_test_labels = self.validation.get_test_labels(
-                            test_instance_indexes)
-                        error(
-                            "Different instance labels loaded than the ones generated.",
-                            not np.all(
-                                np.equal(existing_test_labels, test_labels)))
-                        test_instance_indexes = existing_instance_indexes
+                    predictions, test_instance_indexes = self.load_existing_predictions(test_instance_indexes, test_labels)
 
                 # train the model
                 if predictions is None:
-                    with tictoc(
-                            "Training run [{}] on {} training and {} val data."
-                            .format(self.validation, len(train_labels),
-                                    len(val[1]) if val else "none")):
+                    with tictoc( "Training run [{}] on {} training and {} val data.".format(self.validation, len(train_labels), len(val_labels) if val_labels is not None else "[none]")):
                         # check if a trained model already exists
                         if self.allow_model_loading:
                             model = self.load_model()
                         if not model:
-                            model = self.train_model(train_data, train_labels,
-                                                     val_data, val_labels)
+                            model = self.train_model(train_index, self.embeddings, train_labels, val_index, val_labels)
                             # create directories
                             makedirs(self.models_folder, exist_ok=True)
                             self.save_model(model)
                         else:
-                            info(
-                                "Skipping training due to existing model successfully loaded."
-                            )
+                            info( "Skipping training due to existing model successfully loaded.")
                 else:
-                    info(
-                        "Skipping training due to existing predictions successfully loaded."
-                    )
+                    info( "Skipping training due to existing predictions successfully loaded.")
 
                 # test the model
                 with tictoc("Testing run [{}] on {} test data.".format(
                         self.validation.descr, self.num_test_labels)):
-                    self.do_test_evaluate(model, test_data, test_labels,
+                    self.do_test_evaluate(model, test_index, self.embeddings, test_labels,
                                           test_instance_indexes, predictions)
                     model_paths.append(self.get_current_model_path())
 
@@ -304,31 +281,37 @@ class Learner(Component):
                 # show the test label distribution
                 self.evaluator.show_label_distribution()
             self.evaluator.report_overall_results(self.validation.descr,
-                                                  len(self.train),
+                                                  len(self.train_index),
                                                   self.results_folder)
+
+    def get_data(self, index, embeddings):
+        """Get data index from the embedding matrix"""
+        if np.squeeze(index).ndim > 1:
+            # if we have multi-element index, there has to be an aggregation method defined for the learner.
+            error("The learner [{}] has no defined aggregation and is not sequence-capable, but the input index has shape {}".
+            format(self.name, index.shape), self.input_aggregation is None)
+        return embeddings[index] if len(index) > 0 else None
+
 
     # evaluate a model on the test set
     def do_test_evaluate(self,
                          model,
-                         test_data,
+                         test_index,
+                         embeddings,
                          test_labels,
                          test_instance_indexes,
                          predictions=None):
         if predictions is None:
             # evaluate the model
-            info("Test data {}".format(test_data.shape))
-            error("No test data supplied!", len(test_data) == 0)
-            predictions = self.test_model(test_data, model)
+            error("No test data supplied!", len(test_index) == 0)
+            predictions = self.test_model(test_index, embeddings, model)
         # get baseline performances
-        self.evaluator.evaluate_learning_run(predictions,
-                                             test_instance_indexes)
+        self.evaluator.evaluate_learning_run(predictions, test_instance_indexes)
         if self.do_folds and self.config.print.folds:
-            self.evaluator.print_run_performance(self.validation.descr,
-                                                 self.validation.current_fold)
+            self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)
         # write fold predictions
         predictions_file = self.validation.modify_suffix(
-            join(self.results_folder, "{}".format(
-                self.name))) + ".predictions.pickle"
+            join(self.results_folder, "{}".format(self.name))) + ".predictions.pickle"
         write_pickled(predictions_file, [predictions, test_instance_indexes])
 
     def get_current_model_path(self):
@@ -433,41 +416,37 @@ class Learner(Component):
         write_pickled(trainval_serialization_file, splits)
         return splits
 
-    # apply required preprocessing on data and labels for a run
-    def preprocess_data_labels(self, train, val, test):
-        # since validation labels may be used for testing,
-        # one-hot label computation is delayed until it's required
-        train_data, train_labels = train
-        # train_labels = one_hot(train_labels, self.num_labels)
-        train = self.process_input(train_data), train_labels
+    # # apply required preprocessing on data and labels for a run
+    # def preprocess_data_labels(self, train, val, test):
+    #     train_data, train_labels = train
+    #     train = self.process_input(train_data), train_labels
 
-        if val is not None:
-            val_data, val_labels = val
-            # val_labels = one_hot(val_labels, self.num_labels)
-            val = self.process_input(val_data), val_labels
+    #     if val is not None:
+    #         val_data, val_labels = val
+    #         val = self.process_input(val_data), val_labels
 
-        test_data, test_labels = test
-        test = self.process_input(test_data), test_labels
-        return train, val, test
+    #     test_data, test_labels = test
+    #     test = self.process_input(test_data), test_labels
+    #     return train, val, test
 
     # handle multi-vector items, expanding indexes to the specified sequence length
-    def expand_index_to_sequence(self, fold_data):
-        # map to indexes in the full-sequence data (e.g. times sequence_length)
-        # fold_data = list(map(lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
-        for i in range(len(fold_data)):
-            if fold_data[i] is None:
-                continue
-            # expand with respective sequence members (add an increment, vstack)
-            # reshape to a single vector, in the vertical (column) direction, that increases incrementally
-            fold_data[i] = tuple([
-                np.ndarray.flatten(np.vstack([
-                    (x * self.sequence_length) +
-                    incr if x is not None else None
-                    for incr in range(self.sequence_length)
-                ]),
-                                   order='F') for x in fold_data[i]
-            ])
-        return fold_data
+    # def expand_index_to_sequence(self, fold_data):
+    #     # map to indexes in the full-sequence data (e.g. times sequence_length)
+    #     # fold_data = list(map(lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
+    #     for i in range(len(fold_data)):
+    #         if fold_data[i] is None:
+    #             continue
+    #         # expand with respective sequence members (add an increment, vstack)
+    #         # reshape to a single vector, in the vertical (column) direction, that increases incrementally
+    #         fold_data[i] = tuple([
+    #             np.ndarray.flatten(np.vstack([
+    #                 (x * self.sequence_length) +
+    #                 incr if x is not None else None
+    #                 for incr in range(self.sequence_length)
+    #             ]),
+    #                                order='F') for x in fold_data[i]
+    #         ])
+    #     return fold_data
 
     def save_model(self, model):
         path = self.get_current_model_path()
@@ -498,9 +477,28 @@ class Learner(Component):
         error("{} needs label information.".format(self.component_name),
               not self.inputs.has_labels())
 
-        self.train_index, self.test_index = self.inputs.get_indices(single=True).instances
+        self.train_index, self.test_index = (np.squeeze(np.asarray(x)) for x in self.inputs.get_indices(single=True).instances)
         self.embeddings = self.inputs.get_vectors(single=True).instances
         self.train_labels, self.test_labels = self.inputs.get_labels(single=True).instances
+
+    def load_existing_predictions(self, current_test_instance_indexes, current_test_labels):
+        # get predictions and instance indexes they correspond to
+        existing_predictions, existing_instance_indexes = self.get_existing_predictions()
+        if existing_predictions is not None:
+            info("Loaded existing predictions.")
+            error(
+                "Different instance indexes loaded than the ones generated.",
+                not np.all(
+                    np.equal(existing_instance_indexes, current_test_instance_indexes)))
+            existing_test_labels = self.validation.get_test_labels(
+                test_instance_indexes)
+            error(
+                "Different instance labels loaded than the ones generated.",
+                not np.all(
+                    np.equal(existing_test_labels, current_test_labels)))
+        return existing_predictions, existing_instance_indexes
+
+
 
     class ValidatonSetting:
         def __init__(self, folds, portion, test_present, do_multilabel):
@@ -554,8 +552,9 @@ class Learner(Component):
                 base_path += "_valportion{}".format(self.portion)
             return base_path
 
-        def assign_data(self, embeddings, train_labels, test_labels, test_index):
+        def assign_data(self, embeddings, train_index, train_labels, test_labels, test_index):
             self.embeddings = embeddings
+            self.train_index = train_index
             self.test_index = test_index
             self.train_labels, self.test_labels = train_labels, test_labels
 
@@ -569,35 +568,33 @@ class Learner(Component):
                     iteration_index != self.current_fold)
             train_idx, val_idx = trainval_idx
 
-            train_labels, val_labels = self.get_trainval_labels(
-                iteration_index, trainval_idx)
+            train_labels, val_labels = self.get_trainval_labels(iteration_index, trainval_idx)
 
             if len(train_idx) > 0:
                 if not self.do_multilabel:
                     train_labels = np.asarray(train_labels)
-                # train_data = [self.train_index[idx] for idx in train_idx]
-            else:
-                # train_data, train_labels = np.empty((0, )), np.empty((0))
-                train_labels = np.empty((0))
+                curr_train_idx = np.squeeze(np.asarray([self.train_index[idx] for idx in train_idx]))
 
             if len(val_idx) > 0:
                 if not self.do_multilabel:
                     val_labels = np.asarray(val_labels)
-                # val_data = [self.train_index[idx] for idx in val_idx]
-                val = val_idx, val_labels
+                curr_val_idx = np.squeeze(np.asarray([self.train_index[idx] for idx in val_idx]))
             else:
-                val = None
+                curr_val_idx = None
 
             if self.use_validation_for_testing:
-                val, test = None, val
+                curr_val_idx = None
+                curr_test_idx = curr_val_idx
+                test_labels = val_labels
             else:
-                test = self.test_index, self.test_labels
+                curr_test_idx, test_labels = self.test_index, self.test_labels
+
             if len(val_idx) > 0 and self.use_validation_for_testing:
                 # mark the test instance indexes as the val. indexes of the train
                 instance_indexes = val_idx
             else:
-                instance_indexes = range(len(test))
-            return (train_idx, train_labels), val, test, instance_indexes
+                instance_indexes = range(len(self.test_index))
+            return curr_train_idx, train_labels, curr_val_idx, val_labels, curr_test_idx, self.test_labels, instance_indexes
 
         def get_test_labels(self, instance_indexes):
             if self.use_validation_for_testing:

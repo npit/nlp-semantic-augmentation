@@ -27,7 +27,8 @@ def realign_embedding_index(data_indexes, all_indexes):
     for d in range(len(data_indexes)):
         for i in range(len(data_indexes[d])):
             data_indexes[d][i] = [old2new_index[oldidx] for oldidx in data_indexes[d][i]]
-    debug("Reduced embedding matrix from {} to {} elements.".format(len(all_indexes), len(new_indexes)))
+    if len(all_indexes) < len(new_indexes):
+        debug("Realignment reduced embedding matrix from {} to {} elements.".format(len(all_indexes), len(new_indexes)))
     return data_indexes, new_indexes
 
 def match_labels_to_instances(elements_per_instance, labels):

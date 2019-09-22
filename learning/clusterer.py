@@ -36,18 +36,19 @@ class KMeansClusterer(Clusterer):
         Clusterer.make(self)
 
     # train a model on training & validation data portions
-    def train_model(self, train_data, train_labels, val_data_labels):
+    def train_model(self, train_data, embeddings, train_labels, val_index, val_labels):
         # define the model
         model = KMeans(self.num_clusters)
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
-        if val_data_labels is not None:
-            debug("Using validation shapes: {} {}".format(*[v.shape if v is not None else "none" for v in val_data_labels]))
+        if val_index is not None:
+            val_data = self.get_data(val_index, embeddings)
+            debug("Using validation shapes: {} {}".format(*[val_data.shape, val_labels.shape]))
         model.fit(train_data)
         return model
 
     # evaluate a clustering
-    def test_model(self, test_data, model):
+    def test_model(self, test_index, test_data, model):
         cluster_distances = model.transform(test_data)
         # convert to "similarity" scores
         predictions = 1 - cluster_distances / np.max(cluster_distances)

@@ -97,18 +97,20 @@ class Embedding(Representation):
         # use words per document for the aggregation, aggregating function as an argument stats
         aggregation_stats = [0, 0]
 
-        if self.do_train_vectors:
-            error("Vector training TODO", True)
-        # change embedding matrix to represent new vectors here!
 
-        if self.do_train_vectors:
-            pass
+        new_embedding_matrix = np.ndarray((0, self.dimension), np.float32)
+        new_indices = []
+        # map pre-aggregated to post-aggregated element indexes
+        aggregated_index_mapping = {}
+        encountered_indices = []
+
 
 
         for dset_idx in range(len(self.dataset_vectors)):
             # aggregated_dataset_vectors = np.ndarray((0, self.dimension), np.float32)
             aggregated_indices = []
             info("Aggregating embedding vectors for collection {}/{}".format(dset_idx + 1, len(self.dataset_vectors)))
+
 
             new_numel_per_instance = []
             curr_idx = 0
@@ -117,8 +119,17 @@ class Embedding(Representation):
 
                 # average aggregation to a single vector
                 if self.aggregation == "avg":
-                    curr_instance = np.mean(curr_instance, axis=0).reshape(1, self.dimension)
+                    if tuple(curr_instance) in aggregated_index_mapping:
+                        new_index = aggregated_index_mapping[curr_instance]
+                        print()
+                    else:
+                        new_index = len(new_embedding_matrix)
+                        new_vector = np.expand_dims(np.mean(self.embeddings[curr_instance], axis=0),axis=0)
+                        # new_vector = np.mean(self.embedding[curr_instance], axis=0).reshape(1, self.dimension)
+                        new_embedding_matrix = np.append(new_embedding_matrix, new_vector, axis=0)
+
                     new_numel_per_instance.append(1)
+                    curr_instance = [new_index]
                 # padding aggregation to specified vectors per instance
                 elif self.aggregation == "pad":
                     num_vectors = len(curr_instance)
@@ -149,8 +160,10 @@ class Embedding(Representation):
             if self.aggregation == "pad":
                 info("Truncated {:.3f}% and padded {:.3f} % items.".format(*[x / len(self.dataset_vectors[dset_idx]) * 100 for x in aggregation_stats]))
 
-        self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.asarray(list(range(len(self.embeddings.index)))))
-        self.embeddings = self.embeddings.iloc[new_embedding_index]
+        if new_embedding_matrix.size > 0:
+            self.embeddings = new_embedding_matrix
+        self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.arange(len(self.embeddings)))
+        self.embeddings = self.embeddings[new_embedding_index]
         info("Aggregated shapes, indices: {}, matrix: {}".format(shapes_list(self.dataset_vectors), self.embeddings.shape))
 
     # shortcut for reading configuration values

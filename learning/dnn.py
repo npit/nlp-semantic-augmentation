@@ -12,6 +12,7 @@ from keras.layers import Activation, Bidirectional, Dense, Dropout
 from keras.models import Sequential, model_from_json
 from sklearn.exceptions import UndefinedMetricWarning
 
+from learning.data_index_learner import DataIndexingLearner
 from learning.classifier import Classifier
 # tf deprecation warnings
 # import tensorflow.python.util.deprecation as deprecation
@@ -31,7 +32,7 @@ sys.stderr = stderr
 warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
 
 
-class DNN(Classifier):
+class DNN(Classifier, DataIndexingLearner):
     sequence_length = None
 
     do_multilabel = False
@@ -132,23 +133,24 @@ class DNN(Classifier):
                           self.early_stopping.stopped_epoch)
 
     # train a model on training & validation data portions
-    def train_model(self, train_data, train_labels, val_data, val_labels):
+    def train_model(self, train_index, embeddings, train_labels, val_index, val_labels):
         # define the model
         model = self.get_model()
         train_labels = one_hot(train_labels, self.num_labels)
-        if val_data is not None:
-            val_labels = one_hot(val_labels, self.num_labels)
+
+        # get actual data here, via a method or sth
+        train_data = self.get_data(train_index, embeddings)
+
         # train the damn thing!
-        debug("Feeding the network train shapes: {} {}".format(
-            train_data.shape, train_labels.shape))
-        if val_data is not None:
-            debug("Using validation shapes: {} {}".format(
-                val_data.shape, val_labels.shape))
+        debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
+
+        if val_index is not None:
+            val_data = self.get_data(val_index, embeddings)
+            val_labels = one_hot(val_labels, self.num_labels)
+            debug("Using validation shapes: {} {}".format(val_data.shape, val_labels.shape))
             val = (val_data, val_labels)
         else:
             val = None
-
-get actual data here, via a method or sth
 
         model.fit(train_data,
                   train_labels,
@@ -161,7 +163,9 @@ get actual data here, via a method or sth
         return model
 
     # evaluate a dnn
-    def test_model(self, test_data, model):
+    def test_model(self, test_index, embeddings, model):
+        test_data = self.get_data(test_index, embeddings)
+        info("Network test data {}".format(test_data.shape))
         return model.predict(test_data,
                              batch_size=self.batch_size,
                              verbose=self.verbosity)
@@ -253,6 +257,7 @@ class LSTM(DNN):
         self.hidden = self.config.learner.hidden_dim
         self.layers = self.config.learner.num_layers
         self.sequence_length = self.config.learner.sequence_length
+        self.input_aggregation = ""
         if self.sequence_length is None:
             error("Undefined learning sequence length, but required for {}.".
                   format(self.name))
@@ -263,28 +268,27 @@ class LSTM(DNN):
         info("Building dnn: {}".format(self.name))
         DNN.make(self)
 
+        error("Learner [{}] requires sequence data.".format(self.name), self.train_index.ndim < 2)
         # non constant instance element num
-        if not all(np.all(x == x[0]) for x in self.elements_per_instance):
-            error("Unequal elements per instance encountered.")
+        # if not all(np.all(x == x[0]) for x in self.train_index):
+        #     error("Unequal elements per instance encountered.")
 
-        epi_train, epi_test = [x[0] for x in self.elements_per_instance]
-        if epi_train != epi_test:
-            error("Unequal elements per instance for train ({}) and test ({})".
-                  format(epi_train, epi_test))
-        error(
-            "[{}] not compatible with unit instance indexes.".format(
-                self.name), epi_train == 1)
-        self.sequence_length = epi_train
+        # epi_train, epi_test = [x[0] for x in self.elements_per_instance]
+        # if epi_train != epi_test:
+        #     error("Unequal elements per instance for train ({}) and test ({})".
+        #           format(epi_train, epi_test))
+        # error(
+        #     "[{}] not compatible with unit instance indexes.".format(
+        #         self.name), epi_train == 1)
+        self.sequence_length = self.train_index.shape[-1]
         self.input_shape = (self.sequence_length, self.input_dim)
 
         # sequence length data / label matching
         if self.num_train != self.num_train_labels and (
                 self.num_train !=
                 self.sequence_length * self.num_train_labels):
-            error(
-                "Irreconcilable lengths of training data and labels: {}, {} with learning sequence length of {}."
-                .format(self.num_train, self.num_train_labels,
-                        self.sequence_length))
+            error( "Irreconcilable lengths of training data and labels: {}, {} with learning sequence length of {}."
+                .format(self.num_train, self.num_train_labels, self.sequence_length))
         if self.num_test != self.num_test_labels and (
                 self.num_test != self.sequence_length * self.num_test_labels):
             error(
@@ -343,11 +347,10 @@ class LSTM(DNN):
         #     debug("Outputs: {}".format(model.outputs))
         return model
 
-    # component functions
-    def process_component_inputs(self):
-        self.elements_per_instance = self.inputs.get_vectors(
-            single=True).elements_per_instance
-        super().process_component_inputs()
+    # # component functions
+    # def process_component_inputs(self):
+    #     self.elements_per_instance = self.inputs.get_indices(single=True).indices
+    #     super().process_component_inputs()
 
     def get_cell(self, input_cell):
         return input_cell

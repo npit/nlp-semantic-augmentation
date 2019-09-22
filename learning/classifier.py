@@ -1,9 +1,9 @@
 from learning.learner import Learner
 from utils import error, one_hot, ill_defined, warning, write_pickled, read_pickled
 import numpy as np
-from sklearn.naive_bayes import GaussianNB
-from sklearn.dummy import DummyClassifier
-
+from sklearn.naive_bayes import GaussianNB as sk_NaiveBayes
+from sklearn.dummy import DummyClassifier as sk_Dummy
+from sklearn.linear_model import LogisticRegression as sk_LogReg
 
 class Classifier(Learner):
 
@@ -39,13 +39,15 @@ class SKLClassifier(Classifier):
             val_labels = np.empty((0,))
         return train_labels, val_labels
 
-    def train_model(self, train_data, train_labels, val_data, val_labels):
+    def train_model(self, train_index, embeddings, train_labels, val_data, val_labels):
+        train_data = self.get_data(train_index, embeddings)
         model = self.model()
         model.fit(train_data, np.asarray(train_labels).ravel())
         return model
 
     # evaluate a clustering
-    def test_model(self, test_data, model):
+    def test_model(self, test_index, embedding, model):
+        test_data = self.get_data(test_index, embedding)
         predictions = model.predict(test_data)
         # convert back to one-hot
         predictions = one_hot(predictions, self.num_labels)
@@ -56,7 +58,7 @@ class NaiveBayes(SKLClassifier):
 
     def __init__(self, config):
         self.config = config
-        self.model = GaussianNB
+        self.model = sk_NaiveBayes
         SKLClassifier.__init__(self)
 
     def make(self):
@@ -69,9 +71,21 @@ class Dummy(SKLClassifier):
     name = "dummy"
     def __init__(self, config):
         self.config = config
-        self.model = DummyClassifier
+        self.model = sk_Dummy
         SKLClassifier.__init__(self)
 
+    def make(self):
+        # if dataset.is_multilabel():
+        #     error("Cannot apply {} to multilabel data.".format(self.name))
+        warning("Add multilabel check")
+        SKLClassifier.make(self)
+
+class LogisticRegression(SKLClassifier):
+    name = "logreg"
+    def __init__(self, config):
+        self.config = config
+        self.model = sk_LogReg
+        SKLClassifier.__init__(self)
     def make(self):
         # if dataset.is_multilabel():
         #     error("Cannot apply {} to multilabel data.".format(self.name))

@@ -104,7 +104,7 @@ class Representation(Serializable):
 
     def check_params(self):
         if self.aggregation not in self.compatible_aggregations:
-            error("{} aggregation incompatible with {}. Compatible ones are: {}!".format(self.aggregation, self.base_name, self.compatible_aggregations))
+            error("[{}] aggregation incompatible with {}. Compatible ones are: {}!".format(self.aggregation, self.base_name, self.compatible_aggregations))
         error("Unset sequence length compatibility for representation {}".format(self.base_name), not self.compatible_sequence_lengths)
         if defs.get_sequence_length_type(self.sequence_length) not in self.compatible_sequence_lengths:
             error("Incompatible sequence length {} with {}. Compatibles are {}".format(

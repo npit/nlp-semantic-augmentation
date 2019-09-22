@@ -1,5 +1,6 @@
 import copy
 from os.path import basename
+import numpy as np
 
 import defs
 from defs import is_none
@@ -18,6 +19,7 @@ class BagRepresentation(Representation):
 
     def __init__(self, config):
         self.config = config
+        self.base_name = self.name
         # check if a dimension meta file exists, to read dimension
         Representation.__init__(self)
 
@@ -85,19 +87,21 @@ class BagRepresentation(Representation):
 
     def get_all_preprocessed(self):
         return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
-                "term_list": self.term_list}
+                "term_list": self.term_list, "embeddings": self.embeddings}
 
     # sparse to dense
     def compute_dense(self):
-        info("Computing dense representation for the bag.")
-        b = Bag()
-        self.dataset_vectors = [b.get_dense(input_sparse=x) for x in self.dataset_vectors]
-        info("Computed dense dataset shapes: {} {}".format(*shapes_list(self.dataset_vectors)))
+        # dense already computed.
+        pass
+        # info("Computing dense representation for the bag.")
+        # b = Bag()
+        # self.dataset_vectors = [b.get_dense(input_sparse=x) for x in self.dataset_vectors]
+        # info("Computed dense dataset shapes: {} {}".format(*shapes_list(self.dataset_vectors)))
 
     def aggregate_instance_vectors(self):
         # bag representations produce a single instance-level vectors
         if self.aggregation != defs.alias.none:
-            error("Specified {} aggregation with {} representation, but only {} is compatible.".format(self.aggregation, self.name, defs.alias.none))
+            error("Specified [{}] aggregation with {} representation, but only {} is compatible.".format(self.aggregation, self.name, defs.alias.none))
         pass
 
     def handle_preprocessed(self, preprocessed):
@@ -174,10 +178,13 @@ class BagRepresentation(Representation):
         self.bag_test = self.bag_class()
         self.bag_test.set_term_list(self.term_list)
         self.bag_test.map_collection(test)
-        self.dataset_vectors.append(self.bag_test.get_weights())
+        self.dataset_vectors = (list(range(len(train))), list(range(len(test))))
 
         # set misc required variables
         self.set_constant_elements_per_instance()
+
+        self.embeddings = np.vstack((self.bag_train.get_dense(), self.bag_test.get_dense()))
+
 
         # write mapped data
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
