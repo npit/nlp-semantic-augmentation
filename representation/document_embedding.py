@@ -72,6 +72,12 @@ class DocumentEmbedding(Embedding):
             self.dataset_vectors[dset_idx] = np.array(self.dataset_vectors[dset_idx])
 
         self.set_constant_elements_per_instance()
+
+        # assign
+        num_train, num_test = len(self.dataset_vectors[0]), len(self.dataset_vectors[1])
+        indexes = (list(range(num_train)), list(range(num_train, num_train + num_test)))
+        self.embeddings = np.vstack(self.dataset_vectors)
+        self.dataset_vectors = indexes
         # write
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())

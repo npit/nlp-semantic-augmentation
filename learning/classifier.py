@@ -40,14 +40,14 @@ class SKLClassifier(Classifier):
         return train_labels, val_labels
 
     def train_model(self, train_index, embeddings, train_labels, val_data, val_labels):
-        train_data = self.get_data(train_index, embeddings)
+        train_data = self.get_data_from_index(train_index, embeddings)
         model = self.model()
         model.fit(train_data, np.asarray(train_labels).ravel())
         return model
 
     # evaluate a clustering
     def test_model(self, test_index, embedding, model):
-        test_data = self.get_data(test_index, embedding)
+        test_data = self.get_data_from_index(test_index, embedding)
         predictions = model.predict(test_data)
         # convert back to one-hot
         predictions = one_hot(predictions, self.num_labels)

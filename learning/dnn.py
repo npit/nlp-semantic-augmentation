@@ -139,13 +139,13 @@ class DNN(Classifier, DataIndexingLearner):
         train_labels = one_hot(train_labels, self.num_labels)
 
         # get actual data here, via a method or sth
-        train_data = self.get_data(train_index, embeddings)
+        train_data = self.get_data_from_index(train_index, embeddings)
 
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
 
         if val_index is not None:
-            val_data = self.get_data(val_index, embeddings)
+            val_data = self.get_data_from_index(val_index, embeddings)
             val_labels = one_hot(val_labels, self.num_labels)
             debug("Using validation shapes: {} {}".format(val_data.shape, val_labels.shape))
             val = (val_data, val_labels)
@@ -164,7 +164,7 @@ class DNN(Classifier, DataIndexingLearner):
 
     # evaluate a dnn
     def test_model(self, test_index, embeddings, model):
-        test_data = self.get_data(test_index, embeddings)
+        test_data = self.get_data_from_index(test_index, embeddings)
         info("Network test data {}".format(test_data.shape))
         return model.predict(test_data,
                              batch_size=self.batch_size,

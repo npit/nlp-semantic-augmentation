@@ -284,14 +284,6 @@ class Learner(Component):
                                                   len(self.train_index),
                                                   self.results_folder)
 
-    def get_data(self, index, embeddings):
-        """Get data index from the embedding matrix"""
-        if np.squeeze(index).ndim > 1:
-            # if we have multi-element index, there has to be an aggregation method defined for the learner.
-            error("The learner [{}] has no defined aggregation and is not sequence-capable, but the input index has shape {}".
-            format(self.name, index.shape), self.input_aggregation is None)
-        return embeddings[index] if len(index) > 0 else None
-
 
     # evaluate a model on the test set
     def do_test_evaluate(self,
@@ -499,6 +491,13 @@ class Learner(Component):
         return existing_predictions, existing_instance_indexes
 
 
+    def get_data_from_index(self, index, embeddings):
+        """Get data index from the embedding matrix"""
+        if np.squeeze(index).ndim > 1:
+            # if we have multi-element index, there has to be an aggregation method defined for the learner.
+            error("The learner [{}] has no defined aggregation and is not sequence-capable, but the input index has shape {}".
+            format(self.name, index.shape), self.input_aggregation is None and self.sequence_length < 2)
+        return embeddings[index] if len(index) > 0 else None
 
     class ValidatonSetting:
         def __init__(self, folds, portion, test_present, do_multilabel):

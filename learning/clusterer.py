@@ -42,7 +42,7 @@ class KMeansClusterer(Clusterer):
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
         if val_index is not None:
-            val_data = self.get_data(val_index, embeddings)
+            val_data = self.get_data_from_index(val_index, embeddings)
             debug("Using validation shapes: {} {}".format(*[val_data.shape, val_labels.shape]))
         model.fit(train_data)
         return model
