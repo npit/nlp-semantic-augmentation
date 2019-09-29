@@ -12,7 +12,6 @@ from keras.layers import Activation, Bidirectional, Dense, Dropout
 from keras.models import Sequential, model_from_json
 from sklearn.exceptions import UndefinedMetricWarning
 
-from learning.data_index_learner import DataIndexingLearner
 from learning.classifier import Classifier
 # tf deprecation warnings
 # import tensorflow.python.util.deprecation as deprecation
@@ -32,7 +31,7 @@ sys.stderr = stderr
 warnings.simplefilter(action='ignore', category=UndefinedMetricWarning)
 
 
-class DNN(Classifier, DataIndexingLearner):
+class DNN(Classifier):
     sequence_length = None
 
     do_multilabel = False

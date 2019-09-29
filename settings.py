@@ -312,6 +312,7 @@ class Config:
                 self.learner.num_layers = learner_opts["layers"]
                 self.learner.sequence_length = self.get_value("sequence_length", default=1, base=learner_opts)
                 self.learner.num_clusters = self.get_value("num_clusters", default=None, base=learner_opts)
+                self.learner.train_embedding = self.get_value("train_embedding", default=False, base=learner_opts)
                 field = self.learner
 
             # need(self.has_value("train"), "Need training information")

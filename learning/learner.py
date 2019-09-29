@@ -39,6 +39,8 @@ class Learner(Component):
     allow_model_loading = None
     allow_prediction_loading = None
 
+    train_embedding = None
+
     def __init__(self):
         """Generic learning constructor
         """
@@ -79,6 +81,7 @@ class Learner(Component):
         self.allow_prediction_loading = self.config.misc.allow_prediction_loading
         self.allow_model_loading = self.config.misc.allow_model_loading
         self.sequence_length = self.config.learner.sequence_length
+        self.train_embedding = self.config.learner.train_embedding
         self.results_folder = self.config.folders.results
         self.models_folder = join(self.results_folder, "models")
         self.epochs = self.config.train.epochs
@@ -302,8 +305,7 @@ class Learner(Component):
         if self.do_folds and self.config.print.folds:
             self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)
         # write fold predictions
-        predictions_file = self.validation.modify_suffix(
-            join(self.results_folder, "{}".format(self.name))) + ".predictions.pickle"
+        predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pickle"
         write_pickled(predictions_file, [predictions, test_instance_indexes])
 
     def get_current_model_path(self):
@@ -582,9 +584,9 @@ class Learner(Component):
                 curr_val_idx = None
 
             if self.use_validation_for_testing:
-                curr_val_idx = None
                 curr_test_idx = curr_val_idx
                 test_labels = val_labels
+                curr_val_idx, val_labels = None, None
             else:
                 curr_test_idx, test_labels = self.test_index, self.test_labels
 
@@ -593,7 +595,7 @@ class Learner(Component):
                 instance_indexes = val_idx
             else:
                 instance_indexes = range(len(self.test_index))
-            return curr_train_idx, train_labels, curr_val_idx, val_labels, curr_test_idx, self.test_labels, instance_indexes
+            return curr_train_idx, train_labels, curr_val_idx, val_labels, curr_test_idx, test_labels, instance_indexes
 
         def get_test_labels(self, instance_indexes):
             if self.use_validation_for_testing:
