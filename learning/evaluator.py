@@ -442,7 +442,7 @@ class Evaluator:
                     # get true / false predictions
                     non_nan_idx = np.where(np.any(~np.isnan(preds), axis=1))
                     preds = preds[non_nan_idx]
-                    true_labels = self.test_labels[non_nan_idx]
+                    true_labels = np.squeeze(self.test_labels[non_nan_idx])
                     correct_preds = np.where(np.equal(np.argmax(preds, axis=1), true_labels))
                     aggregate[correct_preds] += 1
                 # average

@@ -2,6 +2,7 @@ import torch
 
 from learning.neural.model import BaseModel
 from learning.neural.neuralnet import NeuralNet
+from torch.nn import functional as F
 
 
 class MLPModel(BaseModel):
@@ -10,25 +11,29 @@ class MLPModel(BaseModel):
         """Model builder function for dense MLP"""
         self.build_embedding_layer(num_embeddings, embedding_dim, train_embedding)
         current_dim = embedding_dim
-        self.layers = []
-        for idx, _  in enumerate(hidden_dim):
-            self.layers.append(torch.nn.Linear(current_dim, hidden_dim[idx]))
-            current_dim = hidden_dim[idx]
-        self.build_softmax(current_dim, num_labels)
+        # build chain of dense layers
+        layers = []
+        for dim  in hidden_dim:
+            layers.append(torch.nn.Linear(current_dim, dim))
+            current_dim = dim
+        
+        self.linear_layers = torch.nn.ModuleList(layers)
+        # build final classification layer
+        self.linear_out = torch.nn.Linear(current_dim, num_labels)
 
     def forward(self, input_data):
         """Forward pass method"""
         # embedding output
         data = self.embedding_layer(input_data)
         # dense chain
-        for layer in self.layers:
-            data = self.sigmoid(layer(data))
+        for layer in self.linear_layers:
+            data = F.dropout(F.relu(layer(data)),p=0.3)
         # classification
-        return self.softmax(self.sigmoid(self.linear_out(data)))
+        return self.linear_out(data)
 
 
 class MLP(NeuralNet):
-    name = "tMLP"
+    name = "tmlp"
     """Generic MLP"""
     def __init__(self, config):
         NeuralNet.__init__(self, config)

@@ -28,7 +28,7 @@ class TwentyNewsGroups(Dataset):
         train, test = raw_data
         info("Got {} and {} train / test samples".format(len(train.data), len(test.data)))
         self.train, self.test = train.data, test.data
-        self.train_labels, self.test_labels = train.target, test.target
+        self.train_labels, self.test_labels = (np.split(x, len(x)) for x in (train.target, test.target))
         # self.train_labels, self.test_labels = np.array_split(train.target, len(train.target)), np.array_split(test.target, len(test.target))
         self.train_label_names = train.target_names
         self.test_label_names = test.target_names

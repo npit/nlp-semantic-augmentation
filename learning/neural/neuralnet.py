@@ -35,11 +35,12 @@ class NeuralNet(Classifier):
 
         # setup vars
         optimizer = optim.Adam(model.parameters())
+        # optimizer = optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
         loss_func = nn.CrossEntropyLoss()
 
         # training loop
         train_set = NeuralNet.TorchDataset(train_index, train_labels)
-        data_loader = DataLoader(train_set, batch_size=self.batch_size)
+        data_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
         for epoch in range(self.epochs):
             for batch_index, index_labels in enumerate(data_loader):
 
@@ -58,8 +59,9 @@ class NeuralNet(Classifier):
         data_loader = DataLoader(test_set, batch_size=self.batch_size)
         predictions = np.ndarray((0, self.num_labels), np.float32)
         with torch.no_grad():
+            model.eval()
             # disable learning
-            for batch_index, data_index in enumerate(data_loader):
+            for data_index in data_loader:
                 preds = model.forward(data_index)
                 predictions = np.append(predictions, preds, axis=0)
         return predictions
@@ -74,7 +76,7 @@ class NeuralNet(Classifier):
                 self.labels = labels
         def __getitem__(self, idx):
             if self.labels is not None:
-                return (self.data[idx], np.asarray(self.labels[idx], np.long))
+                return (self.data[idx], torch.tensor(self.labels[idx], dtype=torch.long))
             return self.data[idx]
         def __len__(self):
             return len(self.data)

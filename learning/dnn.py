@@ -7,8 +7,11 @@ import numpy as np
 # tf deprecation warnings
 # import tensorflow.python.util.deprecation as deprecation
 from keras import callbacks
+from keras.initializers import Constant
 from keras.layers import LSTM as keras_lstm
-from keras.layers import Activation, Bidirectional, Dense, Dropout
+from keras.layers import Activation, Bidirectional, Dense, Dropout, Flatten
+from keras.layers import Embedding as keras_embedding
+
 from keras.models import Sequential, model_from_json
 from sklearn.exceptions import UndefinedMetricWarning
 
@@ -131,20 +134,32 @@ class DNN(Classifier):
             write_pickled(self.model_path + ".early_stopping",
                           self.early_stopping.stopped_epoch)
 
+    def add_embedding_layer(self, model, embeddings):
+        emb = keras_embedding(len(embeddings), embeddings.shape[-1], input_length=self.sequence_length, embeddings_initializer=Constant(embeddings))
+        if not self.train_embedding:
+            emb.trainable = False
+        model.add(emb)
+        if self.sequence_length == 1:
+            # flatten
+            model.add(Flatten())
+        return model
+
     # train a model on training & validation data portions
     def train_model(self, train_index, embeddings, train_labels, val_index, val_labels):
         # define the model
-        model = self.get_model()
+        model = self.get_model(self.embeddings)
         train_labels = one_hot(train_labels, self.num_labels)
 
         # get actual data here, via a method or sth
-        train_data = self.get_data_from_index(train_index, embeddings)
+        # train_data = self.get_data_from_index(train_index, embeddings)
+        train_data = train_index
 
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
 
         if val_index is not None:
-            val_data = self.get_data_from_index(val_index, embeddings)
+            # val_data = self.get_data_from_index(val_index, embeddings)
+            val_data = val_index
             val_labels = one_hot(val_labels, self.num_labels)
             debug("Using validation shapes: {} {}".format(val_data.shape, val_labels.shape))
             val = (val_data, val_labels)
@@ -163,7 +178,8 @@ class DNN(Classifier):
 
     # evaluate a dnn
     def test_model(self, test_index, embeddings, model):
-        test_data = self.get_data_from_index(test_index, embeddings)
+        # test_data = self.get_data_from_index(test_index, embeddings)
+        test_data = test_index
         info("Network test data {}".format(test_data.shape))
         return model.predict(test_data,
                              batch_size=self.batch_size,
@@ -228,9 +244,10 @@ class MLP(DNN):
         self.input_shape = (self.input_dim, )
 
     # build MLP model
-    def get_model(self):
-        model = None
+    def get_model(self, embeddings):
         model = Sequential()
+        model == self.add_embedding_layer(model, embeddings)
+
         for i in range(self.layers):
             if i == 0:
                 model.add(Dense(self.hidden, input_shape=self.input_shape))
@@ -309,8 +326,9 @@ class LSTM(DNN):
         return np.reshape(data, (-1, self.sequence_length, self.input_dim))
 
     # build the lstm model
-    def get_model(self):
+    def get_model(self, embeddings):
         model = Sequential()
+        model == self.add_embedding_layer(model, embeddings)
         for i in range(self.layers):
             if self.layers == 1:
                 # one and only layer

@@ -76,8 +76,6 @@ class Pipeline:
         self.visualize()
         # chain_outputs = {ch: None for ch in self.chains}
         chain_outputs = BundleList()
-        # store existing chain outputs to handle dependencies
-        warning("Use a single dataset reading source -- for e.g. multiple representations, use a single dataset reading pipeline, and feed its output to multiple new ones")
         # poll a list of chains to run
         run_pool = list(self.chains.keys())
         while run_pool:

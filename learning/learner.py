@@ -573,12 +573,12 @@ class Learner(Component):
 
             if len(train_idx) > 0:
                 if not self.do_multilabel:
-                    train_labels = np.asarray(train_labels)
+                    train_labels = np.squeeze(np.asarray(train_labels))
                 curr_train_idx = np.squeeze(np.asarray([self.train_index[idx] for idx in train_idx]))
 
             if len(val_idx) > 0:
                 if not self.do_multilabel:
-                    val_labels = np.asarray(val_labels)
+                    val_labels = np.squeeze(np.asarray(val_labels))
                 curr_val_idx = np.squeeze(np.asarray([self.train_index[idx] for idx in val_idx]))
             else:
                 curr_val_idx = None
