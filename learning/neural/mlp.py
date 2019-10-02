@@ -9,6 +9,7 @@ class MLPModel(BaseModel):
     def __init__(self, num_embeddings, embedding_dim, hidden_dim, train_embedding, num_labels):
         BaseModel.__init__(self)
         """Model builder function for dense MLP"""
+
         self.build_embedding_layer(num_embeddings, embedding_dim, train_embedding)
         current_dim = embedding_dim
         # build chain of dense layers

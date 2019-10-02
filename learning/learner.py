@@ -589,6 +589,8 @@ class Learner(Component):
                 curr_val_idx, val_labels = None, None
             else:
                 curr_test_idx, test_labels = self.test_index, self.test_labels
+            if not self.do_multilabel:
+                test_labels = np.squeeze(np.asarray(test_labels))
 
             if len(val_idx) > 0 and self.use_validation_for_testing:
                 # mark the test instance indexes as the val. indexes of the train
