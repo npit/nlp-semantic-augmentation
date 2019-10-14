@@ -25,11 +25,19 @@ class Evaluator:
     confusion_matrices = None
 
     # available measures, aggregations and run types
-    singlelabel_measures = ["precision", "recall", "f1-score", "accuracy"]
+    singlelabel_measures = ["precision", "recall", "f1-score", "accuracy", "ari"]
     fold_aggregations = ["mean", "var", "std", "folds"]
     run_types = ["random", "dummy", "majority", "run"]
     multilabel_measures = ["ap", "roc_auc"]
     label_aggregations = ["macro", "micro", "classwise", "weighted"]
+
+    def get_labelwise_measures(self):
+        """Get measures definable in a multiclass setting"""
+        return [x for x in self.measures if x not in ["ari"]]
+
+    def invalid_combo(self, run_type, measure, label_aggr):
+        """Return invalid evaluation combinations"""
+        return label_aggr not in self.performance[run_type][measure]
 
     # defined in runtime
     measures = None
@@ -137,6 +145,9 @@ class Evaluator:
             for run_type in self.run_types:
                 for aggr in [x for x in self.label_aggregations if x not in ["macro", "classwise"]]:
                     del self.performance[run_type]["accuracy"][aggr]
+                for aggr in self.label_aggregations:
+                    if aggr != "macro":
+                        del self.performance[run_type]["ari"][aggr]
 
         # sanity
         undefined = [x for x in self.preferred_types if x not in self.run_types]
@@ -165,6 +176,12 @@ class Evaluator:
         ma = cr["macro avg"][metric]
         we = cr["weighted avg"][metric]
         return cw, mi, ma, we
+
+    # adjusted rank index
+    def compute_ari(self, preds, gt=None):
+        if gt is None:
+            gt = self.test_labels
+        return metrics.adjusted_rand_score(gt, preds)
 
     # get average accuracy
     def compute_accuracy(self, preds, gt=None):
@@ -212,25 +229,17 @@ class Evaluator:
             for measure in self.measures:
                 if not self.do_multilabel:
                     for aggr in self.label_aggregations:
-                        if aggr not in self.performance[run_type][measure]:
+                        if self.invalid_combo(run_type, measure, aggr):
                             continue
                         # calculate the foldwise statistics
                         self.performance[run_type][measure][aggr] = self.calc_fold_score_stats(self.performance[run_type][measure][aggr])
                         # print if it's required by the settings
                         did_print = self.print_performance(run_type, measure, aggr)
-                        # # print the combination, if it's in the prefered stuff to print
-                        # if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr in self.preferred_label_aggregations]):
-                        #     scores_str = self.get_score_stats_string(self.performance[run_type][measure][aggr])
-                        #     info("{:10} {:10} {:10} : {}".format(run_type, aggr, measure, scores_str))
                 else:
                     # multilabel setting: different measure, no classwise aggregations
                     for measure in self.multilabel_measures:
                         self.performance[run_type][measure] = self.calc_fold_score_stats(self.performance[run_type][measure])
                         did_print = self.print_performance(run_type, measure)
-                        # # print, if it's prefered
-                        # if all([run_type in self.preferred_types, measure in self.preferred_measures]):
-                        #     scores_str = self.get_score_stats_string(self.performance[run_type][measure])
-                        #     info("{:10} {:10} : {}".format(run_type, measure, scores_str))
             if did_print:
                 info("------------------------------")
         info("==============================")
@@ -292,7 +301,7 @@ class Evaluator:
             # single-label
             preds_amax = np.argmax(preds_proba, axis=1)
             # get prec, rec, f1
-            for measure in [x for x in self.measures if x != "accuracy"]:
+            for measure in "precision recall f1-score".split():
                 cw, mi, ma, we = self.get_pre_rec_f1(preds_amax, measure, self.num_labels)
                 self.performance[run_type][measure]["classwise"]["folds"].append(cw)
                 self.performance[run_type][measure]["macro"]["folds"].append(ma)
@@ -304,6 +313,9 @@ class Evaluator:
             acc, cw_acc = self.compute_accuracy(preds_amax), self.compute_classwise_accuracy(preds_amax)
             self.performance[run_type]["accuracy"]["classwise"]["folds"].append(cw_acc)
             self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
+
+            # ari
+            self.performance[run_type]["ari"]["macro"]["folds"].append(self.compute_ari(preds_amax))
 
     def show_label_distribution(self, distr=None, message="Test label distribution:"):
         info("==============================")
@@ -453,7 +465,7 @@ class Evaluator:
 
                 # label-wise
                 res["labels"][run_type] = {}
-                for measure in self.measures:
+                for measure in self.get_labelwise_measures():
                     scores_cw = self.performance[run_type][measure]['classwise']['folds']
                     # average accross folds
                     scores_cw = sum(scores_cw) / len(scores_cw)

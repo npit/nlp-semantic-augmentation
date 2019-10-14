@@ -237,6 +237,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
     try:
         eval_measures = as_list(
             exps["measures"]) if "measures" in exps else ["f1-score", "accuracy"]
+        print(eval_measures)
         aggr_measures = as_list(exps["label_aggregation"]) if "label_aggregation" in exps \
             else ["macro", "micro"]
         stat_functions = as_list(
@@ -255,7 +256,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
                     exit(1)
         else:
             sstests = ["tukeyhsd"] if "names" not in exps["sstests"] else as_list(exps["sstests"]["names"])
-            sstests_measures = ["f1"] if "measures" not in exps["sstests"] else as_list(exps["sstests"]["measures"])
+            sstests_measures = ["f1-score"] if "measures" not in exps["sstests"] else as_list(exps["sstests"]["measures"])
             sstests_aggregations = ["macro"] if "aggregations" not in exps["sstests"] else as_list(exps["sstests"]["aggregations"])
             sstests_limit_vars = None if "limit_variables" not in exps["sstests"] else as_list(exps["sstests"]["limit_variables"])
     except Exception as ex:
@@ -350,7 +351,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
             makedirs(experiment_dir, exist_ok=True)
 
             conf_path = join(experiment_dir, "config.yml")
-            if exists(conf_path):
+            if exists(conf_path) and not no_config_check:
                 warning("Configuration file at {} already exists!".format(
                     conf_path))
                 with open(conf_path) as f:
@@ -464,7 +465,7 @@ def do_stat_sig_testing(methods, measures, label_aggregations, configs, results,
                     df_row["score"] = score
                     df_inputs.append(deepcopy(df_row))
         except:
-            warning("Encountered invalid results accessors: {}".format(*(run_mode, measure, label_aggregation)))
+            warning("Encountered invalid results accessors: {}".format((run_mode, measure, label_aggregation)))
             continue
         data = pd.DataFrame(df_inputs)
         inst = instantiator.Instantiator()
