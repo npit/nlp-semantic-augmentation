@@ -12,8 +12,8 @@ from bundle.bundle import Bundle, BundleList
 from bundle.datatypes import Labels, Vectors
 from component.component import Component
 from learning.evaluator import Evaluator
-from utils import (count_label_occurences, error, info, is_multilabel, one_hot,
-                   read_pickled, tictoc, warning, write_pickled)
+from utils import (count_label_occurences, error, info, one_hot, read_pickled,
+                   tictoc, warning, write_pickled)
 
 
 """
@@ -31,7 +31,7 @@ class Learner(Component):
     evaluator = None
     sequence_length = None
     input_aggregation = None
-    train, test, train_labels, test_labels = None, None, None, None
+    train, test = None, None
 
     test_instance_indexes = None
     validation = None
@@ -54,74 +54,39 @@ class Learner(Component):
         return data
 
     def count_samples(self):
-        self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
-            map(len, [self.train_index, self.test_index, self.train_labels, self.test_labels])
+        self.num_train, self.num_test = map(len, [self.train_index, self.test_index])
 
-    def make(self):
-        self.verbosity = 1 if self.config.print.training_progress else 0
-        # need at least one sample per class
-        zero_samples_idx = np.where(np.sum(self.train_labels, axis=0) == 0)
-        if np.any(zero_samples_idx):
-            error("No training samples for class index {}".format(
-                zero_samples_idx))
-        # nan checks
-        nans, _ = np.where(np.isnan(self.embeddings))
-        if np.size(nans) != 0:
-            error("NaNs in training data:{}".format(nans))
-        nans, _ = np.where(np.isnan(self.embeddings))
-        if np.size(nans) != 0:
-            error("NaNs in test data:{}".format(nans))
-
-        # get many handy variables
-        self.do_multilabel = is_multilabel(self.train_labels)
-        label_counts = count_label_occurences(self.train_labels)
-        self.num_labels = len(label_counts)
-        self.count_samples()
-        self.input_dim = self.embeddings.shape[-1]
+    def read_config_variables(self):
+        """Shortcut function for readding a load of config variables"""
         self.allow_prediction_loading = self.config.misc.allow_prediction_loading
         self.allow_model_loading = self.config.misc.allow_model_loading
+
         self.sequence_length = self.config.learner.sequence_length
         self.train_embedding = self.config.learner.train_embedding
+
         self.results_folder = self.config.folders.results
         self.models_folder = join(self.results_folder, "models")
+
+        self.batch_size = self.config.train.batch_size
         self.epochs = self.config.train.epochs
+        self.early_stopping_patience = self.config.train.early_stopping_patience
         self.folds = self.config.train.folds
         self.validation_portion = self.config.train.validation_portion
         self.do_folds = self.folds and self.folds > 1
         self.do_validate_portion = self.validation_portion is not None and self.validation_portion > 0.0
         self.validation_exists = (self.do_folds or self.do_validate_portion)
-        self.use_validation_for_training = self.validation_exists and self.test_data_available(
-        )
-        self.early_stopping_patience = self.config.train.early_stopping_patience
+        self.use_validation_for_training = self.validation_exists and self.test_data_available()
+        self.seed = self.config.misc.seed
 
-        self.validation = Learner.ValidatonSetting(self.folds,
-                                                   self.validation_portion,
-                                                   self.test_data_available(),
-                                                   self.do_multilabel)
-        self.validation.assign_data(self.embeddings, self.train_index, self.train_labels, self.test_labels, self.test_index)
-
-        # sampling
         self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
         self.do_sampling = self.sampling_method is not None
-        if self.do_sampling:
-            if type(self.sampling_ratios[0]) is not list:
-                self.sampling_ratios = [self.sampling_ratios]
-            freqs = count_label_occurences(
-                [x for y in self.sampling_ratios for x in y[:2]])
-            max_label_constraint_participation = max(freqs, key=lambda x: x[1])
-            error(
-                "Sampling should be applied on binary classification or constraining ratio should not be overlapping",
-                self.num_labels > 2
-                and max_label_constraint_participation[1] > 1)
 
-        self.seed = self.config.misc.seed
-        np.random.seed(self.seed)
-
-        self.batch_size = self.config.train.batch_size
-        info("Learner data/labels: embeddings: {} train idxs: {} test idxs: {}".format(
-            self.embeddings.shape, len(self.train_index), len(self.test_index)))
-
-        # sanity checks
+    def check_sanity(self):
+        """Sanity checks"""
+        # check data for nans
+        if  np.size(np.where(np.isnan(self.embeddings))[0]) > 0:
+            error("NaNs exist in data:{}".format(np.where(np.isnan(self.embeddings))))
+        # validation configuration
         if self.do_folds and self.do_validate_portion:
             error("Specified both folds {} and validation portion {}.".format(
                 self.folds, self.validation_portion))
@@ -129,26 +94,36 @@ class Learner(Component):
             error(
                 "No test data or cross/portion-validation setting specified.")
 
-        # configure and sanity-check evaluator
-        if self.validation_exists and not self.use_validation_for_training:
-            # calculate the majority label from the training data -- label counts already computed
-            self.evaluator.majority_label = label_counts[0][0]
-            info("Majority label: {}".format(self.evaluator.majority_label))
-            self.evaluator.configure(self.train_labels, self.num_labels,
-                                     self.do_multilabel,
-                                     self.use_validation_for_training,
-                                     self.validation_exists)
-            self.evaluator.compute_label_distribution()
-        else:
-            # count label distribution from majority
-            self.evaluator.configure(self.test_labels, self.num_labels,
-                                     self.do_multilabel,
-                                     self.use_validation_for_training,
-                                     self.validation_exists)
-            self.evaluator.majority_label = count_label_occurences(
-                self.test_labels)[0][0]
 
+    def configure_validation_setting(self):
+        """Initialize validation setting"""
+        self.validation = Learner.ValidatonSetting(self.folds,
+                                                   self.validation_portion,
+                                                   self.test_data_available())
+        self.validation.assign_data(self.embeddings, train_index=self.train_index, test_index=self.test_index)
+
+    def configure_sampling(self):
+        """No label-agnostic sampling"""
+        pass
+
+
+    def make(self):
+        # get handy variables
+        self.read_config_variables()
+        np.random.seed(self.seed)
+        self.count_samples()
+
+        self.input_dim = self.embeddings.shape[-1]
         error("Input none dimension.", self.input_dim is None)
+
+        self.configure_validation_setting()
+
+        self.configure_sampling()
+
+
+        info("Learner data: embeddings: {} train idxs: {} test idxs: {}".format(
+            self.embeddings.shape, len(self.train_index), len(self.test_index)))
+
         info("Created learning: {}".format(self))
 
     def get_existing_predictions(self):
@@ -161,10 +136,8 @@ class Learner(Component):
         """Check if the current training run is already completed."""
         trainval_file = self.get_trainval_serialization_file()
         if exists(trainval_file):
-            info(
-                "Training {} with input data: {} samples, {} labels, on LOADED existing {}"
-                .format(self.name, self.num_train, self.num_train_labels,
-                        self.validation))
+            info("Training {} with input data: {} samples on LOADED existing {}"
+                .format(self.name, self.num_train, self.validation))
             idx = read_pickled(trainval_file)
             self.validation.check_indexes(idx)
             max_idx = max([np.max(x) for tup in idx for x in tup])
@@ -192,11 +165,13 @@ class Learner(Component):
             trainval_idx = self.compute_trainval_indexes()
 
         # handle indexes for multi-instance data
-        # if self.num_train != self.num_train_labels:
         if self.sequence_length > 1:
             self.validation.set_trainval_label_index(deepcopy(trainval_idx))
             # trainval_idx = self.expand_index_to_sequence(trainval_idx)
         return trainval_idx
+
+    def show_train_statistics(self, train_labels, val_labels):
+        pass
 
     # perfrom a train-test loop
     def do_traintest(self):
@@ -216,26 +191,13 @@ class Learner(Component):
                 test_index, test_labels, test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
 
                 # show training data statistics
-                self.evaluator.show_label_distribution(
-                    count_label_occurences(train_labels),
-                    "Training label distribution for validation setting: " +
-                    self.validation.get_current_descr())
-                if val_index is not None:
-                    self.evaluator.show_label_distribution(
-                        count_label_occurences(val_labels),
-                        "Validation label distribution for validation setting: "
-                        + self.validation.get_current_descr())
+                self.show_train_statistics(train_labels, val_labels)
 
-                # preprocess data and labels -- we only have indexes here.
-                # assign containers
-                # train_index, train_labels = train
-                # test_index, test_labels = test
-                # val_index, val_labels = val if val else (None, None)
+                # make a sample count for printing
                 self.count_samples()
 
                 # for cross-validation testing, gotta keep the ref. labels updated
-                self.evaluator.update_reference_labels(test_labels,
-                                                       train_labels)
+                self.evaluator.update_reference_labels(test_labels, train_labels)
                 # check if the run is completed already and load existing results, if allowed
                 model, predictions = None, None
                 if self.allow_prediction_loading:
@@ -260,8 +222,8 @@ class Learner(Component):
                 # test the model
                 with tictoc("Testing run [{}] on {} test data.".format(
                         self.validation.descr, self.num_test_labels)):
-                    self.do_test_evaluate(model, test_index, self.embeddings, test_labels,
-                                          test_instance_indexes, predictions)
+                    self.do_test_evaluate(model, test_index, self.embeddings,
+                                          test_instance_indexes, test_labels, predictions)
                     model_paths.append(self.get_current_model_path())
 
                 if self.validation_exists and not self.use_validation_for_training:
@@ -293,8 +255,8 @@ class Learner(Component):
                          model,
                          test_index,
                          embeddings,
-                         test_labels,
                          test_instance_indexes,
+                         test_labels=None,
                          predictions=None):
         if predictions is None:
             # evaluate the model
@@ -442,6 +404,10 @@ class Learner(Component):
     #         ])
     #     return fold_data
 
+    def is_supervised(self):
+        error("Attempted to access abstract learner is_supervised() method")
+        return None
+
     def save_model(self, model):
         path = self.get_current_model_path()
         info("Saving model to {}".format(path))
@@ -468,12 +434,12 @@ class Learner(Component):
               type(self.inputs) is not BundleList)
         error("{} needs vector information.".format(self.component_name),
               not self.inputs.has_vectors())
-        error("{} needs label information.".format(self.component_name),
-              not self.inputs.has_labels())
 
         self.train_index, self.test_index = (np.squeeze(np.asarray(x)) for x in self.inputs.get_indices(single=True).instances)
         self.embeddings = self.inputs.get_vectors(single=True).instances
-        self.train_labels, self.test_labels = self.inputs.get_labels(single=True).instances
+        if self.is_supervised():
+            error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
+            self.train_labels, self.test_labels = self.inputs.get_labels(single=True).instances
 
     def load_existing_predictions(self, current_test_instance_indexes, current_test_labels):
         # get predictions and instance indexes they correspond to
@@ -502,7 +468,7 @@ class Learner(Component):
         return embeddings[index] if len(index) > 0 else None
 
     class ValidatonSetting:
-        def __init__(self, folds, portion, test_present, do_multilabel):
+        def __init__(self, folds, portion, test_present, do_multilabel=False):
             self.label_indexes = None
             self.do_multilabel = do_multilabel
             self.do_folds = folds is not None
@@ -553,7 +519,7 @@ class Learner(Component):
                 base_path += "_valportion{}".format(self.portion)
             return base_path
 
-        def assign_data(self, embeddings, train_index, train_labels, test_labels, test_index):
+        def assign_data(self, embeddings, train_index, train_labels=None, test_labels=None, test_index=None):
             self.embeddings = embeddings
             self.train_index = train_index
             self.test_index = test_index

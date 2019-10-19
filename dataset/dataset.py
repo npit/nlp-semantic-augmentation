@@ -1,24 +1,26 @@
 import random
-import tqdm
-import numpy as np
+import string
 from os import listdir
 from os.path import basename
 
-from bundle.datatypes import Text, Labels
-from component.component import Component
-from bundle.bundle import Bundle
-from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, flatten
-from defs import is_none
-from sklearn.model_selection import StratifiedShuffleSplit
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer, PorterStemmer
-from nltk.tokenize import word_tokenize, sent_tokenize
-import string
 import nltk
+import numpy as np
+import tqdm
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer, WordNetLemmatizer
+from nltk.tokenize import sent_tokenize, word_tokenize
+
+from bundle.bundle import Bundle
+from bundle.datatypes import Text
+from component.component import Component
+from dataset.sampling import Sampler
+from defs import is_none
 from semantic.wordnet import Wordnet
-
 from serializable import Serializable
+from utils import (align_index, debug, error, flatten, info, nltk_download,
+                   tictoc, warning, write_pickled)
 
+"""Generic class for datasets."""
 
 class Dataset(Serializable):
     name = ""
@@ -26,14 +28,11 @@ class Dataset(Serializable):
     vocabulary = set()
     vocabulary_index = []
     word_to_index = {}
-    limited_name = ""
     dir_name = "datasets"
     undefined_word_index = None
     preprocessed = False
     train, test = None, None
-    multilabel = False
-    data_names = ["train-data", "train-labels", "train-label-names",
-                  "test-data", "test-labels", "test_label-names"]
+    data_names = ["train-data", "test-data"]
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
 
     @staticmethod
@@ -62,14 +61,15 @@ class Dataset(Serializable):
 
     def populate(self):
         self.set_serialization_params()
-        # check for limited dataset
         self.acquire_data()
         if self.loaded():
             # downloaded successfully
             self.loaded_index = self.load_flags.index(True)
         else:
+            # if the dataset's limited, check for the full version, else fail
+            error("Failed to acquire dataset", not self.config.has_limit())
             # check for raw dataset. Suspend limit and setup paths
-            self.suspend_limit()
+            self.name = Dataset.generate_name(self.config)
             self.set_serialization_params()
             # exclude loading of pre-processed data
             self.data_paths = self.data_paths[1:]
@@ -81,23 +81,18 @@ class Dataset(Serializable):
                 error("Failed to load dataset")
             self.loaded_index = self.load_flags.index(True)
             # reapply the limit
-            self.apply_limit()
+            self.train, self.test = self.sampler.subsample(self.get_data())
+            self.name = self.sampler.get_limited_name(self.name)
+            self.set_serialization_params()
+            write_pickled(self.serialization_path, self.get_all_raw())
 
         self.config.dataset.full_name = self.name
         info("Acquired dataset:{}".format(str(self)))
-        # sanity checks
-        # only numeric labels
-        try:
-            for labels in [self.train_labels, self.test_labels]:
-                list(map(int, flatten(labels)))
-        except ValueError as ve:
-            error("Non-numeric label encountered: {}".format(ve))
-        except TypeError as ve:
-            warning("Non-collection labelitem encountered: {}".format(ve))
-        # zero train / test
-        # error("Problematic values loaded.", zero_length(self.train, self.test))
+        self.check_sanity()
 
-
+    def check_sanity(self):
+        """Placeholder class for sanity checking"""
+        pass
 
     def handle_preprocessed(self, data):
         # info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
@@ -105,15 +100,17 @@ class Dataset(Serializable):
         self.vocabulary, self.vocabulary_index, self.undefined_word_index = [data[name] for name in self.preprocessed_data_names]
         for index, word in enumerate(self.vocabulary):
             self.word_to_index[word] = index
-        info("Loaded preprocessed data: {} train, {} test, with {} labels".format(len(self.train), len(self.test), self.num_labels))
+        info(self.get_info())
         self.loaded_raw_serialized = False
         self.loaded_preprocessed = True
 
-    def suspend_limit(self):
-        self.name = Dataset.generate_name(self.config)
+    #region getters
+    def get_data(self):
+        return self.train, self.test
 
-    def is_multilabel(self):
-        return self.multilabel
+    def get_info(self):
+        """Current data information getter"""
+        return "{} data: {} train, {} test".format(self.name, len(self.train), len(self.test))
 
     def get_raw_path(self):
         error("Need to override raw path datasea getter for {}".format(self.name))
@@ -125,141 +122,17 @@ class Dataset(Serializable):
         error("Need to override raw data handler for {}".format(self.name))
 
     def handle_raw_serialized(self, deserialized_data):
-        self.train, self.train_labels, self.train_label_names, \
-            self.test, self.test_labels, self.test_label_names = \
-            [deserialized_data[n] for n in self.data_names]
-        self.num_labels = len(set(self.train_label_names))
+        self.train, self.test = [deserialized_data[n] for n in self.data_names]
         self.loaded_raw_serialized = True
 
-    # data getter
-    def get_data(self):
-        return self.train, self.test
-
     def get_labels(self):
-        return self.train_labels, self.test_labels
+        """Placeholder labels getter"""
+        return None, None
 
     def get_num_labels(self):
-        return self.num_labels
-
-    # apply stratifed  limiting to the data wrt labels
-    def limit_data_stratify(num_limit, data, labels):
-        limit_ratio = num_limit / len(data)
-        splitter = StratifiedShuffleSplit(1, test_size=limit_ratio)
-        splits = list(splitter.split(np.zeros(len(data)), labels))
-        data = [data[n] for n in splits[0][1]]
-        labels = [labels[n] for n in splits[0][1]]
-
-        # fix up any remaining inconsistency
-        while not len({num_limit, len(data), len(labels)}) == 1:
-            # get label, label_indexes tuple list
-            counts = [(x, [i for i in range(len(labels)) if x == labels[i]]) for x in labels]
-            # get most populous label
-            maxfreq_label, maxfreq_label_idx = max(counts, key=lambda x: len(x[1]))
-            # drop one from it
-            idx = random.choice(maxfreq_label_idx)
-            del data[idx]
-            del labels[idx]
-            # remove by index of index
-            idx_idx = maxfreq_label_idx.index(idx)
-            del maxfreq_label_idx[idx_idx]
-        return data, np.asarray(labels)
-
-    def limit_data_simple(num_limit, data, labels):
-        idxs = random.sample(list(range(len(data))), num_limit)
-        data = [data[i] for i in idxs]
-        labels = [labels[i] for i in idxs]
-        return data, np.asarray(labels)
-
-    def apply_data_limit(self, name):
-        lim = self.config.dataset.data_limit
-        lim = lim + [-1] if len(lim) == 1 else lim
-        lim = [x if x >= 0 else None for x in lim]
-        ltrain, ltest = lim
-        if ltrain:
-            name += "_dlim_tr{}".format(ltrain)
-            if self.train:
-                if len(self.train) < ltrain:
-                    error("Attempted to data-limit {} train items to {}".format(len(self.train), ltrain))
-                try:
-                    # use stratification
-                    self.train, self.train_labels = Dataset.limit_data_stratify(ltrain, self.train, self.train_labels)
-                    info("Limited {} loaded data to {} train items.".format(self.base_name, len(self.train)))
-                except ValueError as ve:
-                    warning(ve)
-                    warning("Resorting to non-stratified limiting")
-                    self.train, self.train_labels = Dataset.limit_data_simple(ltrain, self.train, self.train_labels)
-                if not len({ltrain, len(self.train), len(self.train_labels)}) == 1:
-                    error("Inconsistent limiting in train data.")
-        if ltest:
-            name += "_dlim_te{}".format(ltest)
-            if self.test:
-                if len(self.test) < ltest:
-                    error("Attempted to data-limit {} test items to {}".format(len(self.test), ltest))
-                try:
-                    # use stratification
-                    self.test, self.test_labels = Dataset.limit_data_stratify(ltest, self.test, self.test_labels)
-                    info("Limited {} loaded data to {} test items.".format(self.base_name, len(self.test)))
-                except ValueError as ve:
-                    warning(ve)
-                    warning("Resorting to non-stratified limiting")
-                    self.test, self.test_labels = Dataset.limit_data_simple(ltest, self.test, self.test_labels)
-                if not len({ltest, len(self.test), len(self.test_labels)}) == 1:
-                    error("Inconsistent limiting in test data.")
-        return name
-
-    def restrict_to_classes(self, data, labels, restrict_classes):
-        new_data, new_labels = [], []
-        for d, l in zip(data, labels):
-            valid_classes = [cl for cl in l if cl in restrict_classes]
-            if not valid_classes:
-                continue
-            new_data.append(d)
-            new_labels.append(valid_classes)
-        return new_data, new_labels
-
-    def apply_class_limit(self, name):
-        c_lim = self.config.dataset.class_limit
-        if c_lim is not None:
-            name += "_clim_{}".format(c_lim)
-            if self.train:
-                if c_lim >= self.num_labels:
-                    error("Specified non-sensical class limit from {} classes to {}.".format(self.num_labels, c_lim))
-                # data have been loaded -- apply limit
-                retained_classes = random.sample(list(range(self.num_labels)), c_lim)
-                info("Limiting to the {}/{} classes: {}".format(c_lim, self.num_labels, retained_classes))
-                if self.multilabel:
-                    debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_labels)), max(map(len, self.test_labels))))
-                self.train, self.train_labels = self.restrict_to_classes(self.train, self.train_labels, retained_classes)
-                self.test, self.test_labels = self.restrict_to_classes(self.test, self.test_labels, retained_classes)
-                self.num_labels = len(retained_classes)
-                if not self.num_labels:
-                    error("Zero labels after limiting.")
-                # remap retained classes to indexes starting from 0
-                self.train_labels = align_index(self.train_labels, retained_classes)
-                self.test_labels = align_index(self.test_labels, retained_classes)
-                # fix the label names
-                self.train_label_names = [self.train_label_names[rc] for rc in retained_classes]
-                self.test_label_names = [self.test_label_names[rc] for rc in retained_classes]
-                info("Limited {} dataset to {} classes: {} - i.e. {} - resulting in {} train and {} test data."
-                     .format(self.base_name, self.num_labels, retained_classes,
-                             self.train_label_names, len(self.train), len(self.test)))
-                if self.multilabel:
-                    debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_labels)), max(map(len, self.test_labels))))
-        return name
-
-    def apply_limit(self):
-        if self.config.has_limit():
-            self.base_name = Dataset.generate_name(self.config)
-            name = self.base_name
-            if not is_none(self.config.dataset.class_limit):
-                name = self.apply_class_limit(self.base_name)
-            if not is_none(self.config.dataset.data_limit):
-                name = self.apply_data_limit(name)
-            self.name = name
-            self.set_serialization_params()
-        if self.train:
-            # serialize the limited version
-            write_pickled(self.serialization_path, self.get_all_raw())
+        """Placeholder number of labels getter"""
+        return None
+    #endregion
 
     def setup_nltk_resources(self):
         try:
@@ -331,6 +204,9 @@ class Dataset(Serializable):
         # filt = '!"#$%&()*+,-./:;<=>?@\[\]^_`{|}~\n\t1234567890'
         ret_words_pos, ret_voc = [], set()
         num_words = []
+        if not document_list:
+            info("(Empty collection)")
+            return [], []
         with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100, unit="collection") as pbar:
             for i in range(len(document_list)):
                 pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
@@ -371,8 +247,7 @@ class Dataset(Serializable):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        return {"train-data": self.train, "train-labels": self.train_labels, "train-label-names": self.train_label_names,
-                "test-data": self.test, "test-labels": self.test_labels, "test_label-names": self.test_label_names}
+        return {"train-data": self.train, "test-data": self.test}
 
     def get_all_preprocessed(self):
         res = self.get_all_raw()
@@ -395,22 +270,31 @@ class Dataset(Serializable):
 
     def __str__(self):
         try:
-            return "{}, train/test {}/{}, num labels: {}".format(self.base_name, len(self.train), len(self.test), self.num_labels)
+            return self.get_info()
         except:
             return self.base_name
 
+
     # region # chain methods
+
+    def set_outputs(self):
+        """Set text data to the output bundle"""
+        self.outputs.set_text(Text((self.train, self.test), self.vocabulary))
 
     def load_inputs(self, inputs):
         error("Attempted to load inputs into a {} component.".format(self.base_name), inputs is not None)
 
     def configure_name(self):
-        self.apply_limit()
+        self.name = Dataset.generate_name(self.config)
+        if self.config.has_limit():
+            self.sampler = Sampler(self.config)
+            self.name = self.sampler.get_limited_name(self.name)
+        else:
+            self.name = Dataset.generate_name(self.config)
         Component.configure_name(self)
 
     def run(self):
         self.populate()
         self.preprocess()
-        self.outputs.set_text(Text((self.train, self.test), self.vocabulary))
-        self.outputs.set_labels(Labels((self.train_labels, self.test_labels)))
+        self.set_outputs()
     # endregion

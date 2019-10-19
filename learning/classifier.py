@@ -1,9 +1,12 @@
-from learning.learner import Learner
-from utils import error, one_hot, ill_defined, warning, write_pickled, read_pickled
 import numpy as np
-from sklearn.naive_bayes import GaussianNB as sk_NaiveBayes
 from sklearn.dummy import DummyClassifier as sk_Dummy
 from sklearn.linear_model import LogisticRegression as sk_LogReg
+from sklearn.naive_bayes import GaussianNB as sk_NaiveBayes
+
+from learning.learner import Learner
+from utils import (error, ill_defined, one_hot, read_pickled, warning,
+                   write_pickled)
+
 
 class Classifier(Learner):
 
@@ -17,6 +20,9 @@ class Classifier(Learner):
         Learner.make(self)
         error("Dataset supplied to classifier has only one label", ill_defined(self.num_labels, cannot_be=1))
 
+    def is_supervised(self):
+        """All classifiers require label information"""
+        return True
 
 class SKLClassifier(Classifier):
     """Scikit-learn classifier"""

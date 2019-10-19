@@ -390,7 +390,7 @@ class Config:
     def get_value(self, name, default=None, base=None, expected_type=None):
         if base is None:
             base = self.conf
-        value = base[name] if name in base else default
+        value = base[name] if name in base and base[name] is not None else default
         if expected_type is not None and value is not None:
             if type(value) is not expected_type:
                 error("Argument {} got value {} which is of type {}, but {} is required."

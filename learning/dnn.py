@@ -9,9 +9,9 @@ import numpy as np
 from keras import callbacks
 from keras.initializers import Constant
 from keras.layers import LSTM as keras_lstm
-from keras.layers import Activation, Bidirectional, Dense, Dropout, Flatten
+from keras.layers import Activation, Bidirectional, Dense, Dropout
 from keras.layers import Embedding as keras_embedding
-
+from keras.layers import Flatten
 from keras.models import Sequential, model_from_json
 from sklearn.exceptions import UndefinedMetricWarning
 
@@ -171,7 +171,7 @@ class DNN(Classifier):
                   batch_size=self.batch_size,
                   epochs=self.epochs,
                   validation_data=val,
-                  verbose=self.verbosity,
+                  verbose=self.config.print.training_progress,
                   callbacks=self.get_callbacks())
         self.report_early_stopping()
         return model
@@ -183,7 +183,7 @@ class DNN(Classifier):
         info("Network test data {}".format(test_data.shape))
         return model.predict(test_data,
                              batch_size=self.batch_size,
-                             verbose=self.verbosity)
+                             verbose=self.config.print.training_progress)
 
     # add softmax classification layer
     def add_softmax(self, model, is_first=False):

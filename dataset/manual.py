@@ -1,6 +1,8 @@
 import json
 from os.path import basename
+
 import numpy as np
+
 from dataset.dataset import Dataset
 from utils import write_pickled
 
@@ -37,7 +39,7 @@ class ManualDataset(Dataset):
     def get_all_raw(self):
         data = Dataset.get_all_raw(self)
         data["language"] = self.language
-        data["multilabel"] = self.is_multilabel()
+        data["multilabel"] = self.multilabel
         return data
 
     # raw path getter
@@ -54,41 +56,50 @@ class ManualDataset(Dataset):
         return raw_data
 
     def handle_raw(self, raw_data):
+        # initialize
         max_num_instance_labels = 0
-        self.num_labels = raw_data["num_labels"]
+        self.num_labels = raw_data["num_labels"] if "num_labels" in raw_data else None
         self.language = raw_data["language"]
-        data = raw_data["data"]
-
+        self.train_label_names, self.test_label_names = None, None
+        self.multilabel = False
         self.train, self.train_labels = [], []
         self.test, self.test_labels = [], []
 
+        data = raw_data["data"]
+
         unique_labels = {"train": set(), "test": set()}
+        # training data
         for obj in data["train"]:
             self.train.append(obj["text"])
-            lbls = obj["labels"]
-            self.train_labels.append(lbls)
-            unique_labels["train"].update(lbls)
-            max_num_instance_labels = len(lbls) if len(lbls) > max_num_instance_labels else max_num_instance_labels
+            if "labels" in obj:
+                lbls = obj["labels"]
+                self.train_labels.append(lbls)
+                unique_labels["train"].update(lbls)
+                if len(lbls) > max_num_instance_labels:
+                    max_num_instance_labels = len(lbls)
+        # test data
         for obj in data["test"]:
             self.test.append(obj["text"])
-            self.test_labels.append(obj["labels"])
-            unique_labels["test"].update(obj["labels"])
+            if "labels" in obj:
+                self.test_labels.append(obj["labels"])
+                unique_labels["test"].update(obj["labels"])
 
-        if "label_names" in raw_data:
-            self.train_label_names = raw_data["label_names"]["train"]
-            self.test_label_names = raw_data["label_names"]["test"]
-        else:
-            self.train_label_names, self.test_label_names = \
-                [list(map(str, sorted(unique_labels[tt]))) for tt in ["train", "test"]]
-        if max_num_instance_labels > 1:
-            self.multilabel = True
-            # labels to ndarray lists
-            self.train_labels = [np.asarray(x) for x in self.train_labels]
-            self.test_labels = [np.asarray(x) for x in self.test_labels]
-        else:
-            # labels to ndarray
-            self.train_labels = np.squeeze(np.asarray(self.train_labels, dtype=np.int32))
-            self.test_labels = np.squeeze(np.asarray(self.test_labels, dtype=np.int32))
+        if self.num_labels:
+            if "label_names" in raw_data:
+                self.train_label_names = raw_data["label_names"]["train"]
+                self.test_label_names = raw_data["label_names"]["test"]
+            else:
+                self.train_label_names, self.test_label_names = \
+                    [list(map(str, sorted(unique_labels[tt]))) for tt in ["train", "test"]]
+            if max_num_instance_labels > 1:
+                self.multilabel = True
+                # labels to ndarray lists
+                self.train_labels = [np.asarray(x) for x in self.train_labels]
+                self.test_labels = [np.asarray(x) for x in self.test_labels]
+            else:
+                # labels to ndarray
+                self.train_labels = np.squeeze(np.asarray(self.train_labels, dtype=np.int32))
+                self.test_labels = np.squeeze(np.asarray(self.test_labels, dtype=np.int32))
         # write serialized data
         write_pickled(self.serialization_path, self.get_all_raw())
 

@@ -1,7 +1,8 @@
-from learning.learner import Learner
-from utils import debug, error
 import numpy as np
 from sklearn.cluster import KMeans
+
+from learning.learner import Learner
+from utils import debug, error
 
 
 class Clusterer(Learner):
@@ -15,8 +16,15 @@ class Clusterer(Learner):
 
     def make(self):
         Learner.make(self)
-        error("Specified number of clusters: {} not equal to the number of labels in the data: {}.".format(self.num_clusters, self.num_labels), self.num_clusters != self.num_labels)
+        try:
+            if self.num_labels is not None:
+                error("Specified number of clusters: {} not equal to the number of specified labels in the data: {}.".format(self.num_clusters, self.num_labels), self.num_clusters != self.num_labels)
+        except:
+            pass
 
+    def is_supervised(self):
+        """All clusterers don't require label information"""
+        return False
 
 class KMeansClusterer(Clusterer):
     name = "kmeans"
