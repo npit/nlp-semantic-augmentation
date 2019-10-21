@@ -3,8 +3,7 @@ from os import makedirs
 from os.path import basename, dirname, exists, join
 
 import numpy as np
-from sklearn.model_selection import (KFold, StratifiedKFold,
-                                     StratifiedShuffleSplit)
+from sklearn.model_selection import KFold, ShuffleSplit
 
 import defs
 from augmentation.augmentation import LabelledDataAugmentation
@@ -12,6 +11,8 @@ from bundle.bundle import Bundle, BundleList
 from bundle.datatypes import Labels, Vectors
 from component.component import Component
 from learning.evaluator import Evaluator
+from learning.sampling import Sampler
+from learning.validation import ValidationSetting
 from utils import (count_label_occurences, error, info, one_hot, read_pickled,
                    tictoc, warning, write_pickled)
 
@@ -81,6 +82,7 @@ class Learner(Component):
         self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
         self.do_sampling = self.sampling_method is not None
 
+
     def check_sanity(self):
         """Sanity checks"""
         # check data for nans
@@ -91,13 +93,12 @@ class Learner(Component):
             error("Specified both folds {} and validation portion {}.".format(
                 self.folds, self.validation_portion))
         if not (self.validation_exists or self.test_data_available()):
-            error(
-                "No test data or cross/portion-validation setting specified.")
+            error("No test data or cross/portion-validation setting specified.")
 
 
     def configure_validation_setting(self):
         """Initialize validation setting"""
-        self.validation = Learner.ValidatonSetting(self.folds,
+        self.validation = ValidationSetting(self.folds,
                                                    self.validation_portion,
                                                    self.test_data_available())
         self.validation.assign_data(self.embeddings, train_index=self.train_index, test_index=self.test_index)
@@ -116,9 +117,11 @@ class Learner(Component):
         self.input_dim = self.embeddings.shape[-1]
         error("Input none dimension.", self.input_dim is None)
 
+        self.check_sanity()
         self.configure_validation_setting()
-
         self.configure_sampling()
+        self.evaluator.configure()
+
 
 
         info("Learner data: embeddings: {} train idxs: {} test idxs: {}".format(
@@ -187,8 +190,8 @@ class Learner(Component):
 
             # iterate over required runs as per the validation setting
             for iteration_index, trainval in enumerate(train_val_idxs):
-                train_index, train_labels, val_index, val_labels, \
-                test_index, test_labels, test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
+                train_index, val_index, test_index, test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
+                train_labels, val_labels, test_labels = self.validation.get_run_labels(iteration_index, trainval)
 
                 # show training data statistics
                 self.show_train_statistics(train_labels, val_labels)
@@ -196,8 +199,9 @@ class Learner(Component):
                 # make a sample count for printing
                 self.count_samples()
 
-                # for cross-validation testing, gotta keep the ref. labels updated
-                self.evaluator.update_reference_labels(test_labels, train_labels)
+                # for evaluation, pass all information of the current (maybe cross-validated) run testing, gotta keep the reference labels updated, if any
+                self.evaluator.update_reference(train_index=train_index, test_index=test_index, embeddings=self.embeddings, test_labels=test_labels, train_labels=train_labels)
+
                 # check if the run is completed already and load existing results, if allowed
                 model, predictions = None, None
                 if self.allow_prediction_loading:
@@ -205,7 +209,7 @@ class Learner(Component):
 
                 # train the model
                 if predictions is None:
-                    with tictoc( "Training run [{}] on {} training and {} val data.".format(self.validation, len(train_labels), len(val_labels) if val_labels is not None else "[none]")):
+                    with tictoc( "Training run [{}] on {} training and {} val data.".format(self.validation, self.num_train, len(val_index) if val_index is not None else "[none]")):
                         # check if a trained model already exists
                         if self.allow_model_loading:
                             model = self.load_model()
@@ -221,7 +225,7 @@ class Learner(Component):
 
                 # test the model
                 with tictoc("Testing run [{}] on {} test data.".format(
-                        self.validation.descr, self.num_test_labels)):
+                        self.validation.descr, self.num_test)):
                     self.do_test_evaluate(model, test_index, self.embeddings,
                                           test_instance_indexes, test_labels, predictions)
                     model_paths.append(self.get_current_model_path())
@@ -233,18 +237,19 @@ class Learner(Component):
                 # wrap up validation iteration
                 self.validation.conclude_iteration()
 
-            if self.validation.use_validation_for_testing:
-                # for the final evaluation, pass the entire training labels
-                self.evaluator.configure(self.train_labels, self.num_labels,
-                                         self.do_multilabel,
-                                         self.use_validation_for_training,
-                                         self.validation_exists)
-                # show the overall training label distribution
-                self.evaluator.show_label_distribution(
-                    message="Overall training label distribution")
-            else:
-                # show the test label distribution
-                self.evaluator.show_label_distribution()
+            if test_labels is not None:
+                if self.validation.use_validation_for_testing:
+                    # for the final evaluation, pass the entire training labels
+                    self.evaluator.configure(self.train_labels, self.num_labels,
+                                            self.do_multilabel,
+                                            self.use_validation_for_training,
+                                            self.validation_exists)
+                    # show the overall training label distribution
+                    self.evaluator.show_label_distribution(
+                        message="Overall training label distribution")
+                else:
+                    # show the test label distribution
+                    self.evaluator.show_label_distribution()
             self.evaluator.report_overall_results(self.validation.descr,
                                                   len(self.train_index),
                                                   self.results_folder)
@@ -272,8 +277,7 @@ class Learner(Component):
 
     def get_current_model_path(self):
         return self.validation.modify_suffix(
-            join(self.results_folder, "models", "{}".format(
-                self.name))) + ".model"
+            join(self.results_folder, "models", "{}".format(self.name))) + ".model"
 
     def get_trainval_serialization_file(self):
         sampling_suffix = "{}.trainvalidx.pickle".format(
@@ -284,125 +288,41 @@ class Learner(Component):
             join(self.results_folder, "{}".format(
                 self.name))) + sampling_suffix
 
+
+
     # produce training / validation splits, with respect to sample indexes
     def compute_trainval_indexes(self):
         if not self.validation_exists:
-            return [(np.arange(self.num_train_labels), np.arange(0))]
+            # return all training indexes, no validation
+            return [(np.arange(len(self.train_index)), np.arange(0))]
 
         trainval_serialization_file = self.get_trainval_serialization_file()
 
         if self.do_folds:
-            info(
-                "Training {} with input data: {} samples, {} labels, on {} stratified folds"
-                .format(self.name, self.num_train, self.num_train_labels,
-                        self.folds))
-            # for multilabel K-fold, stratification is not available. Also convert label format.
-            if self.do_multilabel:
-                splitter = KFold(self.folds,
-                                 shuffle=True,
-                                 random_state=self.seed)
-            else:
-                splitter = StratifiedKFold(self.folds,
-                                           shuffle=True,
-                                           random_state=self.seed)
-                # convert to 2D array
-                self.train_labels = np.squeeze(self.train_labels)
+            info("Splitting {} with input data: {} samples, on {} folds"
+                .format(self.name, self.num_train, self.folds))
+            splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
 
         if self.do_validate_portion:
-            info(
-                "Splitting {} with input data: {} samples, {} labels, on a {} validation portion"
-                .format(self.name, self.num_train, self.num_train_labels,
-                        self.validation_portion))
-            splitter = StratifiedShuffleSplit(
+            info("Splitting {} with input data: {} samples on a {} validation portion"
+                .format(self.name, self.num_train, self.validation_portion))
+            splitter = ShuffleSplit(
                 n_splits=1,
                 test_size=self.validation_portion,
                 random_state=self.seed)
 
         # generate. for multilabel K-fold, stratification is not usable
-        splits = list(
-            splitter.split(np.zeros(self.num_train_labels), self.train_labels))
+        splits = list(splitter.split(np.zeros(self.num_train)))
 
         # do sampling processing
         if self.do_sampling:
-            for split_index, (tr, vl) in enumerate(splits):
-                aug_indexes = []
-                orig_tr_size = len(tr)
-                ldaug = LabelledDataAugmentation()
-                if self.sampling_method == defs.sampling.oversample:
-                    for (label1, label2, ratio) in self.sampling_ratios:
-                        aug_indexes.append(
-                            ldaug.oversample_to_ratio(self.train,
-                                                      self.train_labels,
-                                                      [label1, label2],
-                                                      ratio,
-                                                      only_indexes=True,
-                                                      limit_to_indexes=tr))
-                        info(
-                            "Sampled via {}, to ratio {}, for labels {},{}. Modification size: {} instances."
-                            .format(self.sampling_method, ratio, label1,
-                                    label2, len(aug_indexes[-1])))
-                    aug_indexes = np.concatenate(aug_indexes)
-                    tr = np.append(tr, aug_indexes)
-                    info("Total size change: from {} to {} training instances".
-                         format(orig_tr_size, len(tr)))
-                elif self.sampling_method == defs.sampling.undersample:
-                    for (label1, label2, ratio) in self.sampling_ratios:
-                        aug_indexes.append(
-                            ldaug.undersample_to_ratio(self.train_data,
-                                                       self.train_labels,
-                                                       [label1, label2],
-                                                       ratio,
-                                                       only_indexes=True))
-                        info(
-                            "Sampled via {}, to ratio {}, for labels {},{}. Modification size: {} instances."
-                            .format(self.sampling_method, ratio, label1,
-                                    label2, len(aug_indexes[-1])))
-                    aug_indexes = np.concatenate(aug_indexes)
-                    tr = np.delete(tr, aug_indexes)
-                    info("Total size change: from {} to {} training instances".
-                         format(orig_tr_size, len(tr)))
-                else:
-                    error(
-                        "Undefined augmentation method: {} -- available are {}"
-                        .format(self.sampling_method, defs.avail_sampling))
-                splits[split_index] = (tr, vl)
+            smpl = Sampler()
+            splits = smpl.sample()
 
         # save and return the splitter splits
         makedirs(dirname(trainval_serialization_file), exist_ok=True)
         write_pickled(trainval_serialization_file, splits)
         return splits
-
-    # # apply required preprocessing on data and labels for a run
-    # def preprocess_data_labels(self, train, val, test):
-    #     train_data, train_labels = train
-    #     train = self.process_input(train_data), train_labels
-
-    #     if val is not None:
-    #         val_data, val_labels = val
-    #         val = self.process_input(val_data), val_labels
-
-    #     test_data, test_labels = test
-    #     test = self.process_input(test_data), test_labels
-    #     return train, val, test
-
-    # handle multi-vector items, expanding indexes to the specified sequence length
-    # def expand_index_to_sequence(self, fold_data):
-    #     # map to indexes in the full-sequence data (e.g. times sequence_length)
-    #     # fold_data = list(map(lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
-    #     for i in range(len(fold_data)):
-    #         if fold_data[i] is None:
-    #             continue
-    #         # expand with respective sequence members (add an increment, vstack)
-    #         # reshape to a single vector, in the vertical (column) direction, that increases incrementally
-    #         fold_data[i] = tuple([
-    #             np.ndarray.flatten(np.vstack([
-    #                 (x * self.sequence_length) +
-    #                 incr if x is not None else None
-    #                 for incr in range(self.sequence_length)
-    #             ]),
-    #                                order='F') for x in fold_data[i]
-    #         ])
-    #     return fold_data
 
     def is_supervised(self):
         error("Attempted to access abstract learner is_supervised() method")
@@ -466,122 +386,3 @@ class Learner(Component):
             error("The learner [{}] has no defined aggregation and is not sequence-capable, but the input index has shape {}".
             format(self.name, index.shape), self.input_aggregation is None and self.sequence_length < 2)
         return embeddings[index] if len(index) > 0 else None
-
-    class ValidatonSetting:
-        def __init__(self, folds, portion, test_present, do_multilabel=False):
-            self.label_indexes = None
-            self.do_multilabel = do_multilabel
-            self.do_folds = folds is not None
-            self.folds = folds
-            self.portion = portion
-            self.do_portion = portion is not None
-            self.use_validation_for_testing = not test_present
-            if self.do_folds:
-                self.descr = " {} stratified folds".format(self.folds)
-                self.current_fold = 0
-            elif self.do_portion:
-                self.descr = "{} validation portion".format(self.portion)
-            else:
-                self.descr = "(no validation)"
-
-        def __str__(self):
-            return self.descr
-
-        def get_current_descr(self):
-            if self.do_folds:
-                return "fold {}/{}".format(self.current_fold + 1, self.folds)
-            elif self.do_portion:
-                return "{}-val split".format(self.portion)
-            else:
-                return "(no-validation)"
-
-        def check_indexes(self, idx):
-            if self.do_folds:
-                error(
-                    "Mismatch between expected folds ({}) and loaded data of {} splits."
-                    .format(self.folds, len(idx)),
-                    len(idx) != self.folds)
-            elif self.do_portion:
-                info("Loaded train/val split of {} / {}.".format(
-                    *list(map(len, idx[0]))))
-
-        def get_model_path(self, base_path):
-            return self.modify_suffix(base_path) + ".model"
-
-        def conclude_iteration(self):
-            if self.do_folds:
-                self.current_fold += 1
-
-        def modify_suffix(self, base_path):
-            if self.do_folds:
-                return base_path + "_fold{}".format(self.current_fold)
-            elif self.do_portion:
-                base_path += "_valportion{}".format(self.portion)
-            return base_path
-
-        def assign_data(self, embeddings, train_index, train_labels=None, test_labels=None, test_index=None):
-            self.embeddings = embeddings
-            self.train_index = train_index
-            self.test_index = test_index
-            self.train_labels, self.test_labels = train_labels, test_labels
-
-        # get training, validation, test data chunks, given the input indexes and validation setting
-        def get_run_data(self, iteration_index, trainval_idx):
-            """get training and validation data chunks, given the input indexes"""
-            if self.do_folds:
-                error(
-                    "Iteration index: {} / fold index: {} mismatch in validation coordinator."
-                    .format(iteration_index, self.current_fold),
-                    iteration_index != self.current_fold)
-            train_idx, val_idx = trainval_idx
-
-            train_labels, val_labels = self.get_trainval_labels(iteration_index, trainval_idx)
-
-            if len(train_idx) > 0:
-                if not self.do_multilabel:
-                    train_labels = np.squeeze(np.asarray(train_labels))
-                curr_train_idx = np.squeeze(np.asarray([self.train_index[idx] for idx in train_idx]))
-
-            if len(val_idx) > 0:
-                if not self.do_multilabel:
-                    val_labels = np.squeeze(np.asarray(val_labels))
-                curr_val_idx = np.squeeze(np.asarray([self.train_index[idx] for idx in val_idx]))
-            else:
-                curr_val_idx = None
-
-            if self.use_validation_for_testing:
-                curr_test_idx = curr_val_idx
-                test_labels = val_labels
-                curr_val_idx, val_labels = None, None
-            else:
-                curr_test_idx, test_labels = self.test_index, self.test_labels
-            if not self.do_multilabel:
-                test_labels = np.squeeze(np.asarray(test_labels))
-
-            if len(val_idx) > 0 and self.use_validation_for_testing:
-                # mark the test instance indexes as the val. indexes of the train
-                instance_indexes = val_idx
-            else:
-                instance_indexes = range(len(self.test_index))
-            return curr_train_idx, train_labels, curr_val_idx, val_labels, curr_test_idx, test_labels, instance_indexes
-
-        def get_test_labels(self, instance_indexes):
-            if self.use_validation_for_testing:
-                return self.train_labels[instance_indexes]
-            else:
-                error(
-                    "Non-full instance indexes encountered, but validation is not set to act as testing",
-                    instance_indexes != range(len(self.test_labels)))
-                return self.test_labels
-
-        def set_trainval_label_index(self, trainval_idx):
-            self.label_indexes = trainval_idx
-
-        def get_trainval_labels(self, iteration_index, trainval_idx):
-            if self.label_indexes is not None:
-                train_idx, val_idx = self.label_indexes[iteration_index]
-            else:
-                train_idx, val_idx = trainval_idx
-            return [[np.asarray(self.train_labels[i])
-                     for i in idx] if idx is not None else None
-                    for idx in [train_idx, val_idx]]

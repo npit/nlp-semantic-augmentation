@@ -25,11 +25,14 @@ class Evaluator:
     confusion_matrices = None
 
     # available measures, aggregations and run types
-    singlelabel_measures = ["precision", "recall", "f1-score", "accuracy", "ari"]
+    singlelabel_measures = ["precision", "recall", "f1-score", "accuracy", "ari", "shilhouette"]
     fold_aggregations = ["mean", "var", "std", "folds"]
     run_types = ["random", "dummy", "majority", "run"]
     multilabel_measures = ["ap", "roc_auc"]
     label_aggregations = ["macro", "micro", "classwise", "weighted"]
+
+    # additional grouping
+    unsupervised_measures = ["shilhouette"]
 
     def get_labelwise_measures(self):
         """Get measures definable in a multiclass setting"""
@@ -37,7 +40,13 @@ class Evaluator:
 
     def invalid_combo(self, run_type, measure, label_aggr):
         """Return invalid evaluation combinations"""
-        return label_aggr not in self.performance[run_type][measure]
+        # aggregation-based incompatibilities
+        return measure not in self.performance[run_type] or \
+            (label_aggr not in self.performance[run_type][measure]) or \
+            (self.is_supervised() and measure in self.unsupervised_measures) or \
+            (not self.is_supervised() and measure not in self.unsupervised_measures)
+
+
 
     # defined in runtime
     measures = None
@@ -55,8 +64,9 @@ class Evaluator:
     label_distribution = None
     top_k = 3
 
-    # training labels
+    #  labels
     train_labels = None
+    test_labels = None
 
     # constructor
     def __init__(self, config):
@@ -68,27 +78,35 @@ class Evaluator:
         self.predictions_instance_indexes = []
         self.label_distribution = {}
 
-    def update_reference_labels(self, test_labels, train_labels):
-        # squeeze to ndarray if necessary
-        if not self.do_multilabel and type(test_labels) is list:
-            test_labels = np.squeeze(np.concatenate(test_labels))
-            train_labels = np.squeeze(np.concatenate(train_labels))
+    # self.evaluator.update_reference(test_labels=test_labels, train_labels=train_labels, train_index=train_index, num_test=test_index, embeddings=self.embeddings)
+    def update_reference(self, train_index, test_index, embeddings, test_labels=None, train_labels=None):
+        self.train_index = train_index
+        self.test_index = test_index
+        self.embeddings = embeddings
+        if test_labels is not None:
+            self.test_labels = test_labels
+            if not self.do_multilabel and type(test_labels) is list:
+                # squeeze to ndarray if necessary
+                test_labels = np.squeeze(np.concatenate(test_labels))
+        if train_labels is not None:
+            if not self.do_multilabel and type(test_labels) is list:
+                test_labels = np.squeeze(np.concatenate(test_labels))
+                train_labels = np.squeeze(np.concatenate(train_labels))
+            self.train_labels = train_labels
 
-        self.test_labels = test_labels
-        self.train_labels = train_labels
+    def configure(self, test_labels=None, num_labels=None, do_multilabel=None, use_validation_for_training=None, validation_exists=None):
+        """Configurator and sanity checker"""
+        if test_labels is not None:
+            self.do_multilabel = do_multilabel
+            self.num_labels = num_labels
+            if len(test_labels) > 0:
+                self.test_labels = test_labels
+                # squeeze to ndarray if necessary
+                if not self.do_multilabel and type(test_labels) is list:
+                    self.test_labels = np.squeeze(np.concatenate(test_labels))
 
-    def configure(self, test_labels, num_labels, do_multilabel, use_validation_for_training, validation_exists):
-        """Label setter method"""
-        self.do_multilabel = do_multilabel
-        self.num_labels = num_labels
         self.use_validation_for_training = use_validation_for_training
         self.validation_exists = validation_exists
-        if len(test_labels) > 0:
-            self.test_labels = test_labels
-            # squeeze to ndarray if necessary
-            if not self.do_multilabel and type(test_labels) is list:
-                self.test_labels = np.squeeze(np.concatenate(test_labels))
-
         self.check_sanity()
 
     def check_sanity(self):
@@ -145,9 +163,13 @@ class Evaluator:
             for run_type in self.run_types:
                 for aggr in [x for x in self.label_aggregations if x not in ["macro", "classwise"]]:
                     del self.performance[run_type]["accuracy"][aggr]
+
                 for aggr in self.label_aggregations:
                     if aggr != "macro":
                         del self.performance[run_type]["ari"][aggr]
+                        del self.performance[run_type]["shilhouette"][aggr]
+                if run_type in ["dummy", "majority"]:
+                    del self.performance[run_type]["shilhouette"]
 
         # sanity
         undefined = [x for x in self.preferred_types if x not in self.run_types]
@@ -182,6 +204,11 @@ class Evaluator:
         if gt is None:
             gt = self.test_labels
         return metrics.adjusted_rand_score(gt, preds)
+
+    # shilhouette coefficient
+    def compute_shilhouette(self, preds):
+        test_data = self.embeddings[self.test_index,:]
+        return metrics.silhouette_score(test_data, preds)
 
     # get average accuracy
     def compute_accuracy(self, preds, gt=None):
@@ -229,6 +256,7 @@ class Evaluator:
             for measure in self.measures:
                 if not self.do_multilabel:
                     for aggr in self.label_aggregations:
+                        # skip invalid combos
                         if self.invalid_combo(run_type, measure, aggr):
                             continue
                         # calculate the foldwise statistics
@@ -279,11 +307,8 @@ class Evaluator:
                     info(("{}| {}:" + self.print_precision).format(rtype, measure, self.performance[rtype][measure]["folds"][fold_index]))
         info("---------------")
 
-    # compute scores and append to per-fold lists
-    def evaluate_predictions(self, run_type, preds_proba):
-        # loop thresholds & amax, get respective TPs, FPs, etc
-        # evaluate metrics there, and multilabel evals with these.
-
+    def evaluate_supervised(self, run_type, preds_proba):
+        """Perform supervised evaluation of a run"""
         # sanity
         if self.num_labels != preds_proba.shape[-1]:
             error("Attempted to evaluated {}-dimensional predictions against {} labels".format(preds_proba.shape[-1], self.num_labels))
@@ -317,6 +342,23 @@ class Evaluator:
             # ari
             self.performance[run_type]["ari"]["macro"]["folds"].append(self.compute_ari(preds_amax))
 
+
+    def evaluate_unsupervised(self, run_type, preds_proba):
+        """Evaluate unsupervised run"""
+        preds_amax = np.argmax(preds_proba, axis=1)
+        self.performance[run_type]["shilhouette"]["macro"]["folds"].append(self.compute_shilhouette(preds_amax))
+
+    # compute scores and append to per-fold lists
+    def evaluate_predictions(self, run_type, preds_proba):
+        """Perform a run evaluation"""
+        # loop thresholds & amax, get respective TPs, FPs, etc
+        # evaluate metrics there, and multilabel evals with these.
+
+        if self.test_labels is not None:
+            self.evaluate_supervised(run_type, preds_proba)
+        else:
+            self.evaluate_unsupervised(run_type, preds_proba)
+
     def show_label_distribution(self, distr=None, message="Test label distribution:"):
         info("==============================")
         info(message)
@@ -346,6 +388,18 @@ class Evaluator:
         if do_show:
             self.show_label_distribution(self.label_distribution, message="Test label distribution:")
 
+
+    def evaluate_learning_run(self,  predictions, instance_indexes=None):
+        if self.is_supervised():
+            self.evaluate_supervised_learning_run(run_type, preds_proba)
+        else:
+            self.evaluate_unsupervised_learning_run(run_type, preds_proba)
+
+    # evaluate predictions and add baselines
+
+    def is_supervised(self):
+        return self.test_labels is not None
+
     # evaluate predictions and add baselines
     def evaluate_learning_run(self, predictions, instance_indexes=None):
         # # get multiclass performance
@@ -354,41 +408,44 @@ class Evaluator:
         #     self.performance["run"]["AP"][av] = ap
         #     self.performance["run"]["AUC"][av] = auc
 
-        num_train, num_test = len(self.train_labels), len(self.test_labels)
-        if len(predictions) != num_test:
-            error("Inconsistent shapes of predictions: {} and labels: {} lengths during evaluation"
-                  .format(len(predictions), num_test))
-        # compute single-label baselines
-        # add run performance wrt argmax predictions
-        self.evaluate_predictions("run", predictions)
-
-        # majority classifier - always predicts the majority label
-        if self.majority_label is None:
-            self.majority_label = count_label_occurences(self.test_labels, return_only_majority=True)
-            info("Majority label: {}".format(self.majority_label))
-        majpred = np.zeros(predictions.shape, np.float32)
-        majpred[:, self.majority_label] = 1.0
-        self.evaluate_predictions("majority", majpred)
-
-        # dummy classifier - predicts wrt the training label distribution
-        # handle cases with a larger training set
-        num_tile = np.ceil(num_test / num_train)
-        sample_pool = np.tile(self.train_labels, int(num_tile))[:num_test]
-        dummypred = one_hot(random.sample(list(sample_pool), num_test), self.num_labels)
-        self.evaluate_predictions("dummy", dummypred)
-
-        # random classifier
-        randpred = np.random.rand(*predictions.shape)
-        self.evaluate_predictions("random", randpred)
-
+        # store instance indexes
         if instance_indexes is None:
             instance_indexes = np.asarray(list(range(len(self.test_labels))), np.int32)
         self.predictions_instance_indexes.append(instance_indexes)
 
+        if len(predictions) != len(self.test_index):
+            error("Inconsistent shapes of predictions: {} and labels: {} lengths during evaluation"
+                  .format(len(predictions), len(self.test_index)))
+        # compute single-label baselines
+        # add run performance wrt argmax predictions
+        self.evaluate_predictions("run", predictions)
         self.predictions["run"].append(predictions)
+
+        # majority classifier - always predicts the majority label
+        if self.is_supervised():
+            # majority learner
+            if self.majority_label is None:
+                self.majority_label = count_label_occurences(self.test_labels, return_only_majority=True)
+            info("Majority label: {}".format(self.majority_label))
+            majpred = np.zeros(predictions.shape, np.float32)
+            majpred[:, self.majority_label] = 1.0
+            self.evaluate_predictions("majority", majpred)
+            self.predictions["majority"].append(majpred)
+
+            # dummy learner - predicts wrt the training label distribution
+            # handle cases with a larger training set
+            num_tile = np.ceil(num_test / num_train)
+            sample_pool = np.tile(self.train_labels, int(num_tile))[:num_test]
+            dummypred = one_hot(random.sample(list(sample_pool), num_test), self.num_labels)
+            self.evaluate_predictions("dummy", dummypred)
+            self.predictions["dummy"].append(dummypred)
+
+        # random classifier
+        randpred = np.random.rand(*predictions.shape)
+        self.evaluate_predictions("random", randpred)
         self.predictions["random"].append(randpred)
-        self.predictions["majority"].append(majpred)
-        self.predictions["dummy"].append(dummypred)
+
+
 
     # applies the threshold to the probabilistic predictions, extracting decision indices
     def apply_decision_threshold(self, proba, thresh):
@@ -440,6 +497,8 @@ class Evaluator:
 
         - print top / bottom K
         """
+        if not self.is_supervised():
+            return
         if not self.do_multilabel:
             res = {"instances": {}, "labels": {}}
 

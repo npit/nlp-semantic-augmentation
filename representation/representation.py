@@ -36,10 +36,12 @@ class Representation(Serializable):
         self.acquire_data()
         # restore name, maybe
         if self.multiple_config_names:
-            self.set_params()
-            self.set_name()
-            Component.configure_name(self)
-            self.check_params()
+            self.configure_name()
+            self.set_serialization_params()
+            # self.set_params()
+            # self.set_name()
+            # Component.configure_name(self)
+            # self.check_params()
             info("Restored representation name to {}".format(self.name))
 
     # region # serializable overrides

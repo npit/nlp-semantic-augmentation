@@ -2,7 +2,9 @@ import numpy as np
 
 from bundle.datatypes import Labels
 from learning.learner import Learner
-from utils import count_label_occurences, error, is_multilabel
+from learning.sampler import Sampler
+from utils import count_label_occurences, error, info, is_multilabel
+from validation import ValidationSetting
 
 
 class SupervisedLearner(Learner):
@@ -48,9 +50,10 @@ class SupervisedLearner(Learner):
 
 
     def configure_validation_setting(self):
-        self.validation = Learner.ValidatonSetting(self.folds,
+        self.validation = ValidationSetting(self.folds,
                                                    self.validation_portion,
                                                    self.test_data_available(),
+                                            use_labels=True,
                                                    self.do_multilabel)
         self.validation.assign_data(self.embeddings, train_index=self.train_index, train_labels=self.train_labels, test_labels=self.test_labels, test_index=self.test_index)
 
@@ -77,3 +80,51 @@ class SupervisedLearner(Learner):
                 count_label_occurences(val_labels),
                 "Validation label distribution for validation setting: "
                 + self.validation.get_current_descr())
+
+
+
+    # produce training / validation splits, with respect to sample indexes
+    def compute_trainval_indexes(self):
+        if not self.validation_exists:
+            # return all training indexes, no validation
+            return [(np.arange(len(self.train_index)), np.arange(0))]
+
+        trainval_serialization_file = self.get_trainval_serialization_file()
+
+        if self.do_folds:
+            # stratified fold splitting
+            info(
+                "Training {} with input data: {} samples, {} labels, on {} stratified folds"
+                .format(self.name, self.num_train, self.num_train_labels,
+                        self.folds))
+            # for multilabel K-fold, stratification is not available. Also convert label format.
+            if self.do_multilabel:
+                splitter = KFold(self.folds,
+                                 shuffle=True,
+                                 random_state=self.seed)
+            else:
+                splitter = StratifiedKFold(self.folds,
+                                           shuffle=True,
+                                           random_state=self.seed)
+                # convert to 2D array
+                self.train_labels = np.squeeze(self.train_labels)
+
+        if self.do_validate_portion:
+            info(
+                "Splitting {} with input data: {} samples, {} labels, on a {} validation portion"
+                .form,
+                random_state=self.seed)
+
+        # generate. for multilabel K-fold, stratification is not usable
+        splits = list(
+            splitter.split(np.zeros(self.num_train_labels), self.train_labels))
+
+        # do sampling processing
+        if self.do_sampling:
+            smpl = Sampler()
+            splits = smpl.sample()
+
+        # save and return the splitter splits
+        makedirs(dirname(trainval_serialization_file), exist_ok=True)
+        write_pickled(trainval_serialization_file, splits)
+        return splits

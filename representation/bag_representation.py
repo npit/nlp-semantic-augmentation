@@ -1,12 +1,13 @@
 import copy
 from os.path import basename
+
 import numpy as np
 
 import defs
 from defs import is_none
 from representation.bag import TFIDF, Bag
 from representation.representation import Representation
-from utils import debug, read_lines, info, shapes_list, error, write_pickled
+from utils import debug, error, info, read_lines, shapes_list, write_pickled
 
 
 class BagRepresentation(Representation):
@@ -205,4 +206,3 @@ class TFIDFRepresentation(BagRepresentation):
     # nothing to load, can be computed on the fly
     def fetch_raw(self, path):
         pass
-

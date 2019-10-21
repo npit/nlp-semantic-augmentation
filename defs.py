@@ -1,4 +1,6 @@
 from utils import to_namedtuple
+
+
 """
 Definitions file, serving the role of hierarchical constants.
 """
@@ -11,7 +13,7 @@ def make_def(name):
 
 avail_aggregation = ["pad", "avg"]
 avail_sequence_length = [ "unit", "non_unit"]
-avail_weights = ["frequencies", "tfidf"]
+avail_weights = ["bag", "tfidf"]
 avail_disam = ["first", "pos"]
 avail_limit = ["frequency", "top", "none"]
 avail_alias = ["none", "link"]
