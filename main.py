@@ -51,10 +51,10 @@ def main(config_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("config_file", help="Configuration .yml file for the run.")
+    parser.add_argument("-config_file", required=False, help="Configuration .yml file for the run.")
     args = parser.parse_args()
     if args.config_file is None:
-        config_file = "config.yml"
+        config_file = "config.example.yml"
     else:
         config_file = args.config_file
     main(config_file)

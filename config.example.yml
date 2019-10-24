@@ -3,7 +3,7 @@ dataset:
   # which dataset
   name: 20newsgroups
   # limit the dataset to a number of documents for train / test: <int>
-  # data_limit: 50
+  data_limit: [100, 50]
   # class_limit: 2
 
 # embeddings
@@ -11,7 +11,7 @@ embedding:
   # Which embedding will be used: glove / train
   name: glove
   # Embedding dimension: <int>
-  dimension: 100
+  dimension: 50
   # Sequence length, for embedding training: <int>
   sequence_length: 10
   # aggregation method:
@@ -41,7 +41,7 @@ semantic:
   # filter: how to enforce the limit.
   # - first: keep the <limit> first concepts, with the highest weight
   # - frequency-threshold: keep only concepts that appear at least <num> times in the dataset
-  limit: 15, first
+  limit: [first, 15]
   # how the semantic information is combined with the textual one. Values: concat, replace
   enrichment: replace
 
@@ -84,7 +84,7 @@ learner:
 train:
   epochs: 40
   folds: 5
-  validation_portion: 0.1
+  # validation_portion: 0.1
   early_stopping_patience: 20
   batch_size: 20
 
