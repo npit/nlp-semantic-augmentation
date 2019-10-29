@@ -8,7 +8,7 @@ from bundle.datatypes import Text, Labels
 from component.component import Component
 from bundle.bundle import Bundle
 from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, flatten
-from defs import is_none
+from defs import is_none, avail_preprocessing_items, avail_preprocessing_rules
 from sklearn.model_selection import StratifiedShuffleSplit
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer, PorterStemmer
@@ -97,15 +97,15 @@ class Dataset(Serializable):
         # zero train / test
         # error("Problematic values loaded.", zero_length(self.train, self.test))
 
-
-
     def handle_preprocessed(self, data):
         # info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
         self.handle_raw_serialized(data)
-        self.vocabulary, self.vocabulary_index, self.undefined_word_index = [data[name] for name in self.preprocessed_data_names]
+        self.vocabulary, self.vocabulary_index, self.undefined_word_index = [data[name] for name in
+                                                                             self.preprocessed_data_names]
         for index, word in enumerate(self.vocabulary):
             self.word_to_index[word] = index
-        info("Loaded preprocessed data: {} train, {} test, with {} labels".format(len(self.train), len(self.test), self.num_labels))
+        info("Loaded preprocessed data: {} train, {} test, with {} labels".format(len(self.train), len(self.test),
+                                                                                  self.num_labels))
         self.loaded_raw_serialized = False
         self.loaded_preprocessed = True
 
@@ -126,7 +126,7 @@ class Dataset(Serializable):
 
     def handle_raw_serialized(self, deserialized_data):
         self.train, self.train_labels, self.train_label_names, \
-            self.test, self.test_labels, self.test_label_names = \
+        self.test, self.test_labels, self.test_label_names = \
             [deserialized_data[n] for n in self.data_names]
         self.num_labels = len(set(self.train_label_names))
         self.loaded_raw_serialized = True
@@ -228,8 +228,10 @@ class Dataset(Serializable):
                 retained_classes = random.sample(list(range(self.num_labels)), c_lim)
                 info("Limiting to the {}/{} classes: {}".format(c_lim, self.num_labels, retained_classes))
                 if self.multilabel:
-                    debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_labels)), max(map(len, self.test_labels))))
-                self.train, self.train_labels = self.restrict_to_classes(self.train, self.train_labels, retained_classes)
+                    debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_labels)),
+                                                                               max(map(len, self.test_labels))))
+                self.train, self.train_labels = self.restrict_to_classes(self.train, self.train_labels,
+                                                                         retained_classes)
                 self.test, self.test_labels = self.restrict_to_classes(self.test, self.test_labels, retained_classes)
                 self.num_labels = len(retained_classes)
                 if not self.num_labels:
@@ -244,7 +246,8 @@ class Dataset(Serializable):
                      .format(self.base_name, self.num_labels, retained_classes,
                              self.train_label_names, len(self.train), len(self.test)))
                 if self.multilabel:
-                    debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_labels)), max(map(len, self.test_labels))))
+                    debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_labels)),
+                                                                              max(map(len, self.test_labels))))
         return name
 
     def apply_limit(self):
@@ -305,8 +308,14 @@ class Dataset(Serializable):
     # map text string into list of stopword-filtered words and POS tags
     def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro, stopwords):
         # debug("Processing raw text:\n[[[{}]]]".format(text))
+        if self.config.dataset.pre_segm:
+            text = self.apply_preprocessing_rules(text=text, rules=self.config.dataset.pre_segm)
         sents = sent_tokenize(text.lower())
         words = []
+
+        if self.config.dataset.post_segm:
+            text = self.apply_preprocessing_rules(text=text, rules=self.config.dataset.post_segm)
+
         for sent in sents:
             # remove punctuation content
             sent = sent.translate(punctuation_remover)
@@ -326,20 +335,50 @@ class Dataset(Serializable):
             return None
         return words_with_pos
 
+    def apply_preprocessing_rules(self, text, rules):
+        for rule, action_item in rules.items():
+            error("Rule {} not defined. Available are {}".format(rule, avail_preprocessing_rules),
+                  rule not in avail_preprocessing_rules)
+            replacing_token = ""
+            if rule == "delete":
+                replacing_token = " "
+            elif rule == "replace":
+                replacing_token = " "
+            error("Some preprocessing items {} not defined. Available are {}".format(action_item, avail_preprocessing_items),
+                  any(item not in avail_preprocessing_items for item in action_item))
+            func = lambda x: text.replace(x, replacing_token)
+            for item in action_item:
+                if item == "hashtag":
+                    text = func("#[^\\s]+")
+                elif item == "mention":
+                    text = func("@[^\\s]+ ")
+                elif item == "retweets":
+                    text = func(" RT ")
+                    text = func("^RT ")
+                elif item == "url":
+                    text = func("www[^\\s]+")
+                    text = func("http[^\\s]+")
+                    text = func("https.[^\\s]+")
+        return text
+
     # preprocess single
     def preprocess_text_collection(self, document_list, track_vocabulary=False):
         # filt = '!"#$%&()*+,-./:;<=>?@\[\]^_`{|}~\n\t1234567890'
         ret_words_pos, ret_voc = [], set()
         num_words = []
-        with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100, unit="collection") as pbar:
+        with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100,
+                       unit="collection") as pbar:
             for i in range(len(document_list)):
                 pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
                 pbar.update()
                 # text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
-                text_words_pos = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
+                text_words_pos = self.process_single_text(document_list[i],
+                                                          punctuation_remover=self.punctuation_remover,
+                                                          digit_remover=self.digit_remover,
                                                           word_prepro=self.word_prepro, stopwords=self.stopwords)
                 if text_words_pos is None:
-                    error("Text {}/{} preprocessed to an empty list:\n{}".format(i+1,len(document_list), document_list[i]))
+                    error("Text {}/{} preprocessed to an empty list:\n{}".format(i + 1, len(document_list),
+                                                                                 document_list[i]))
 
                 ret_words_pos.append(text_words_pos)
                 if track_vocabulary:
@@ -352,7 +391,8 @@ class Dataset(Serializable):
     # preprocess raw texts into word list
     def preprocess(self):
         if self.loaded_preprocessed:
-            info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
+            info("Skipping preprocessing, preprocessed data already loaded from {}.".format(
+                self.serialization_path_preprocessed))
             return
         self.setup_nltk_resources()
         with tictoc("Preprocessing {}".format(self.name)):
@@ -371,7 +411,8 @@ class Dataset(Serializable):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        return {"train-data": self.train, "train-labels": self.train_labels, "train-label-names": self.train_label_names,
+        return {"train-data": self.train, "train-labels": self.train_labels,
+                "train-label-names": self.train_label_names,
                 "test-data": self.test, "test-labels": self.test_labels, "test_label-names": self.test_label_names}
 
     def get_all_preprocessed(self):
@@ -395,7 +436,8 @@ class Dataset(Serializable):
 
     def __str__(self):
         try:
-            return "{}, train/test {}/{}, num labels: {}".format(self.base_name, len(self.train), len(self.test), self.num_labels)
+            return "{}, train/test {}/{}, num labels: {}".format(self.base_name, len(self.train), len(self.test),
+                                                                 self.num_labels)
         except:
             return self.base_name
 

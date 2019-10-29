@@ -16,6 +16,8 @@ avail_disam = ["first", "pos"]
 avail_limit = ["frequency", "top", "none"]
 avail_alias = ["none", "link"]
 avail_sampling = ["oversample", "undersample"]
+avail_preprocessing_rules = ["delete", "replace"]
+avail_preprocessing_items = ["hashtag", "retweets", "mention", "url"]
 
 aggregation = make_def("aggregation")
 sequence_length = make_def("sequence_length")

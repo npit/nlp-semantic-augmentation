@@ -51,6 +51,8 @@ class Config:
         prepro = None
         data_limit = [None, None]
         class_limit = None
+        pre_segm = None
+        post_segm = None
 
     class print_conf:
         run_types = None
@@ -255,6 +257,8 @@ class Config:
                 self.dataset.name = dataset_opts["name"]
                 self.dataset.data_limit = self.get_value("data_limit", base=dataset_opts, default=None, expected_type=list)
                 self.dataset.class_limit = self.get_value("class_limit", base=dataset_opts, default=None, expected_type=int)
+                self.dataset.pre_segm = self.get_value("pre_segm", base=dataset_opts, default=None)
+                self.dataset.post_segm = self.get_value("post_segm", base=dataset_opts, default=None)
                 self.dataset.prepro = self.get_value("prepro", base=dataset_opts, default=None)
                 field = self.dataset
 

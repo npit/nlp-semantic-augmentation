@@ -1,0 +1,6 @@
+<<< Training run [ 2 stratified folds] on 191 training and 209 val data. took 0:00:05.
+<<< Testing run [ 2 stratified folds] on 200 test data. took 0:00:00.
+<<< Training run [ 2 stratified folds] on 209 training and 191 val data. took 0:00:03.
+<<< Testing run [ 2 stratified folds] on 200 test data. took 0:00:00.
+<<< Entire learning run took 0:00:09.
+<<< Total run took 0:00:12.

@@ -4,37 +4,41 @@ chains:
   # data reading
   datachain:
     dataset:
-      # name: 20newsgroups
-      name: /home/nik/datasets/multiling15/multiling_english_lblratio2mod_oversample.json
+      name: 20newsgroups
+      # name: /home/nik/datasets/multiling15/multiling_english_lblratio2mod_oversample.json
       # limit the dataset to a number of documents for train / test: <int>
       data_limit: [400, 200]
       # class_limit: 2
+      pre_segm:
+          delete: [url, retweets]
+      post_segm:
+        delete: [hashtag, mention]
 
   rep:
     link: datachain
     representation:
-      #      name: bag
-      #      dimension:
-      name: test
-      dimension: 50
-      aggregation: avg
+      name: bag
+      dimension:
+      # name: test
+      # dimension: 50
+      # aggregation: avg
 
   # semantic enrichment
-  sem:
-    link: datachain
-    semantic:
-      name: wordnet
-      unit: concept
-      disambiguation: first
-      weights: frequencies
-
-  fusion:
-    link: [rep, sem]
-    manip:
-      name: concat
+#  sem:
+#    link: datachain
+#    semantic:
+#      name: wordnet
+#      unit: concept
+#      disambiguation: first
+#      weights: frequencies
+#
+#  fusion:
+#    link: [rep, sem]
+#    manip:
+#      name: concat
 
   lrn:
-    link: [datachain, fusion]
+    link: [datachain, rep]
     learner:
       name: mlp
       layers: 2
