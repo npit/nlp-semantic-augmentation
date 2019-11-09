@@ -16,15 +16,18 @@ Run a one-time experiment using the default example configuration `config.exampl
 ```python
 python3 main.py
 ```
-Else, specify a configuration file
+Given that the example configuration uses a tiny subset of glove embeddings and very small portion of 20-Newsgroups dataset, awful performance is expected.
+For a real-world classification run, please supply a configuration file:
 ```
 python3 main.py myconfig.yml
 ```
+Instructions on writing the configuration are presented below.
+
 ## Configuration
 Configuration is performed via the `.yml` file. Common configuration parameters are outlined below:
 
 ### Dataset
-Specify the acquisition of the dataset. Publicly available distributions of [Reuters](https://martin-thoma.com/nlp-reuters/) and [20Newsgroups](http://qwone.com/~jason/20Newsgroups/) are supported, via python library API implementations. Additionally, custom json datasets are processable, using the format specified in the `ManualDataset` class. Instance and class limiter parameters are available for testing purposes.
+Specify the dataset to use in the run. Publicly available distributions of [Reuters](https://martin-thoma.com/nlp-reuters/) and [20Newsgroups](http://qwone.com/~jason/20Newsgroups/) are supported, via python library API implementations. Additionally, custom datasets in json format are processable, using the layout specified in the `ManualDataset` class. Instance and class limiter parameters are available for testing purposes.
 
 | parameter | candidate values | description |
 | :--- | --- | --- |
@@ -51,13 +54,18 @@ Specifies the semantic extraction and augmentation process, with [Wordnet](https
 |  name | `wordnet` | The semantic resource name. |
 |  unit | `concept` | The semantic information unit. `concept` is only supported for now. |
 |  weights |  `tfidf`, `frequencies` | Type of semantic unit weights to build. |
-|  limit | `[first, <int>]` | Semantic vector pruning options. |
-  | enrichment | `replace`, `concat` | Combination methods with the lexical component. |
-  | disambiguation | `pos, first, context_embedding` | Disambiguation procedure to map a single word to a semantic unit. |
-  | spreading_activation | `[step, decay]` | Spreading activation step and decay.  |
+|  limit | `[first | frequency, <int>]` | Vector pruning options: consider only the first (top) `k` concepts, or the ones appear at least `frequency` times in the dataset. |
+| enrichment | `replace`, `concat` | Combination methods with the lexical component. |
+| disambiguation | `pos, first, context_embedding` | Disambiguation procedure to map a single word to a semantic unit. |
+| context\_file | `/path/to/contextfile.pickle` | File with concept context word vectors.  |
+| context\_aggregation | `avg` | How to combine context word vectors. |
+| context\_threshold | `<int>` | Frequency cutoff threshold.  |
+| spreading\_activation | `[step, decay]` | Spreading activation step and decay.  |
+
+For context-embedding disambiguation, the necessary files have to be produced first via the `extract_wordnet_synset_words.py` script.
 
 ###  Learner
-Specifies the learning model to perform classification. MLP and LSTM neural networks are supported via (Keras)[https://keras.io/], along with number of layers and neurons per layer configurations for the network. Note that the former requires single-vector instances and the latter a sequence of vectors; therefore, LSTM should be used with `pad` embedding aggregation to generate multi-word tensors for its input.
+Specifies the learning model to perform classification. MLP and LSTM neural networks are supported via [Keras](https://keras.io/), along with number of layers and neurons per layer configurations for the network. Note that the former requires single-vector instances and the latter a sequence of vectors per instance; therefore, LSTM should be used with `pad` embedding aggregation to generate multi-word tensors for its input.
 
 | parameter | candidate values | description |
 | :--- | --- | --- |

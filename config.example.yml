@@ -9,7 +9,7 @@ dataset:
 # embeddings
 embedding:
   # Which embedding will be used: glove / train
-  name: glove
+  name: glove_sample
   # Embedding dimension: <int>
   dimension: 50
   # Sequence length, for embedding training: <int>
@@ -94,7 +94,7 @@ log_level: debug
 
 print:
   # evaluation metrics: f1, accuracy, precision, recall
-  measures: ["f1-score"]
+  measures: ["f1-score", "accuracy", "precision", "recall"]
   # evaluation metric aggregations: macro, micro, weighted
   aggregations: ["macro", "micro"]
   # which run type is of interest
@@ -107,7 +107,7 @@ print:
 
 folders:
   # run folder
-  run: glove100_mlp
+  run: example_run_folder
   # folder to store serialization results
   serialization: "serialization"
   # folder to supply raw data, where applicable

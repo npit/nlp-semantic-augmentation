@@ -91,17 +91,6 @@ class DNN:
         we = cr.loc[metric].iloc[-1]
         return cw, mi, ma, we
 
-    def get_roc(self, raw_preds, average, gt=None):
-        if gt is None:
-            gt = self.test_labels
-        try:
-            auc_roc = metrics.roc_auc_score(gt, raw_preds, average=average)
-            ap_prc = metrics.average_precision_score(gt, raw_preds, average=average)
-        except:
-            warning("Failed to get AUC/AP scores.")
-            auc_roc, ap_prc = 0, 0
-        return auc_roc, ap_prc
-
     # get average accuracy
     def compute_accuracy(self, preds, gt=None):
         if gt is None:
@@ -237,7 +226,7 @@ class DNN:
     def already_completed(self):
         predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
         if exists(predictions_file):
-            info("Reading existing predictions: {}".format(predictions_file))
+            warning("Reading existing predictions: {}".format(predictions_file))
             return read_pickled(predictions_file)
         return None
 
@@ -438,12 +427,6 @@ class DNN:
 
     # compute classification baselines
     def compute_performance(self, predictions):
-        # get multiclass performance
-        for av in ["macro", "micro"]:
-            auc, ap = self.get_roc(predictions, average=av)
-            self.performance["run"]["AP"][av] = ap
-            self.performance["run"]["AUC"][av] = auc
-
         # add run performance wrt argmax predictions
         predictions = np.argmax(predictions, axis=1)
         self.add_performance("run", predictions)
