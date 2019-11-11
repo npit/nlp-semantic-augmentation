@@ -4,7 +4,7 @@
 
 Install dependencies with:
 
-`pip3 install $(cat dependencies)`
+`pip3 install -r dependencies`
 
 If tensorflow keeps crashing on import, install version `1.5.0` with:
 
