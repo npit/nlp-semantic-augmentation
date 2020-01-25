@@ -1,4 +1,3 @@
-
 import pickle
 import random
 from os.path import join
@@ -12,7 +11,7 @@ from utils import (count_label_occurences, error, info, numeric_to_string,
 
 
 class Evaluator:
-    """Class to produce evaluation measures
+    """Class to produce evaluation measures from a learning run
     """
 
     # performance containers, in the format type-measure-aggregation-stat
@@ -194,10 +193,24 @@ class Evaluator:
         cw = np.zeros(num_labels, np.float32)
         for class_index in predicted_classes:
             cw[int(class_index)] = cr[class_index][metric]
-        mi = cr["micro avg"][metric]
-        ma = cr["macro avg"][metric]
-        we = cr["weighted avg"][metric]
-        return cw, mi, ma, we
+        res = [cw]
+
+        # gather the rest of the aggregations
+        aggregations = ["macro avg", "weighted avg"]
+        if "micro" in cr:
+            aggregations = ["micro avg"] + aggregations
+        else:
+            aggregations = ["accuracy"] + aggregations
+            warning("Micro-averaging mapped to accuracy in the confusion matrix.")
+
+        for aggr in aggregations:
+            try:
+                r = cr[aggr][metric]
+            except:
+                warning("Failed to access {} avg information on the {} metric".format(aggr, metric))
+                r = -1
+            res.append(r)
+        return res
 
     # adjusted rank index
     def compute_ari(self, preds, gt=None):

@@ -1,4 +1,4 @@
-#! /home/nik/work/iit/submissions/NLE-special/venv/bin/python3.6
+"""The entrypoint module"""
 import argparse
 
 from dataset import instantiator as dset_instantiator
@@ -11,6 +11,11 @@ from utils import error, info, num_warnings, tictoc, warning
 
 
 def main(config_file):
+    """The main function
+
+    Arguments:
+        config_file {str} -- Path for the run's configuration file
+    """
     # # time the entire run
     with tictoc("Total run"):
         # initialize configuration
@@ -27,6 +32,7 @@ def main(config_file):
 
 
 if __name__ == "__main__":
+    """Top-level entrypoint code block"""
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?")
     args = parser.parse_args()

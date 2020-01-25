@@ -19,7 +19,6 @@ class Embedding(Representation):
     embedding_vocabulary_index = {}
     undefined_element_index = None
 
-
     # region # serializable overrides
     def set_resources(self):
         csv_mapping_name = "{}/{}.csv".format(self.raw_data_dir, self.base_name)
