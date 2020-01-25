@@ -1,16 +1,22 @@
-#! /home/nik/work/iit/submissions/NLE-special/venv/bin/python3.6
+"""The entrypoint module"""
+
+import argparse
+
 from dataset import instantiator as dset_instantiator
+from learning import instantiator as lrn_instantiator
 from representation import instantiator as rep_instantiator
 from semantic import instantiator as sem_instantiator
-from transform.transform import Transform
-from learning import instantiator as lrn_instantiator
-
 from settings import Config
-import argparse
-from utils import info, warning, num_warnings, tictoc, error
+from transform.transform import Transform
+from utils import error, info, num_warnings, tictoc, warning
 
 
 def main(config_file):
+    """The main function
+
+    Arguments:
+        config_file {str} -- Path for the run's configuration file
+    """
     # # time the entire run
     with tictoc("Total run"):
         # initialize configuration
@@ -27,6 +33,7 @@ def main(config_file):
 
 
 if __name__ == "__main__":
+    """Top-level entrypoint code block"""
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?", default="chain.config.yml")
     args = parser.parse_args()

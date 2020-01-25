@@ -375,17 +375,11 @@ class Config:
         info("Read configuration for run / chain: {} from the file {}".format(self.run_id, input_config if type(input_config) is str else input_config.keys()))
         return read_order
 
-    def has_transform(self):
-        return self.transform.name not in [defs.alias.none, None]
-
     def has_semantic(self):
         return all([x not in [defs.alias.none, None] for x in [self.semantic.enrichment, self.semantic.name]])
 
     def is_debug(self):
         return self.conf["log_level"] == "debug"
-
-    def get_train_params(self):
-        return self.conf["train"]
 
     def get_value(self, name, default=None, base=None, expected_type=None):
         if base is None:

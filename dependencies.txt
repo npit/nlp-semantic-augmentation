@@ -5,3 +5,5 @@ pandas
 numpy
 sklearn
 gensim
+tqdm
+pyspotlight
