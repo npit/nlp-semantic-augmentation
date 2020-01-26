@@ -3,26 +3,27 @@ from sklearn.dummy import DummyClassifier as sk_Dummy
 from sklearn.linear_model import LogisticRegression as sk_LogReg
 from sklearn.naive_bayes import GaussianNB as sk_NaiveBayes
 
-from learning.learner import Learner
+from learning.supervised_learner import SupervisedLearner
 from utils import (error, ill_defined, one_hot, read_pickled, warning,
                    write_pickled)
 
 
-class Classifier(Learner):
+class Classifier(SupervisedLearner):
 
     def __init__(self):
         """Generic classifier constructor
         """
-        Learner.__init__(self)
+        SupervisedLearner.__init__(self)
 
     def make(self):
         # make sure there exist enough labels
-        Learner.make(self)
+        SupervisedLearner.make(self)
         error("Dataset supplied to classifier has only one label", ill_defined(self.num_labels, cannot_be=1))
 
     def is_supervised(self):
         """All classifiers require label information"""
         return True
+
 
 class SKLClassifier(Classifier):
     """Scikit-learn classifier"""
@@ -59,6 +60,7 @@ class SKLClassifier(Classifier):
         predictions = one_hot(predictions, self.num_labels)
         return predictions
 
+
 class NaiveBayes(SKLClassifier):
     name = "naive_bayes"
 
@@ -68,23 +70,22 @@ class NaiveBayes(SKLClassifier):
         SKLClassifier.__init__(self)
 
     def make(self):
-        # if dataset.is_multilabel():
-        #     error("Cannot apply {} to multilabel data.".format(self.name))
-        warning("Add multilabel check")
+        error("Cannot apply {} to multilabel data.".format(self.name), self.multilabel_input)
         SKLClassifier.make(self)
+
 
 class Dummy(SKLClassifier):
     name = "dummy"
+
     def __init__(self, config):
         self.config = config
         self.model = sk_Dummy
         SKLClassifier.__init__(self)
 
     def make(self):
-        # if dataset.is_multilabel():
-        #     error("Cannot apply {} to multilabel data.".format(self.name))
-        warning("Add multilabel check")
+        error("Cannot apply {} to multilabel data.".format(self.name), self.multilabel_input)
         SKLClassifier.make(self)
+
 
 class LogisticRegression(SKLClassifier):
     name = "logreg"
@@ -93,7 +94,5 @@ class LogisticRegression(SKLClassifier):
         self.model = sk_LogReg
         SKLClassifier.__init__(self)
     def make(self):
-        # if dataset.is_multilabel():
-        #     error("Cannot apply {} to multilabel data.".format(self.name))
-        warning("Add multilabel check")
+        error("Cannot apply {} to multilabel data.".format(self.name), self.multilabel_input)
         SKLClassifier.make(self)

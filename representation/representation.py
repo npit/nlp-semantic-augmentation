@@ -1,11 +1,10 @@
 import numpy as np
 
 import defs
-from bundle.bundle import Bundle
 from bundle.datatypes import Indices, Text, Vectors
 from component.component import Component
 from serializable import Serializable
-from utils import debug, error, info, one_hot, shapes_list
+from utils import debug, error, info, shapes_list
 
 
 class Representation(Serializable):

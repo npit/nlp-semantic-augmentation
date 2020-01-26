@@ -124,10 +124,11 @@ class WordEmbedding(Embedding):
 
         unknown_token_index = self.embeddings.index.get_loc(self.unknown_word_token)
         self.unknown_element_index = unknown_token_index
-        # loop over input text bundles (e.g. train & test)
+        # loop over input text bundles
         for dset_idx, docs in enumerate(self.text):
             num_docs = len(docs)
-            with tictoc("Embedding mapping for text bundle {}/{}, with {} texts".format(dset_idx + 1, len(self.text), num_docs)):
+            desc = "Embedding mapping for text bundle {}/{}, with {} texts".format(dset_idx + 1, len(self.text), num_docs)
+            with tqdm.tqdm(total=len(self.text[dset_idx]), ascii=True, desc=desc) as pbar:
                 word_stats = WordEmbeddingStats(self.vocabulary, self.embeddings.index)
                 for j, doc_wp_list in enumerate(self.text[dset_idx]):
                     # drop POS
@@ -151,8 +152,6 @@ class WordEmbedding(Embedding):
                         else:
                             word_index = self.embeddings.index.get_loc(word)
                         doc_indices.append(word_index)
-
-
                     # handle missing
                     word_list = [w for w in word_list if present_map[w]] if not self.map_missing_unks else \
                         [w if present_map[w] else self.unknown_word_token for w in word_list]
@@ -160,23 +159,11 @@ class WordEmbedding(Embedding):
                     self.present_words.update([w for w in present_map if present_map[w]])
                     error("No words present in document.", len(word_list) == 0)
 
-                    # if not self.do_train_vectors:
-                    #     # get embeddings
-                    #     text_embeddings = self.embeddings.loc[word_list]
-                    #     self.dataset_vectors[dset_idx].append(text_embeddings)
-                    #     num_embeddings = len(text_embeddings)
-                    #     # update present words and their index, per doc
-                    #     error("No embeddings generated for text", num_embeddings == 0)
-                    #     self.elements_per_instance[dset_idx].append(num_embeddings)
-                    # else:
-                    #     # just save indices
-                    #     doc_indices = np.asarray(doc_indices, np.int32)
-                    #     self.dataset_vectors[dset_idx].append(doc_indices)
-                    #     self.elements_per_instance[dset_idx].append(len(doc_indices))
                     # just save indices
                     doc_indices = np.asarray(doc_indices, np.int32)
                     self.dataset_vectors[dset_idx].append(doc_indices)
                     self.elements_per_instance[dset_idx].append(len(doc_indices))
+                    pbar.update()
 
             # if self.do_train_vectors:
             #     # just use the saved indices

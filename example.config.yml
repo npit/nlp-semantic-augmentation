@@ -6,6 +6,8 @@ chains:
     dataset:
       # name: 20newsgroups
       name: /home/nik/datasets/multiling15/multiling_english_lblratio2mod_oversample.json
+      # set for manual datasets
+      labelled: True
       # limit the dataset to a number of documents for train / test: <int>
       data_limit: [400, 200]
       # class_limit: 2

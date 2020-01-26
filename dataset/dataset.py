@@ -10,19 +10,17 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-from bundle.bundle import Bundle
-from bundle.datatypes import Text
+from bundle.datatypes import Labels, Text
 from component.component import Component
 from dataset.sampling import Sampler
-from defs import is_none
 from semantic.wordnet import Wordnet
 from serializable import Serializable
-from utils import (align_index, debug, error, flatten, info, nltk_download,
-                   tictoc, warning, write_pickled)
+from utils import (error, flatten, info, nltk_download, tictoc, warning,
+                   write_pickled)
 
-"""Generic class for datasets."""
 
 class Dataset(Serializable):
+    """Generic class for datasets."""
     name = ""
     component_name = "dataset"
     vocabulary = set()
@@ -33,16 +31,36 @@ class Dataset(Serializable):
     preprocessed = False
     train, test = None, None
     data_names = ["train-data", "test-data"]
+    label_data_names = ["train-labels", "label-names", "test-labels"]
+    train_labels, test_labels = None, None
+    multilabel = False
+
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
 
     @staticmethod
     def generate_name(config):
+        """Generate a dataset identifier name
+
+        Arguments:
+            config {namedtuple} -- The configuration object
+        Returns:
+            The generated name
+        """
+
         name = basename(config.dataset.name)
         if config.dataset.prepro is not None:
             name += "_" + config.dataset.prepro
         return name
 
     def nltk_dataset_resource_exists(self, name):
+        """Checks the availability of NLTK resources
+
+        Arguments:
+            name {str} -- The name of the resource to check
+        Returns:
+            A boolean denoting existence of the resource.
+        """
+
         try:
             if (name + ".zip") in listdir(nltk.data.find("corpora")):
                 return True
@@ -50,8 +68,12 @@ class Dataset(Serializable):
             warning("Unable to probe nltk corpora at path {}".format(nltk.data.path))
         return False
 
-    # dataset creation
     def __init__(self, skip_init=False):
+        """Dataset constructor
+
+        Arguments:
+            skip_init {bool} -- Wether to initialize the serializable superclass mechanism
+        """
         Component.__init__(self, produces=[Text.name])
         random.seed(self.config.misc.seed)
         if skip_init or self.config is None:
@@ -77,11 +99,13 @@ class Dataset(Serializable):
             self.handler_functions = self.handler_functions[1:]
             # get the data but do not preprocess
             self.acquire_data()
-            if not self.loaded():
-                error("Failed to load dataset")
+            error("Failed to load dataset", not self.loaded())
             self.loaded_index = self.load_flags.index(True)
             # reapply the limit
-            self.train, self.test = self.sampler.subsample(self.get_data())
+            data, labels, self.labelset, self.label_names = self.sampler.subsample(
+                self.get_data(), self.get_labels(), self.labelset, self.label_names, self.multilabel)
+            self.train, self.test = data
+            self.train_labels, self.test_labels = labels
             self.name = self.sampler.get_limited_name(self.name)
             self.set_serialization_params()
             write_pickled(self.serialization_path, self.get_all_raw())
@@ -92,7 +116,14 @@ class Dataset(Serializable):
 
     def check_sanity(self):
         """Placeholder class for sanity checking"""
-        pass
+        # ensure numeric labels
+        try:
+            for labels in [self.train_labels, self.test_labels]:
+                list(map(int, flatten(labels)))
+        except ValueError as ve:
+            error("Non-numeric label encountered: {}".format(ve))
+        except TypeError as ve:
+            warning("Non-collection labelitem encountered: {}".format(ve))
 
     def handle_preprocessed(self, data):
         # info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
@@ -108,9 +139,21 @@ class Dataset(Serializable):
     def get_data(self):
         return self.train, self.test
 
+    def is_multilabel(self):
+        """Multilabel status getter"""
+        return self.multilabel
+
+    def get_labels(self):
+        """Labels getter"""
+        return self.train_labels, self.test_labels
+
+    def get_num_labels(self):
+        """Number of labels getter"""
+        return self.num_labels
+
     def get_info(self):
         """Current data information getter"""
-        return "{} data: {} train, {} test".format(self.name, len(self.train), len(self.test))
+        return f"{self.name} data: {len(self.train)} train, {len(self.test)} test, {self.num_labels}"
 
     def get_raw_path(self):
         error("Need to override raw path datasea getter for {}".format(self.name))
@@ -123,11 +166,16 @@ class Dataset(Serializable):
 
     def handle_raw_serialized(self, deserialized_data):
         self.train, self.test = [deserialized_data[n] for n in self.data_names]
+        self.train_labels, self.label_names, self.test_labels = [deserialized_data[n] for n in self.label_data_names]
+        self.num_labels = len(set(self.label_names))
+        if type(self.train_labels) is np.ndarray:
+            self.multilabel = False
+        else:
+            if type(self.train_labels[0]) is int:
+                self.multilabel = False
+            else:
+                self.multilabel = any(len(ll) for ll in self.train_labels)
         self.loaded_raw_serialized = True
-
-    def get_labels(self):
-        """Placeholder labels getter"""
-        return None, None
 
     def get_num_labels(self):
         """Placeholder number of labels getter"""
@@ -247,7 +295,10 @@ class Dataset(Serializable):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        return {"train-data": self.train, "test-data": self.test}
+        data = {"train-data": self.train, "test-data": self.test}
+        for key, value in zip(self.label_data_names, [self.train_labels, self.label_names, self.test_labels]):
+            data[key] = value
+        return data
 
     def get_all_preprocessed(self):
         res = self.get_all_raw()
@@ -280,6 +331,7 @@ class Dataset(Serializable):
     def set_outputs(self):
         """Set text data to the output bundle"""
         self.outputs.set_text(Text((self.train, self.test), self.vocabulary))
+        self.outputs.set_labels(Labels((self.train_labels, self.test_labels), self.multilabel))
 
     def load_inputs(self, inputs):
         error("Attempted to load inputs into a {} component.".format(self.base_name), inputs is not None)

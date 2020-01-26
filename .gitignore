@@ -15,4 +15,6 @@ test.config.yml
 test
 test_runs
 *.yml
+venv/
 !example.config.yml
+

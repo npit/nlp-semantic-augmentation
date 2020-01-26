@@ -19,6 +19,11 @@ class Bundle:
     demand = None
 
     def __str__(self):
+        """Generate bundle name
+
+        Returns:
+            The generated bundle name
+        """
         parts = [self.source_name]
         if self.chain_name is not None:
             parts.append(self.chain_name)

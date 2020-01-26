@@ -1,10 +1,10 @@
 from os.path import join
-import numpy as np
 
+import numpy as np
 from sklearn.datasets import fetch_20newsgroups
 
 from dataset.dataset import Dataset
-from utils import info, write_pickled
+from utils import error, info, write_pickled
 
 
 class TwentyNewsGroups(Dataset):
@@ -30,9 +30,11 @@ class TwentyNewsGroups(Dataset):
         self.train, self.test = train.data, test.data
         self.train_labels, self.test_labels = (np.split(x, len(x)) for x in (train.target, test.target))
         # self.train_labels, self.test_labels = np.array_split(train.target, len(train.target)), np.array_split(test.target, len(test.target))
-        self.train_label_names = train.target_names
-        self.test_label_names = test.target_names
-        self.num_labels = len(self.train_label_names)
+        if not train.target_names == test.target_names:
+            error("Non-matching label names for train and test set! {train.target_names} {test.target_names}")
+        self.label_names = train.target_names
+        self.labelset = list(sorted(set(train.target)))
+        self.num_labels = len(self.label_names)
         # write serialized data
         write_pickled(self.serialization_path, self.get_all_raw())
         self.loaded_raw = True
@@ -47,4 +49,3 @@ class TwentyNewsGroups(Dataset):
     def get_raw_path(self):
         # dataset is downloadable
         pass
-

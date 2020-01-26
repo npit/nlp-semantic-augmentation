@@ -1,5 +1,6 @@
 from bundle.bundle import Bundle
-from utils import error, debug, as_list
+from utils import as_list, error
+
 
 """Abstract class representing a computation pipeline component
 """
@@ -45,7 +46,6 @@ class Component:
     def configure_name(self):
         # set configured name to the output bundle
         self.outputs.set_source_name(self.name)
-        pass
 
     def load_inputs(self, data):
         self.inputs = data

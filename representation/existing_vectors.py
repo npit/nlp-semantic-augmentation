@@ -1,7 +1,4 @@
-"""Class to handle loading already extracted features to be evaluated in the learning pipeline.
-The expected format is <dataset_name>.existing.csv
-"""
-from os.path import isfile, basename
+from os.path import basename, isfile
 
 import pandas as pd
 
@@ -10,6 +7,9 @@ from utils import error, info, write_pickled
 
 
 class ExistingVectors(Embedding):
+    """Class to handle loading already extracted features.
+    The expected format is <dataset_name>.existing.csv
+    """
     name = "existing"
 
     def __init__(self, config):

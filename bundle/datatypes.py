@@ -28,8 +28,10 @@ class Vectors:
 class Labels:
     name = "labels"
     instances = None
-    def __init__(self, labels):
+    is_multilabel = None
+    def __init__(self, labels, multilabel):
         self.instances = labels
+        self.multilabel = multilabel
 
 class Indices:
     name = "indices"

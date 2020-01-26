@@ -1,14 +1,15 @@
+import numpy as np
 from gensim.models import Doc2Vec
 from gensim.models.doc2vec import TaggedDocument
 
 import defs
 from representation.embedding import Embedding
 from representation.representation import Representation
-import numpy as np
 from utils import info, tictoc, write_pickled
 
 
 class DocumentEmbedding(Embedding):
+    """Document embedding class based on the doc2vec algorithm implemented by GenSim"""
     name = "doc2vec"
 
     def __init__(self, config):

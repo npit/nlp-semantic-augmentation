@@ -171,6 +171,3 @@ class Embedding(Representation):
         self.compatible_aggregations = defs.aggregation.avail
         self.compatible_sequence_lengths = defs.sequence_length.avail
         Representation.set_params(self)
-
-    def has_word(self, word):
-        return word in self.embeddings.index

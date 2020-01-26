@@ -12,9 +12,9 @@ class ValidationSetting:
         self.folds = folds
         self.portion = portion
         self.do_portion = portion is not None
-        self.use_validation_for_testing = not test_present
+        self.use_for_testing = not test_present
         if self.do_folds:
-            self.descr = " {} stratified folds".format(self.folds)
+            self.descr = "{} stratified folds".format(self.folds)
             self.current_fold = 0
         elif self.do_portion:
             self.descr = "{} validation portion".format(self.portion)
@@ -69,7 +69,7 @@ class ValidationSetting:
         train_labels, val_labels = self.get_trainval_labels(iteration_index, trainval_idx)
 
         # use validation labels for testing
-        if self.use_validation_for_testing:
+        if self.use_for_testing:
             val_labels, test_labels = val_labels, None
         else:
             test_labels = self.test_labels
@@ -77,13 +77,14 @@ class ValidationSetting:
         # if single-label, squeeze to ndarrays
         if not self.do_multilabel:
             train_labels = np.squeeze(np.asarray(train_labels))
+            val_labels = np.squeeze(np.asarray(val_labels))
             test_labels = np.squeeze(np.asarray(test_labels))
-            if len(val_idx) > 0 and not self.use_validation_for_testing:
-                val_labels = np.squeeze(np.asarray(val_labels))
+            # if len(trainval_idx[1]) > 0 and not self.use_for_testing:
+            #     val_labels = np.squeeze(np.asarray(val_labels))
 
         return train_labels, val_labels, test_labels
 
-    # get training, validation, test data chunks, given the input indexes and validation setting
+    # get training, validation, test data chunks, given the input indexes and the validation setting
     def get_run_data(self, iteration_index, trainval_idx):
         """get training and validation data chunks, given the input indexes"""
         if self.do_folds:
@@ -108,28 +109,19 @@ class ValidationSetting:
         else:
             curr_val_idx = None
 
-        if self.use_validation_for_testing:
+        if self.use_for_testing:
             curr_test_idx = curr_val_idx
             instance_indexes = val_idx
             # test_labels = val_labels
             # curr_val_idx, val_labels = None, None
         else:
             # curr_test_idx, test_labels = self.test_index, self.test_labels
-            curr_test_idx= self.test_index
+            curr_test_idx = self.test_index
             instance_indexes = range(len(self.test_index))
-        # if not self.do_multilabel:
-        #     test_labels = np.squeeze(np.asarray(test_labels))
-
-        # if len(val_idx) > 0 and self.use_validation_for_testing:
-        #     # mark the test instance indexes as the val. indexes of the train
-        #     instance_indexes = val_idx
-        # else:
-        #     instance_indexes = range(len(self.test_index))
-
         return curr_train_idx, curr_val_idx, curr_test_idx, instance_indexes
 
     def get_test_labels(self, instance_indexes):
-        if self.use_validation_for_testing:
+        if self.use_for_testing:
             return self.train_labels[instance_indexes]
         else:
             error(

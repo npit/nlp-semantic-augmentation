@@ -63,7 +63,7 @@ class DNN(Classifier):
 
         self.model_path = self.get_current_model_path()
 
-        if self.use_validation_for_training:
+        if self.validation.use_for_training:
             # model saving with early stoppingtch_si
             weights_path = self.model_path
 
@@ -202,7 +202,7 @@ class DNN(Classifier):
         return self.model_saver.filepath
 
     def save_model(self, model):
-        if self.use_validation_for_training:
+        if self.validation.use_for_training:
             # handled by the model saver callback
             return
         # serialize model

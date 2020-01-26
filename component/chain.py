@@ -1,7 +1,7 @@
-from component.component import Component
-from component import instantiator
-from utils import info, debug, error, warning, as_list
 import defs
+from component import instantiator
+from component.component import Component
+from utils import as_list, debug, error, info, warning
 
 
 class Chain(Component):
@@ -59,8 +59,8 @@ class Chain(Component):
         for c, component in enumerate(self.components):
             info("||| Running component {}/{} : type: {} - name: {}".format(c + 1, self.num_components, component.get_component_name(), component.get_name()))
 
-            if data_bundle is not None:
-                data_bundle.summarize_content("Passing bundle(s) to component [{}]".format(component.get_name()))
+            # if data_bundle is not None:
+            #     data_bundle.summarize_content("Passing bundle(s) to component [{}]".format(component.get_name()))
             component.load_inputs(data_bundle)
             component.run()
             # check if input needs deletion now
