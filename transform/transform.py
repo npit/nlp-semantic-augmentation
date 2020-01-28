@@ -1,3 +1,7 @@
+"""Module for feature transformation methods
+This module provides methods that transform existing representations into others.
+"""
+
 import numpy as np
 
 from bundle.bundle import Bundle, BundleList
@@ -6,12 +10,6 @@ from component.component import Component
 from serializable import Serializable
 from utils import (debug, error, info, match_labels_to_instances, shapes_list,
                    write_pickled)
-
-
-"""Module for feature transformation methods
-
-This module provides methods that transform existing representations into others.
-"""
 
 
 class Transform(Serializable):

@@ -202,7 +202,8 @@ class Learner(Component):
                 self.show_train_statistics(train_labels, val_labels)
 
                 # make a sample count for printing
-                self.count_samples()
+                self.num_train, self.num_val, self.num_test = [len(x) for x in (train_index, val_index, test_index)]
+                # self.count_samples(train_index, val_index, test_index)
 
                 # for evaluation, pass all information of the current (maybe cross-validated) run testing, gotta keep the reference labels updated, if any
                 self.evaluator.update_reference(train_index=train_index, test_index=test_index, embeddings=self.embeddings)

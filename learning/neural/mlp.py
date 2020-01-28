@@ -1,5 +1,4 @@
 import torch
-
 from learning.neural.model import BaseModel
 from learning.neural.neuralnet import NeuralNet
 from torch.nn import functional as F
@@ -14,10 +13,10 @@ class MLPModel(BaseModel):
         current_dim = embedding_dim
         # build chain of dense layers
         layers = []
-        for dim  in hidden_dim:
+        for dim in hidden_dim:
             layers.append(torch.nn.Linear(current_dim, dim))
             current_dim = dim
-        
+
         self.linear_layers = torch.nn.ModuleList(layers)
         # build final classification layer
         self.linear_out = torch.nn.Linear(current_dim, num_labels)
@@ -28,7 +27,7 @@ class MLPModel(BaseModel):
         data = self.embedding_layer(input_data)
         # dense chain
         for layer in self.linear_layers:
-            data = F.dropout(F.relu(layer(data)),p=0.3)
+            data = F.dropout(F.relu(layer(data)), p=0.3)
         # classification
         return self.linear_out(data)
 

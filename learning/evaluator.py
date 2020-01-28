@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 from sklearn import metrics
 
-from utils import (count_label_occurences, error, info, numeric_to_string,
-                   one_hot, warning)
+from utils import (count_label_occurences, debug, error, info,
+                   numeric_to_string, one_hot, warning)
 
 
 class Evaluator:
@@ -134,7 +134,7 @@ class Evaluator:
             if fatal:
                 msg += f"Use among: {available}"
                 error(msg)
-            msg += f"Defaulting to (preferred subset) of: {available}"
+            msg += f"Defaulting to (preferred subset of): {available}"
             warning(msg)
             while setting:
                 setting.pop()
@@ -163,17 +163,13 @@ class Evaluator:
         if not self.is_supervised():
             self.run_types = [m for m in self.run_types if m not in self.supervised_types]
             self.measures = [m for m in self.measures if m in self.unsupervised_measures]
+        else:
+            self.measures = [m for m in self.measures if m not in self.unsupervised_measures]
 
         self.check_setting(self.preferred_types, self.run_types, "run type", "Incompatible")
         self.check_setting(self.preferred_measures, self.measures, "measure", "Incompatible")
         self.check_setting(self.preferred_label_aggregations, self.label_aggregations, "aggregation", "Incompatible")
         self.check_setting(self.preferred_fold_aggregations, self.fold_aggregations, "aggregation", "Unavailable")
-
-        # gather valid combinations
-        if self.do_multilabel:
-            self.reportable_combos = list(zip(self.preferred_types, self.preferred_measures))
-        else:
-            self.reportable_combos = list(zip(self.preferred_types, self.preferred_measures, self.preferred_label_aggregations))
 
         # init performance containers
         self.initialize_containers()
@@ -214,6 +210,31 @@ class Evaluator:
                         if "shilhouette" in self.performance[run_type]:
                             del self.performance[run_type]["shilhouette"][aggr]
 
+    def get_evaluation_axes_to_print(self):
+        """Retrieve run types, measures and aggregations to display overall results"""
+        res = {}
+        for t in self.preferred_types:
+            if self.do_multilabel:
+                res[t] = set()
+            else:
+                res[t] = {}
+            for m in self.preferred_measures:
+                # make sure it's compatible with the run type
+                if m not in self.performance[t]:
+                    continue
+                if self.do_multilabel:
+                    res[t].add(m)
+                else:
+                    res[t][m] = set()
+                if not self.do_multilabel:
+                    for laggr in self.performance[t][m]:
+                        if laggr not in self.performance[t][m]:
+                            continue
+                        res[t][m].add(laggr)
+        return res
+
+
+
     # aggregated evaluation measure function shortcuts
     def get_pre_rec_f1(self, preds, metric, num_labels, gt=None):
         """Function to compute precision, recall and F1-score"""
@@ -234,7 +255,7 @@ class Evaluator:
             aggregations = ["micro avg"] + aggregations
         else:
             aggregations = ["accuracy"] + aggregations
-            warning("Micro-averaging mapped to accuracy in the confusion matrix.")
+            debug("Micro-averaging mapped to accuracy in the confusion matrix.")
             self.rename_micro_to_accuracy = True
 
         for aggr in aggregations:
@@ -286,31 +307,36 @@ class Evaluator:
     def report_overall_results(self, validation_description, num_total_train, write_folder):
         """Function to report learning results
         """
-        # compute predicted label occurences (fold average)
-        fold_predictions = count_label_occurences(np.concatenate([np.argmax(x, axis=1) for x in self.predictions['run']]))
-        fold_predictions = list(map(lambda x: (x[0], x[1] / len(self.predictions['run'])), fold_predictions))
-        self.show_label_distribution(fold_predictions, message="Predicted label (average) distribution")
+        import ipdb; ipdb.set_trace()
+        # compute overall predicted labels across all folds, if any
+        overall_predictions = np.concatenate([np.argmax(x, axis=1) for x in self.predictions['run']])
+        # count distribution occurences (validation total average)
+        self.show_label_distribution(overall_predictions, message="Predicted label (average) distribution")
         info("==============================")
         self.analyze_overall_errors(num_total_train)
         info("==============================")
 
-        info("{} {} performance {} with a validation setting of [{}]".format("/".join(self.preferred_types),
-                                                                             "/".join(self.preferred_measures),
-                                                                             "/".join(self.preferred_fold_aggregations), validation_description))
+        info("Printing overall results:")
+        info("Run types: {}".format("/".join(self.preferred_types)))
+        info("Measures: {}".format("/".join(self.preferred_measures)))
+        info("Label aggregations: {}".format("/".join(self.label_aggregations)))
+        info("Fold aggregations: {}".format("/".join(self.fold_aggregations)))
+
         info("------------------------------")
-        for combo in self.reportable_combos:
-            run_type, measure, *aggregation = combo
-            aggregation = aggregation[0] if aggregation else None
-            if self.rename_micro_to_accuracy and aggregation == "micro":
-                aggregation = "macro"
-            if self.do_multilabel:
-                self.performance[run_type][measure] = self.calc_fold_score_stats(self.performance[run_type][measure])
-            else:
-                self.performance[run_type][measure][aggregation] = self.calc_fold_score_stats(self.performance[run_type][measure][aggregation])
-            self.print_performance(run_type, measure, aggregation)
+        print_count = 0
+        axes_dict = self.get_evaluation_axes_to_print()
+        for run_type in axes_dict:
+            for measure in axes_dict[run_type]:
+                if self.do_multilabel:
+                    self.performance[run_type][measure] = self.calc_fold_score_stats(self.performance[run_type][measure])
+                    print_count += self.print_performance(run_type, measure)
+                else:
+                    for aggregation in axes_dict[run_type][measure]:
+                        self.performance[run_type][measure][aggregation] = self.calc_fold_score_stats(self.performance[run_type][measure][aggregation])
+                        print_count += self.print_performance(run_type, measure, aggregation)
             info("------------------------------")
         info("==============================")
-        if not self.reportable_combos:
+        if not print_count:
             warning("No suitable run / measure /aggregation specified in the configuration.")
 
         if write_folder is not None:
@@ -355,7 +381,7 @@ class Evaluator:
             error("Attempted to evaluated {}-dimensional predictions against {} labels".format(preds_proba.shape[-1], self.num_labels))
 
         if self.do_multilabel:
-            onehot_gt = one_hot(self.get_current_reference_labels() , self.num_labels)
+            onehot_gt = one_hot(self.get_current_reference_labels(), self.num_labels)
 
             # average precision
             ap = metrics.average_precision_score(onehot_gt, preds_proba)
@@ -375,12 +401,12 @@ class Evaluator:
                 self.performance[run_type][measure]["weighted"]["folds"].append(we)
                 self.confusion_matrices[run_type].append(metrics.confusion_matrix(self.get_current_reference_labels(), preds_amax, range(self.num_labels)))
 
-            # get accuracies
+            # get defined accuracy measures and aggregations
             acc, cw_acc = self.compute_accuracy(preds_amax), self.compute_classwise_accuracy(preds_amax)
             self.performance[run_type]["accuracy"]["classwise"]["folds"].append(cw_acc)
             self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
 
-            # ari
+            # get defined ari measures and aggregations
             self.performance[run_type]["ari"]["macro"]["folds"].append(self.compute_ari(preds_amax))
 
     def evaluate_unsupervised(self, run_type, preds_proba):
@@ -398,14 +424,14 @@ class Evaluator:
 
     def show_label_distribution(self, labels, message="Test label distribution:"):
         info("==============================")
-        info(message)
+        info(message + " (label, count)")
         info("------------------------------")
         distr = count_label_occurences(labels)
         local_max_lbl = max(distr, key=lambda x: x[1])[0]
         for lbl, freq in distr:
             maj = " - [input majority]" if lbl == self.majority_label else ""
             localmaj = " - [local majority]" if lbl == local_max_lbl else ""
-            info("Label {} : {:.3f}{}{}".format(lbl, freq, localmaj, maj))
+            info("Label {} : {:.1f}{}{}".format(lbl, freq, localmaj, maj))
 
     # evaluate predictions and add baselines
     def evaluate_learning_run(self, predictions, instance_indexes=None):

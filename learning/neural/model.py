@@ -1,5 +1,4 @@
 import torch
-
 from learning.neural.neuralnet import NeuralNet
 
 
