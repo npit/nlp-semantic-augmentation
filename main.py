@@ -1,7 +1,7 @@
 """The entrypoint module"""
 import argparse
 
-from settings import Config
+from config.config_reader import ConfigReader
 from utils import info, num_warnings, tictoc, warning
 
 
@@ -14,7 +14,7 @@ def main(config_file):
     # # time the entire run
     with tictoc("Total run"):
         # initialize configuration
-        conf = Config(config_file)
+        conf = ConfigReader.read_configuration(config_file)
         pipeline = conf.get_pipeline()
 
         pipeline.configure_names()

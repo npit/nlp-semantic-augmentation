@@ -42,23 +42,22 @@ chains:
       layers: 2
       hidden_dim: 256
 
-
-# training settings 
-train:
-  epochs: 2
-  # if test data is supplied, trainset is split to folds / val. portion
-  # the val. data is used to augment training, if supported by the learning
-  # mean performance across folds is reported.
-  # if test data is NOT supplied, the validation portion is held out for testing only
-  folds: 3
-  # validation_portion: 0.1
-  early_stopping_patience: 20
-  batch_size: 20
-  # process samples: oversample or delete
-  # sampling_method: oversample
-  # desired resulting label ratios.
-  # label1_index, label2_index, label1: label2 ratio
-  # sampling_ratios: [0,1,2]
+      # training settings 
+      train:
+        epochs: 2
+        # if test data is supplied, trainset is split to folds / val. portion
+        # the val. data is used to augment training, if supported by the learning
+        # mean performance across folds is reported.
+        # if test data is NOT supplied, the validation portion is held out for testing only
+        folds: 3
+        # validation_portion: 0.1
+        early_stopping_patience: 20
+        batch_size: 20
+        # process samples: oversample or delete
+        # sampling_method: oversample
+        # desired resulting label ratios.
+        # label1_index, label2_index, label1: label2 ratio
+        # sampling_ratios: [0,1,2]
 
 
 
@@ -82,6 +81,7 @@ print:
   # training details
   training_progress: True
 
+
 folders:
   # run folder
   run: test_run_folder
@@ -89,6 +89,7 @@ folders:
   serialization: "serialization"
   # folder to supply raw data, where applicable
   raw_data: raw_data
+
 
 misc:
   run_id:

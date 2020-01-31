@@ -11,6 +11,7 @@ import yaml
 
 num_warnings = 0
 
+
 def realign_embedding_index(data_indexes, all_indexes):
     """Check for non-mapped indexes, drop them and realign"""
     mapped_indexes = np.asarray([False for _ in all_indexes])
@@ -30,6 +31,7 @@ def realign_embedding_index(data_indexes, all_indexes):
     if len(all_indexes) < len(new_indexes):
         debug("Realignment reduced embedding matrix from {} to {} elements.".format(len(all_indexes), len(new_indexes)))
     return data_indexes, new_indexes
+
 
 def match_labels_to_instances(elements_per_instance, labels):
     """Expand, if needed, ground truth samples for multi-vector instances
@@ -61,7 +63,7 @@ def numeric_to_string(value, precision):
         try:
             # single iterables
             return "{" + " ".join(list(map(lambda x: precision.format(x), value))) + "}"
-        except:
+        except TypeError:
             # 2d iterable
             sc = []
             for k in value:
@@ -75,6 +77,7 @@ def numeric_to_string(value, precision):
 def ill_defined(var, can_be=None, cannot_be=None, func=None):
     return not well_defined(var, can_be, cannot_be, func)
 
+
 # verifies that the input variable is either None, or conforms to acceptable (can only be such) or problematic (can not equal) values
 def well_defined(var, can_be=None, cannot_be=None, func=None):
     if var is None:
@@ -86,8 +89,10 @@ def well_defined(var, can_be=None, cannot_be=None, func=None):
         return var == can_be
     return var != cannot_be
 
+
 def nltk_download(config, name):
     nltk.download(name, download_dir=nltk.data.path[0])
+
 
 def setup_simple_logging(level="info", logging_dir="."):
     level = logging._nameToLevel[level.upper()]
@@ -116,13 +121,16 @@ def to_namedtuple(conf_dict, ntname, do_recurse=False):
         conf = namedtuple(ntname, keys)(*[conf_dict[k] for k in keys])
     return conf
 
+
 def get_type_name(data):
     return type(data).__name__
+
 
 def as_list(x):
     """Convert the input to a single-element list, if it's not a list
     """
     return [x] if type(x) is not list else x
+
 
 def is_multilabel(labels):
     try:
@@ -133,6 +141,7 @@ def is_multilabel(labels):
     except TypeError:
         pass
     return False
+
 
 # function for one-hot encoding, can handle multilabel
 def one_hot(labels, num_labels):
@@ -147,8 +156,10 @@ def one_hot(labels, num_labels):
         output = np.append(output, binarized, axis=0)
     return output
 
+
 def is_collection(data):
     return type(data) in [list, dict, OrderedDict, tuple]
+
 
 def single_data_summary(data, data_index, recursion_depth=0):
     dtype = get_type_name(data)
@@ -162,6 +173,7 @@ def single_data_summary(data, data_index, recursion_depth=0):
     else:
         msg += "data of type {}".format(dtype)
     debug(msg)
+
 
 def data_summary(data, msg="", data_index="", recursion_depth=0):
     """ Print a summary of data in the input"""
@@ -177,7 +189,7 @@ def data_summary(data, msg="", data_index="", recursion_depth=0):
                 names = map(lambda x: ("{:" + str(maxname) + "s}").format(x), data.keys())
                 data = [data[k] for k in names]
             else:
-                names = range(1, len(data)+1)
+                names = range(1, len(data) + 1)
 
             debug("{} : ({}) {} elements:".format(msg, colltype.__name__, len(data)))
             for count, (name, datum) in enumerate(zip(names, data)):
@@ -194,6 +206,7 @@ def data_summary(data, msg="", data_index="", recursion_depth=0):
             debug("{} :".format(msg))
         single_data_summary(data, data_index, recursion_depth=recursion_depth)
 
+
 def shapes_list(thelist):
     try:
         return [get_shape(x) for x in thelist]
@@ -201,9 +214,11 @@ def shapes_list(thelist):
         # non-ndarray case
         return [len(x) for x in thelist]
 
+
 def get_shape(element):
     """numpy / scipy csr shape fetcher, handling empty inputs"""
     return element.shape if element.size > 0 else ()
+
 
 def lens_list(thelist):
     return [len(x) for x in thelist]
@@ -232,10 +247,11 @@ def align_index(input_list, reference):
             # iterable, recurse
             res = align_index(l, reference)
             output.append(res)
-        except:
+        except TypeError:
             output.append(reference.index(l))
     # return np.array_split(np.array(output), len(output))
     return output
+
 
 def count_label_occurences(labels, return_only_majority=False):
     """Gets majority (in terms of frequency) label in (potentially multilabel) input
@@ -252,7 +268,7 @@ def count_label_occurences(labels, return_only_majority=False):
     # just the max label
     if return_only_majority:
         return counts.most_common(1)[0][0]
-    return sorted(list(counts.most_common()), key= lambda x: x[1], reverse=True)
+    return sorted(list(counts.most_common()), key=lambda x: x[1], reverse=True)
 
 
 # split lists into sublists
@@ -316,6 +332,7 @@ def warning(msg):
     logger = logging.getLogger()
     logger.warning("[!] " + msg)
 
+
 # read pickled data
 def read_pickled(path, defaultNone=False):
     """Pickle deserializer function
@@ -327,6 +344,7 @@ def read_pickled(path, defaultNone=False):
     with open(path, "rb") as f:
         return pickle.load(f)
 
+
 # write pickled data
 def write_pickled(path, data):
     """Pickle serializer function
@@ -335,23 +353,33 @@ def write_pickled(path, data):
     with open(path, "wb") as f:
         pickle.dump(data, f)
 
-# yaml ordered read / write
 
-def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
-    class OrderedLoader(Loader):
-        pass
+def read_ordered_yaml(input_path, Loader=yaml.SafeLoader, object_pairs_hook=OrderedDict):
+    """Read a yaml file preserving order of components
+    """
+    with open(input_path) as stream:
+        class OrderedLoader(Loader):
+            pass
 
-    def construct_mapping(loader, node):
-        loader.flatten_mapping(node)
-        return object_pairs_hook(loader.construct_pairs(node))
-    OrderedLoader.add_constructor(
-        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-        construct_mapping)
-    return yaml.load(stream, OrderedLoader)
+        def construct_mapping(loader, node):
+            loader.flatten_mapping(node)
+            return object_pairs_hook(loader.construct_pairs(node))
+        OrderedLoader.add_constructor(
+            yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+            construct_mapping)
+        try:
+            return yaml.load(stream, OrderedLoader)
+        except yaml.parser.ParserError as p:
+            error(f"Failed to parse input config file: {stream}: {p}")
+        return None
 
-def ordered_dump(data, stream=None, Dumper=yaml.Dumper, **kwds):
+
+def write_ordered_dump(data, stream=None, Dumper=yaml.Dumper, **kwds):
+    """Write a yaml file preserving order of components
+    """
     class OrderedDumper(Dumper):
         pass
+
     def _dict_representer(dumper, data):
         return dumper.represent_mapping(
             yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,

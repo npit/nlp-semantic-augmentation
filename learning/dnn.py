@@ -19,7 +19,7 @@ from learning.classifier import Classifier
 # tf deprecation warnings
 # import tensorflow.python.util.deprecation as deprecation
 # deprecation._PRINT_DEPRECATION_WARNINGS = False
-# 
+#
 from utils import debug, error, info, one_hot, write_pickled
 
 # import keras with this disgusting hack to get rid of the "Using xxxx backend" message

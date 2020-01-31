@@ -15,17 +15,17 @@ from os import listdir, makedirs
 from os.path import basename, dirname, exists, isabs, isdir, join
 from shutil import rmtree
 
-import pandas as pd
 import yaml
 from numpy import round
 
+import pandas as pd
 import stattests
 from experiments.utils import (compare_dicts, filter_testing, keyseq_exists,
                                sendmail)
 from experiments.variable_config import VariableConf
 from stattests import instantiator
 from utils import (as_list, datetime_str, error, info, ordered_dump,
-                   ordered_load, setup_simple_logging, warning)
+                   read_ordered_yaml, setup_simple_logging, warning)
 
 """Script to produce large-scale semantic neural augmentation experiments
 
@@ -191,8 +191,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
         print_existing_csv_results(config_file)
         return
 
-    with open(config_file) as f:
-        conf = ordered_load(f, Loader=yaml.SafeLoader)
+    conf = read_ordered_yaml(config_file)
 
     exps = conf["experiments"]
 
@@ -296,8 +295,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
             config_to_copy = OrderedDict(
                 {k: v
                 for (k, v) in conf.items() if k != "experiments"})
-            with open(experiments_conf_path) as f:
-                existing_exp_conf = ordered_load(f, Loader=yaml.SafeLoader)
+            existing_exp_conf = read_ordered_yaml(experiments_conf_path)
             existing_exp_conf = OrderedDict({
                 k: v
                 for (k, v) in existing_exp_conf.items() if k != "experiments"
@@ -354,8 +352,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
             if exists(conf_path) and not no_config_check:
                 warning("Configuration file at {} already exists!".format(
                     conf_path))
-                with open(conf_path) as f:
-                    existing = ordered_load(f)
+                existing = read_ordered_yaml(conf_path)
                 equal, diff = compare_dicts(existing, conf)
                 if not equal:
                     error(
