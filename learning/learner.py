@@ -269,8 +269,6 @@ class Learner(Component):
             join(self.results_folder, "{}".format(
                 self.name))) + sampling_suffix
 
-
-
     # produce training / validation splits, with respect to sample indexes
     def compute_trainval_indexes(self):
         if not self.validation_exists:
@@ -364,7 +362,6 @@ class Learner(Component):
                 not np.all(
                     np.equal(existing_test_labels, current_test_labels)))
         return existing_predictions, existing_instance_indexes
-
 
     def get_data_from_index(self, index, embeddings):
         """Get data index from the embedding matrix"""

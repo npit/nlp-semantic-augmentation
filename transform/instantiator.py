@@ -1,9 +1,9 @@
 from transform.gmm import GMMClustering
 from transform.kmeans import KMeansClustering
 from transform.lda import LDA
-from transform.pca import PCA
 from transform.lida import LiDA
 from transform.lsa import LSA
+from transform.pca import PCA
 from utils import error
 
 
@@ -17,5 +17,4 @@ class Instantiator:
             if tra.base_name == name:
                 return tra(config)
         # any unknown name is assumed to be pretrained embeddings
-        error("Undefined feature transformation: {}, available ones are {}".format(name, [tra.base_name for tra in Instantiator.avail]))
-
+        error(f"Undefined feature transformation: {name}, available ones are {[tra.base_name for tra in Instantiator.avail]}")

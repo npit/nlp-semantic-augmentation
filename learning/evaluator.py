@@ -141,7 +141,7 @@ class Evaluator:
             setting.extend(available)
 
     def check_sanity(self):
-        """Evaluator sanity checking function"""
+        """Function to check for invalid / incompatible configuration"""
 
         # output options
         self.preferred_types = self.config.print.run_types if self.config.print.run_types else self.run_types
@@ -307,7 +307,6 @@ class Evaluator:
     def report_overall_results(self, validation_description, num_total_train, write_folder):
         """Function to report learning results
         """
-        import ipdb; ipdb.set_trace()
         # compute overall predicted labels across all folds, if any
         overall_predictions = np.concatenate([np.argmax(x, axis=1) for x in self.predictions['run']])
         # count distribution occurences (validation total average)

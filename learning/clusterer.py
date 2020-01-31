@@ -26,6 +26,7 @@ class Clusterer(Learner):
         """All clusterers don't require label information"""
         return False
 
+
 class KMeansClusterer(Clusterer):
     name = "kmeans"
 

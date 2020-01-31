@@ -27,10 +27,10 @@ class Embedding(Representation):
         self.resource_handler_functions.append(lambda x: x)
 
         # need the raw embeddings even if processed embedding data is available
-        if self.config.has_semantic() and self.config.semantic.name == "context":
-            # need the raw embeddings even if processed embedding data is available
-            self.resource_always_load_flag.append(True)
-            info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
+        # if self.config.has_semantic() and self.config.semantic.name == "context":
+        #     # need the raw embeddings even if processed embedding data is available
+        #     self.resource_always_load_flag.append(True)
+        #     info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
 
     def get_all_preprocessed(self):
         return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance, "undefined_element_index": self.undefined_element_index, "embeddings": self.embeddings}
