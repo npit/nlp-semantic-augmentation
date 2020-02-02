@@ -65,9 +65,13 @@ class Evaluator:
         return self.train_labels is not None or self.has_test_labels()
 
     # constructor
-    def __init__(self, config, test_via_validation):
-        """Evaluator constructor method"""
+    def __init__(self, config, embeddings, train_index, test_via_validation):
+        """Evaluator constructor method
+
+        """
         self.config = config
+        self.embeddings = embeddings
+        self.train_index = train_index
         self.test_via_validation = test_via_validation
         # minor inits
         self.predictions = {rt: [] for rt in self.run_types}
@@ -76,26 +80,31 @@ class Evaluator:
         self.rename_micro_to_accuracy = False
 
     def get_current_reference_labels(self):
-        return self.reference_labels[self.test_index]
+        """Retrieve the current labels to test against
 
-    def update_reference(self, train_index, test_index, embeddings):
-        if not self.test_via_validation:
-            # if we have a dedicated test set, no need to update anything
-            return
-        # update train/test index instances
-        self.train_index = train_index
-        self.test_index = test_index
-        self.embeddings = embeddings
-        # if test_labels is not None:
-        #     self.test_labels = test_labels
-        #     if not self.do_multilabel and type(test_labels) is list:
-        #         # squeeze to ndarray if necessary
-        #         test_labels = np.squeeze(np.concatenate(test_labels))
-        # if train_labels is not None:
-        #     if not self.do_multilabel and type(test_labels) is list:
-        #         test_labels = np.squeeze(np.concatenate(test_labels))
-        #         train_labels = np.squeeze(np.concatenate(train_labels))
-        #     self.train_labels = train_labels
+        :returns: The test labels collection
+        :rtype: ndarray
+        """
+        return self.reference_labels[self.test_label_index]
+
+    def update_reference_labels(self, train_index, test_index):
+        """Update indexes to data for the current evaluation
+
+        :param train_index: Train indexes to labels
+        :param test_index: Train indexes to labels
+        """
+        self.train_label_index = train_index
+        self.test_label_index = test_index
+
+    def update_reference_data(self, train_index, test_index):
+        """Update indexes to data for the current evaluation
+
+        :param train_index: Train indexes to data
+        :param test_index: Train indexes to data
+        """
+        # update or set train/test index instances
+        self.train_data_index = train_index
+        self.test_data_index = test_index
 
     def show_reference_label_distribution(self):
         """Show distribution of reference labels
@@ -107,6 +116,14 @@ class Evaluator:
                 self.show_label_distribution(self.test_labels, message="Test label distribution")
 
     def set_labelling(self, train_labels, num_labels, do_multilabel=False, test_labels=None):
+        """Assign labelling information to the evaluator
+
+        :param train_labels: Training label collection
+        :param num_labels: Number of unique labels in the training data
+        :param do_multilabel: Wether to run in a multi-label setting
+        :param test_labels: Test label collection
+
+        """
         # train labels: should always be provided
         self.train_labels = train_labels
         if len(train_labels) == 0:
@@ -119,19 +136,29 @@ class Evaluator:
                 self.train_labels = np.squeeze(np.concatenate(train_labels))
 
         # test labels
-        if test_labels is not None and len(test_labels)>0:
+        if test_labels is not None and len(test_labels) > 0:
             self.test_labels = test_labels
             if type(test_labels) is list:
                 self.test_labels = np.squeeze(np.concatenate(test_labels))
 
         if self.test_via_validation:
             self.reference_labels = self.train_labels
-            # the train/test index will be updated via the update_reference function
+            # the train/test index will be updated via the update_reference_labels function
         else:
             self.reference_labels = self.test_labels
-            self.test_index = np.arange(len(self.test_labels))
 
     def check_setting(self, setting, available, what="configuration", adj="Erroneous", fatal=False):
+        """Check user setting against list of available choices
+
+        :param setting: User selected setting
+        :param available: Valid settings
+        :param what: What the setting represents (used for printing)
+        :param adj: What an invalid setting is characterized by (used for printing)
+        :param fatal: Whether an invalid setting will lead to termination
+        :returns: User setting (if valid), or list of fallback settings (if non-fatal). Else error.
+        :rtype: List of strings.
+
+        """
         if not setting:
             return True
         clash = [x for x in setting if x not in available]
@@ -281,7 +308,7 @@ class Evaluator:
 
     # shilhouette coefficient
     def compute_shilhouette(self, preds):
-        test_data = self.embeddings[self.test_index, :]
+        test_data = self.embeddings[self.test_data_index, :]
         return metrics.silhouette_score(test_data, preds)
 
     # get average accuracy
@@ -310,15 +337,16 @@ class Evaluator:
         return False
 
     # print performance across folds and compute foldwise aggregations
-    def report_overall_results(self, validation_description, num_total_train, write_folder):
+    def report_overall_results(self, validation_description, write_folder):
         """Function to report learning results
         """
-        # compute overall predicted labels across all folds, if any
-        overall_predictions = np.concatenate([np.argmax(x, axis=1) for x in self.predictions['run']])
-        # count distribution occurences (validation total average)
-        self.show_label_distribution(overall_predictions, message="Predicted label (average) distribution")
-        info("==============================")
-        self.analyze_overall_errors(num_total_train)
+        if self.is_supervised():
+            # compute overall predicted labels across all folds, if any
+            overall_predictions = np.concatenate([np.argmax(x, axis=1) for x in self.predictions['run']])
+            # count distribution occurences (validation total average)
+            self.show_label_distribution(overall_predictions, message="Predicted label (average) distribution")
+            info("==============================")
+            self.analyze_overall_errors()
         info("==============================")
 
         info("Printing overall results:")
@@ -381,6 +409,10 @@ class Evaluator:
 
     def evaluate_supervised(self, run_type, preds_proba):
         """Perform supervised evaluation of a run"""
+        if len(preds_proba) != len(self.test_label_index):
+            error("Inconsistent shapes of predictions: {} and labels: {} lengths during evaluation"
+                  .format(len(preds_proba), len(self.test_label_index)))
+
         # sanity
         if self.num_labels != preds_proba.shape[-1]:
             error("Attempted to evaluated {}-dimensional predictions against {} labels".format(preds_proba.shape[-1], self.num_labels))
@@ -416,6 +448,10 @@ class Evaluator:
 
     def evaluate_unsupervised(self, run_type, preds_proba):
         """Evaluate unsupervised run"""
+        if len(preds_proba) != len(self.test_data_index):
+            error("Inconsistent shapes of predictions: {} and labels: {} lengths during evaluation"
+                  .format(len(preds_proba), len(self.test_data_index)))
+
         preds_amax = np.argmax(preds_proba, axis=1)
         self.performance[run_type]["shilhouette"]["macro"]["folds"].append(self.compute_shilhouette(preds_amax))
 
@@ -445,10 +481,6 @@ class Evaluator:
             # use the entire index set of the current test labels
             instance_indexes = np.asarray(list(range(len(self.get_current_reference_labels()))), np.int32)
         self.predictions_instance_indexes.append(instance_indexes)
-
-        if len(predictions) != len(self.test_index):
-            error("Inconsistent shapes of predictions: {} and labels: {} lengths during evaluation"
-                  .format(len(predictions), len(self.test_index)))
         # compute single-label baselines
         # add run performance wrt argmax predictions
         self.evaluate_predictions("run", predictions)
@@ -502,7 +534,9 @@ class Evaluator:
             scores_str.append(numeric_to_string(container[stat], self.print_precision))
         return " ".join(scores_str)
 
-    def consolidate_folded_test_results(self, num_total_train):
+    def consolidate_folded_test_results(self):
+        """Merge predictions for validation folds"""
+        num_total_train = len(self.train_labels)
         for run_type in self.predictions:
             for p, preds in enumerate(self.predictions[run_type]):
                 full_preds = np.zeros((num_total_train, self.num_labels), np.float32)
@@ -512,7 +546,7 @@ class Evaluator:
                 self.predictions[run_type][p] = full_preds
 
     # analyze overall error of the run
-    def analyze_overall_errors(self, num_total_train):
+    def analyze_overall_errors(self):
         """Method to generate an error analysis over folds
         - label-wise ranking: extract best/worst labels, average across instances
         - instance-wise ranking: extract best/worst instances, average across labels
@@ -527,14 +561,12 @@ class Evaluator:
 
         - print top / bottom K
         """
-        if not self.is_supervised():
-            return
         if not self.do_multilabel:
             res = {"instances": {}, "labels": {}}
 
             if self.test_via_validation:
                 # instances vary across folds -- consolidate
-                self.consolidate_folded_test_results(num_total_train)
+                self.consolidate_folded_test_results()
 
             for run_type in self.predictions:
                 # instance-wise

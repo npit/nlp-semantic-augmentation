@@ -48,15 +48,15 @@ class SKLClassifier(Classifier):
             val_labels = np.empty((0,))
         return train_labels, val_labels
 
-    def train_model(self, train_index, embeddings, train_labels, val_data, val_labels):
-        train_data = self.get_data_from_index(train_index, embeddings)
+    def train_model(self):
+        train_data = self.get_data_from_index(self.train_index, self.embeddings)
         model = self.model(**self.args)
-        model.fit(train_data, np.asarray(train_labels).ravel())
+        model.fit(train_data, np.asarray(self.train_labels).ravel())
         return model
 
     # evaluate a clustering
-    def test_model(self, test_index, embedding, model):
-        test_data = self.get_data_from_index(test_index, embedding)
+    def test_model(self, model):
+        test_data = self.get_data_from_index(self.test_index, self.embeddings)
         predictions = model.predict(test_data)
         # convert back to one-hot
         predictions = one_hot(predictions, self.num_labels)
@@ -91,6 +91,7 @@ class Dummy(SKLClassifier):
 
 class LogisticRegression(SKLClassifier):
     name = "logreg"
+
     def __init__(self, config):
         self.config = config
         self.model = sk_LogReg

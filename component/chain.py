@@ -44,7 +44,7 @@ class Chain(Component):
             comp.add_output_demand(chain_name, component_name)
             overlap = [x for x in comp.produces if x in consumes]
             cons = [c for c in cons if c not in overlap]
-            debug("Component {} covers {} need {}".format(comp.get_full_name(), "final" if not cons else "", overlap))
+            debug("Component {} covers {}need {}".format(comp.get_full_name(), "final" if not cons else "", overlap))
             if not cons:
                 break
 

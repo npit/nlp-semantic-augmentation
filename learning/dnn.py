@@ -145,22 +145,22 @@ class DNN(Classifier):
         return model
 
     # train a model on training & validation data portions
-    def train_model(self, train_index, embeddings, train_labels, val_index, val_labels):
+    def train_model(self):
         # define the model
         model = self.get_model(self.embeddings)
-        train_labels = one_hot(train_labels, self.num_labels)
+        train_labels = one_hot(self.train_labels, self.num_labels)
 
         # get actual data here, via a method or sth
         # train_data = self.get_data_from_index(train_index, embeddings)
-        train_data = train_index
+        train_data = self.train_index
 
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
 
-        if val_index is not None:
+        if self.val_index is not None:
             # val_data = self.get_data_from_index(val_index, embeddings)
-            val_data = val_index
-            val_labels = one_hot(val_labels, self.num_labels)
+            val_data = self.val_index
+            val_labels = one_hot(self.val_labels, self.num_labels)
             debug("Using validation shapes: {} {}".format(val_data.shape, val_labels.shape))
             val = (val_data, val_labels)
         else:
@@ -177,9 +177,9 @@ class DNN(Classifier):
         return model
 
     # evaluate a dnn
-    def test_model(self, test_index, embeddings, model):
-        # test_data = self.get_data_from_index(test_index, embeddings)
-        test_data = test_index
+    def test_model(self, model):
+        test_data = self.get_data_from_index(self.test_index, self.embeddings)
+        # test_data = self.test_index
         info("Network test data {}".format(test_data.shape))
         return model.predict(test_data,
                              batch_size=self.batch_size,

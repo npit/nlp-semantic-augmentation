@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.model_selection import KFold, ShuffleSplit
 
 from bundle.bundle import BundleList
-from bundle.datatypes import Labels, Vectors
+from bundle.datatypes import Vectors
 from component.component import Component
 from defs import datatypes, roles
 from learning.evaluator import Evaluator
@@ -40,12 +40,12 @@ class Learner(Component):
 
     train_embedding = None
 
-    def __init__(self):
+    def __init__(self, consumes=None):
         """Generic learning constructor
         """
         # initialize evaluation
-        Component.__init__(self, consumes=[Vectors.name, Labels.name])
-        self.can_be_final = True
+        consumes = Vectors.name if consumes is None else consumes
+        Component.__init__(self, consumes=consumes)
 
     # input preproc
     def process_input(self, data):
@@ -103,7 +103,8 @@ class Learner(Component):
         pass
 
     def attach_evaluator(self):
-        self.evaluator = Evaluator(self.config, self.validation.use_for_testing)
+        """Evaluator instantiation"""
+        self.evaluator = Evaluator(self.config, self.embeddings, self.train_index, self.validation.use_for_testing)
 
     def make(self):
         # get handy variables
@@ -147,14 +148,34 @@ class Learner(Component):
 
     # function to retrieve training data as per the existing configuration
     def get_trainval_indexes(self):
+        """Retrieve training/validation instance indexes
+
+        :returns: 
+        :rtype: 
+
+        """
         trainval_idx = None
-        # get training / validation indexes
+        # check whether they can be loaded
         if self.allow_model_loading:
             ret = self.get_existing_model_path()
             if ret:
                 trainval_idx, self.existing_model_paths = ret
         if not trainval_idx:
+            if not self.validation_exists:
+                # return all training indexes, no validation
+                return [(np.arange(len(self.train_embedding_index)), np.arange(0))]
+            # compute the indexes
             trainval_idx = self.compute_trainval_indexes()
+            trainval_serialization_file = self.get_trainval_serialization_file()
+
+            # do sampling processing
+            if self.do_sampling:
+                smpl = Sampler()
+                trainval_idx = smpl.sample()
+
+            # save the splits
+            makedirs(dirname(trainval_serialization_file), exist_ok=True)
+            write_pickled(trainval_serialization_file, trainval_idx)
 
         # handle indexes for multi-instance data
         if self.sequence_length > 1:
@@ -162,18 +183,15 @@ class Learner(Component):
             # trainval_idx = self.expand_index_to_sequence(trainval_idx)
         return trainval_idx
 
-    def show_train_statistics(self, train_labels, val_labels):
-        pass
-
-    def acquire_trained_model(self, train_index, val_index, train_labels, val_labels):
+    def acquire_trained_model(self):
         """Trains the learning model or load an existing instance from a persisted file."""
-        with tictoc("Training run [{}] on {} training and {} val data.".format(self.validation, self.num_train, len(val_index) if val_index is not None else "[none]")):
+        with tictoc("Training run [{}] on {} training and {} val data.".format(self.validation, self.num_train, len(self.val_index) if self.val_index is not None else "[none]")):
             model = None
             # check if a trained model already exists
             if self.allow_model_loading:
                 model = self.load_model()
             if not model:
-                model = self.train_model(train_index, self.embeddings, train_labels, val_index, val_labels)
+                model = self.train_model()
                 # create directories
                 makedirs(self.models_folder, exist_ok=True)
                 self.save_model(model)
@@ -181,11 +199,14 @@ class Learner(Component):
                 info("Skipping training due to existing model successfully loaded.")
         return model
 
+    def assign_current_run_data(self, iteration_index, trainval):
+        """Sets data for the current run"""
+        self.train_index, self.val_index, self.test_index, self.test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
+        self.num_train, self.num_val, self.num_test = [len(x) for x in (self.train_index, self.val_index, self.test_index)]
+
     # perfrom a train-test loop
     def do_traintest(self):
-        with tictoc("Entire learning run",
-                    do_print=self.do_folds,
-                    announce=False):
+        with tictoc("Entire learning run", do_print=self.do_folds, announce=False):
 
             # get trainval data
             train_val_idxs = self.get_trainval_indexes()
@@ -195,68 +216,56 @@ class Learner(Component):
 
             # iterate over required runs as per the validation setting
             for iteration_index, trainval in enumerate(train_val_idxs):
-                # get instance indexes and labels
-                train_index, val_index, test_index, test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
-                train_labels, val_labels, test_labels = self.validation.get_run_labels(iteration_index, trainval)
+                self.assign_current_run_data(iteration_index, trainval)
 
-                # show training data statistics
-                import ipdb; ipdb.set_trace()
-                self.show_train_statistics(train_labels, val_labels)
-
-                # make a sample count for printing
-                self.num_train, self.num_val, self.num_test = [len(x) for x in (train_index, val_index, test_index)]
-                # self.count_samples(train_index, val_index, test_index)
-
-                # for evaluation, pass all information of the current (maybe cross-validated) run testing, gotta keep the reference labels updated, if any
-                self.evaluator.update_reference(train_index=train_index, test_index=test_index, embeddings=self.embeddings)
+                # for evaluation, pass all information of the current (maybe cross-validated) run testing
+                self.evaluator.update_reference_data(train_index=self.train_index, test_index=self.test_index)
 
                 # check if the run is completed already and load existing results, if allowed
                 model, predictions = None, None
                 if self.allow_prediction_loading:
-                    predictions, test_instance_indexes = self.load_existing_predictions(test_instance_indexes, test_labels)
+                    predictions, test_instance_indexes = self.load_existing_predictions()
 
                 # train the model
                 if predictions is None:
-                    model = self.acquire_trained_model(train_index, val_index, train_labels, val_labels)
+                    model = self.acquire_trained_model()
                 else:
                     info("Skipping training due to existing predictions successfully loaded.")
 
                 # test and evaluate the model
                 with tictoc("Testing run [{}] on {} test data.".format(self.validation.descr, self.num_test)):
-                    self.do_test_evaluate(model, test_index, self.embeddings, test_instance_indexes, test_labels, predictions)
+                    self.do_test_evaluate(model, predictions)
                     model_paths.append(self.get_current_model_path())
 
-                if self.validation_exists and self.validation.use_for_testing:
-                    self.test, self.test_labels, self.test_instance_indexes = [], [], None
+                self.conclude_validation_iteration()
 
-                # wrap up the current validation iteration
-                self.validation.conclude_iteration()
-
-            # end of validation loop
-            if self.config.print.label_distribution:
-                self.evaluator.show_reference_label_distribution()
+            # end of entire train-test loop
+            self.conclude_traintest()
             # report results across entire training
-            self.evaluator.report_overall_results(self.validation.descr, len(self.train_index), self.results_folder)
+            self.evaluator.report_overall_results(self.validation.descr, self.results_folder)
 
     # evaluate a model on the test set
-    def do_test_evaluate(self,
-                         model,
-                         test_index,
-                         embeddings,
-                         test_instance_indexes,
-                         test_labels=None,
-                         predictions=None):
+    def do_test_evaluate(self, model, predictions=None):
         if predictions is None:
             # evaluate the model
-            error("No test data supplied!", len(test_index) == 0)
-            predictions = self.test_model(test_index, embeddings, model)
+            error("No test data supplied!", len(self.test_index) == 0)
+            predictions = self.test_model(model)
         # get performances
-        self.evaluator.evaluate_learning_run(predictions, test_instance_indexes)
+        self.evaluator.evaluate_learning_run(predictions, self.test_instance_indexes)
         if self.do_folds and self.config.print.folds:
             self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)
         # write fold predictions
         predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pickle"
-        write_pickled(predictions_file, [predictions, test_instance_indexes])
+        write_pickled(predictions_file, [predictions, self.test_instance_indexes])
+
+    def conclude_traintest(self):
+        """Perform concuding actions for the entire traintest loop"""
+        pass
+
+    def conclude_validation_iteration(self):
+        """Perform concluding actions for a single validation loop"""
+        # wrap up the current validation iteration
+        self.validation.conclude_iteration()
 
     def get_current_model_path(self):
         return self.validation.modify_suffix(
@@ -273,11 +282,12 @@ class Learner(Component):
 
     # produce training / validation splits, with respect to sample indexes
     def compute_trainval_indexes(self):
-        if not self.validation_exists:
-            # return all training indexes, no validation
-            return [(np.arange(len(self.train_index)), np.arange(0))]
+        """Compute training/validation indexes
 
-        trainval_serialization_file = self.get_trainval_serialization_file()
+        :returns: The training/validation indexes
+        :rtype: list of ndarray tuples
+
+        """
 
         if self.do_folds:
             info("Splitting {} with input data: {} samples, on {} folds"
@@ -294,15 +304,6 @@ class Learner(Component):
 
         # generate. for multilabel K-fold, stratification is not usable
         splits = list(splitter.split(np.zeros(self.num_train)))
-
-        # do sampling processing
-        if self.do_sampling:
-            smpl = Sampler()
-            splits = smpl.sample()
-
-        # save and return the splitter splits
-        makedirs(dirname(trainval_serialization_file), exist_ok=True)
-        write_pickled(trainval_serialization_file, splits)
         return splits
 
     def is_supervised(self):
@@ -342,28 +343,25 @@ class Learner(Component):
         # get vectors and their indices
         vectors_bundle = self.inputs.get_bundle_like(datatypes.vectors, roles.train, single=True)
         self.embeddings = vectors_bundle.get_vectors().instances
-        self.train_index = vectors_bundle.get_indices(role=roles.train)
+        self.train_embedding_index = vectors_bundle.get_indices(role=roles.train)
         # get_train self.inputs.get_indices(single=True, role=roles.train)
 
         if vectors_bundle.get_indices().has_role(roles.test):
-            self.test_index = vectors_bundle.get_indices(role=roles.test)
+            self.test_embedding_index = vectors_bundle.get_indices(role=roles.test)
         else:
-            self.test_index = np.ndarray((), np.float32)
+            self.test_embedding_index = np.ndarray((), np.float32)
+        # initialize current meta-indexes to data
+        self.train_index = np.arange(len(self.train_embedding_index))
+        self.test_index = np.arange(len(self.test_embedding_index))
 
-
-    def load_existing_predictions(self, current_test_instance_indexes, current_test_labels):
+    def load_existing_predictions(self):
+        """Loader function for existing, already computed predictions"""
         # get predictions and instance indexes they correspond to
         existing_predictions, existing_instance_indexes = self.get_existing_predictions()
         if existing_predictions is not None:
             info("Loaded existing predictions.")
-            error("Different instance indexes loaded than the ones generated.",
-                not np.all(np.equal(existing_instance_indexes, current_test_instance_indexes)))
-            existing_test_labels = self.validation.get_test_labels(
-                current_test_instance_indexes)
-            error(
-                "Different instance labels loaded than the ones generated.",
-                not np.all(
-                    np.equal(existing_test_labels, current_test_labels)))
+        if not np.all(np.equal(existing_instance_indexes, self.test_instance_indexes)):
+            error("Different instance indexes loaded than the ones generated.")
         return existing_predictions, existing_instance_indexes
 
     def get_data_from_index(self, index, embeddings):

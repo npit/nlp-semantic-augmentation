@@ -1,5 +1,6 @@
 from bundle.bundle import BundleList
-from utils import error, info, warning, debug
+from utils import debug, error, info, warning
+
 
 class Pipeline:
     chains = None
@@ -97,7 +98,7 @@ class Pipeline:
         self.chains[chain_name] = chain
 
     def sanity_check(self):
-
+        """Perform sanity-checking actions for  the entire pipeline"""
         all_required_inputs = set()
         # check input requirements are satisfiable
         for chain_name, chain in self.chains.items():
@@ -105,11 +106,3 @@ class Pipeline:
                 if req_out not in self.chains:
                     error("Chain {} requires an output of a non-existent chain: {}".format(chain_name, req_out))
                 all_required_inputs.add(req_out)
-
-        # check if endpoints are not dangling
-        for chain_name, chain in self.chains.items():
-            last_comp = chain.get_components()[-1]
-            if not (last_comp.can_be_final or chain_name in all_required_inputs):
-                error("Chain [{}] is not piped to another chain and ends in an invalid final component: [{}]".format(
-                    chain_name, last_comp.get_full_name()))
-

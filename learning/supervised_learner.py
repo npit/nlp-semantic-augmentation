@@ -5,16 +5,20 @@ import numpy as np
 from sklearn.model_selection import (KFold, StratifiedKFold,
                                      StratifiedShuffleSplit)
 
+from bundle.datatypes import Labels, Vectors
 from defs import roles
 from learning.learner import Learner
 from learning.sampling import Sampler
 from learning.validation import ValidationSetting
-from utils import (count_label_occurences, error, info, is_multilabel,
+from utils import (count_label_occurences, error, info, is_multilabel, tictoc,
                    write_pickled)
 
 
 class SupervisedLearner(Learner):
     train_labels, test_labels = None, None
+
+    def __init__(self):
+        Learner.__init__(self, consumes=[Vectors.name, Labels.name])
 
     def count_samples(self):
         """Sample counter that includes the label samples"""
@@ -51,7 +55,7 @@ class SupervisedLearner(Learner):
 
     def configure_validation_setting(self):
         self.validation = ValidationSetting(self.folds, self.validation_portion, self.test_data_available(), use_labels=True, do_multilabel=self.do_multilabel)
-        self.validation.assign_data(self.embeddings, train_index=self.train_index, train_labels=self.train_labels, test_labels=self.test_labels, test_index=self.test_index)
+        self.validation.assign_data(self.embeddings, train_index=self.train_embedding_index, train_labels=self.train_labels, test_labels=self.test_labels, test_index=self.test_embedding_index)
 
     def configure_sampling(self):
         """Over/sub sampling"""
@@ -66,18 +70,45 @@ class SupervisedLearner(Learner):
 
     def show_train_statistics(self, train_labels, val_labels):
         msg = "Training label distribution for validation setting: " + self.validation.get_current_descr()
-        self.evaluator.show_label_distribution(count_label_occurences(train_labels), message=msg)
+        self.evaluator.show_label_distribution(train_labels, message=msg)
         if val_labels is not None and val_labels.size > 0:
             msg = "Validation label distribution for validation setting: " + self.validation.get_current_descr()
-            self.evaluator.show_label_distribution(count_label_occurences(val_labels), message=msg)
+            self.evaluator.show_label_distribution(val_labels, message=msg)
+
+    def acquire_trained_model(self):
+        """Trains the learning model or load an existing instance from a persisted file."""
+        with tictoc("Training run [{}] on {} training and {} val data.".format(self.validation, self.num_train, len(self.val_index) if self.val_index is not None else "[none]")):
+            model = None
+            # check if a trained model already exists
+            if self.allow_model_loading:
+                model = self.load_model()
+            if not model:
+                model = self.train_model()
+                # create directories
+                makedirs(self.models_folder, exist_ok=True)
+                self.save_model(model)
+            else:
+                info("Skipping training due to existing model successfully loaded.")
+        return model
+
+    def get_training_inputs(self):
+        """Retrieve required data for training a supervised model"""
+        return (*super().get_training_inputs(), self.train_labels, self.val_labels)
+
+    def assign_current_run_data(self, iteration_index, trainval):
+        """Sets data for the current run"""
+        # let learner handle indexes to data
+        super().assign_current_run_data(iteration_index, trainval)
+        # get label containers and print statistics
+        self.train_labels, self.val_labels, self.test_labels = self.validation.get_run_labels(iteration_index, trainval)
+        self.show_train_statistics(self.train_labels, self.val_labels)
+        # update indexes to label of the evaluator: the trainval indexes
+        train_idx, val_idx = trainval
+        test_label_index = np.arange(len(self.test_labels)) if not self.validation.use_for_testing else val_idx
+        self.evaluator.update_reference_labels(train_idx, test_label_index)
 
     # produce training / validation splits, with respect to sample indexes
     def compute_trainval_indexes(self):
-        if not self.validation_exists:
-            # return all training indexes, no validation
-            return [(np.arange(len(self.train_index)), np.arange(0))]
-
-        trainval_serialization_file = self.get_trainval_serialization_file()
 
         if self.do_folds:
             # stratified fold splitting
@@ -97,15 +128,6 @@ class SupervisedLearner(Learner):
 
         # generate. for multilabel K-fold, stratification is not usable
         splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
-
-        # do sampling processing
-        if self.do_sampling:
-            smpl = Sampler()
-            splits = smpl.sample()
-
-        # save and return the splitter splits
-        makedirs(dirname(trainval_serialization_file), exist_ok=True)
-        write_pickled(trainval_serialization_file, splits)
         return splits
 
     def process_component_inputs(self):
@@ -114,8 +136,32 @@ class SupervisedLearner(Learner):
         error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
         self.train_labels = self.inputs.get_labels(single=True, role=roles.train)
         self.test_labels = self.inputs.get_labels(single=True, role=roles.test)
-        if len(self.train_index) != len(self.train_labels):
-            error(f"Train data-label instance number mismatch: {len(self.train_index)} data and {len(self.train_labels)}")
-        if len(self.test_index) != len(self.test_labels):
-            error(f"Test data-label instance number mismatch: {len(self.test_index)} data and {len(self.test_labels)}")
+        if len(self.train_embedding_index) != len(self.train_labels):
+            error(f"Train data-label instance number mismatch: {len(self.train_embedding_index)} data and {len(self.train_labels)}")
+        if len(self.test_embedding_index) != len(self.test_labels):
+            error(f"Test data-label instance number mismatch: {len(self.test_embedding_index)} data and {len(self.test_labels)}")
         self.multilabel_input = self.inputs.get_labels(single=True).multilabel
+
+    def load_existing_predictions(self):
+        """Loader function for existing, already computed predictions. Checks for label matching."""
+        # get predictions and instance indexes they correspond to
+        existing_predictions, existing_instance_indexes = super().load_existing_predictions()
+        # also check labels
+        if existing_predictions is not None:
+            existing_test_labels = self.validation.get_test_labels(self.test_instance_indexes)
+            if not np.all(np.equal(existing_test_labels, self._test_labels)):
+                error("Different instance labels loaded than the ones generated.")
+        return existing_predictions, existing_instance_indexes
+
+    # def conclude_validation_iteration(self):
+    #     """Perform concluding actions for a single validation loop"""
+    #     super().conclude_validation_iteration()
+    #     if self.validation_exists and self.validation.use_for_testing:
+    #         self.test, self.test_labels, self.test_instance_indexes = [], [], None
+
+    def conclude_traintest(self):
+        """Perform concuding actions for the entire traintest loop"""
+        super().conclude_traintest()
+        # show label distribution, if desired
+        if self.config.print.label_distribution:
+            self.evaluator.show_reference_label_distribution()

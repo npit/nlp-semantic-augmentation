@@ -42,21 +42,21 @@ class KMeansClusterer(Clusterer):
         Clusterer.make(self)
 
     # train a model on training & validation data portions
-    def train_model(self, train_index, embeddings, train_labels, val_index, val_labels):
+    def train_model(self):
         # define the model
-        train_data = self.get_data_from_index(train_index, embeddings)
+        train_data = self.get_data_from_index(self.train_index, self.embeddings)
         model = KMeans(self.num_clusters)
         # train the damn thing!
         debug("Feeding the network train shapes: {}".format(train_data.shape))
-        if val_index is not None:
-            val_data = self.get_data_from_index(val_index, embeddings)
+        if self.val_index is not None and self.val_index.size > 0:
+            val_data = self.get_data_from_index(self.val_index, self.embeddings)
             debug("Using validation shapes: {}".format(val_data.shape))
         model.fit(train_data)
         return model
 
     # evaluate a clustering
-    def test_model(self, test_index, embeddings, model):
-        test_data = self.get_data_from_index(test_index, embeddings)
+    def test_model(self, model):
+        test_data = self.get_data_from_index(self.test_index, self.embeddings)
         cluster_distances = model.transform(test_data)
         # convert to "similarity" scores
         predictions = 1 - cluster_distances / np.max(cluster_distances)

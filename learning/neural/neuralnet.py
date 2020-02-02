@@ -1,5 +1,4 @@
 from copy import deepcopy
-from os.path import exists
 
 import numpy as np
 
@@ -7,10 +6,11 @@ import torch
 from learning.classifier import Classifier
 from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset
-from utils import debug, error, info, one_hot
+from utils import debug, error
 
-"""Base torch-based neural model with learnable input embeddings"""
+
 class NeuralNet(Classifier):
+    """Base torch-based neural model with learnable input embeddings"""
 
     def __init__(self, config):
         super(NeuralNet, self).__init__()
@@ -43,12 +43,10 @@ class NeuralNet(Classifier):
     #     model.load_state_dict(state_dict)
     #     return model
 
-
     def update_best(self, current_loss, model):
         if current_loss < self.best_loss:
             self.best_loss = current_loss
             self.best_model = deepcopy(model.state_dict())
-
 
     def validate_model(self, val_data_loader, val_labels, model):
         # decide on model with respect to validation
@@ -66,9 +64,9 @@ class NeuralNet(Classifier):
         self.update_best(val_loss, model)
         return val_loss
 
-
-    def train_model(self, train_index, embeddings, train_labels, val_index, val_labels):
+    def train_model(self):
         """Training method for pytorch networks"""
+        train_index, embeddings, train_labels, val_index, val_labels = self.train_index, self.embeddings, self.train_labels, self.val_index, self.val_labels
         if val_index is not None:
             val_set = NeuralNet.TorchDataset(val_index, train_labels)
             val_set = NeuralNet.TorchDataset(val_index, train_labels)
@@ -99,11 +97,10 @@ class NeuralNet(Classifier):
                 optimizer.step()
 
                 if val_index is not None:
-                    val_msg = ", validation loss: {:.3f}".format(val_loss.item())
+                    val_msg = ", validation loss: {:.3f}".format(loss.item())
                 else:
                     val_msg = ""
-                debug("Epoch {}, batch {} / {}, training loss {:.3f}{}".format(epoch+1, batch_index+1, len(data_loader), loss.item(), val_msg))
-
+                debug("Epoch {}, batch {} / {}, training loss {:.3f}{}".format(epoch + 1, batch_index + 1, len(data_loader), loss.item(), val_msg))
 
             if val_index is not None:
                 val_loss = self.validate_model(val_data_loader, val_labels, model)
@@ -118,11 +115,11 @@ class NeuralNet(Classifier):
         model.load_state_dict(self.best_model)
         return model
 
-    def test_model(self, test_index, embeddings, model):
-        test_set = NeuralNet.TorchDataset(test_index)
+    def test_model(self, model):
+        test_set = NeuralNet.TorchDataset(self.test_index)
         data_loader = DataLoader(test_set, batch_size=self.batch_size)
         predictions = np.ndarray((0, self.num_labels), np.float32)
-        model.eval()
+        self.model.eval()
         with torch.no_grad():
             # disable learning
             for data_index in data_loader:
@@ -138,12 +135,13 @@ class NeuralNet(Classifier):
             self.data = data
             if labels is not None:
                 self.labels = labels
+
         def __getitem__(self, idx):
             if self.labels is not None:
                 return (self.data[idx], torch.tensor(self.labels[idx], dtype=torch.long))
             return self.data[idx]
+
         def __len__(self):
             return len(self.data)
-        
 
 # torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=None, max_norm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False, _weight=None)

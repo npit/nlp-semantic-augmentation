@@ -16,8 +16,6 @@ class Component:
     consumes = None
 
     component_name = None
-    # denotes wether it is a valid chain end
-    can_be_final = False
     # required input  from other chains
     required_finished_chains = []
 
