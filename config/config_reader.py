@@ -20,17 +20,17 @@ class ConfigReader:
         conf_dict = utils.read_ordered_yaml(conf_file)
 
         # read non-chain configuration
-        base_config = ConfigReader.read_global_configuration(conf_dict)
+        global_config = ConfigReader.read_global_configuration(conf_dict)
         # copy configuration to the run folder
-        run_config_path = join(base_config.folders.run, os.path.basename(conf_file))
+        run_config_path = join(global_config.folders.run, os.path.basename(conf_file))
         if not exists(run_config_path):
             shutil.copy(conf_file, run_config_path)
 
         # setup logging now to document subsequent operations
-        base_config.setup_logging()
+        global_config.setup_logging()
         # read chains
-        pipeline = ConfigReader.read_pipeline(conf_dict, base_config)
-        return pipeline
+        pipeline = ConfigReader.read_pipeline(conf_dict, global_config)
+        return global_config, pipeline
 
     @staticmethod
     def read_global_configuration(config_dict):
@@ -58,7 +58,7 @@ class ConfigReader:
         os.makedirs(global_config.folders.serialization, exist_ok=True)
         return global_config
 
-    def read_pipeline(chains_config, base_config):
+    def read_pipeline(chains_config, global_config):
         """Read all chains defined in the configuration
         Arguments:
             chains_config {dict} -- The configuration
@@ -72,14 +72,14 @@ class ConfigReader:
         chains = chains_config[chains_key]
         for chain_name, chain_dict in chains.items():
             # read chain configuration dict
-            component_names, component_configs = ConfigReader.read_chain_components(chain_dict, base_config)
+            component_names, component_configs = ConfigReader.read_chain_components(chain_dict, global_config)
             # build the chain object
             chain = Chain(chain_name, component_names, component_configs)
             # add to the pipeline
             pipeline.add_chain(chain)
         return pipeline
 
-    def read_chain_components(chain_config, base_config):
+    def read_chain_components(chain_config, global_config):
         """Read configuration for a single chain
         """
         components, component_names = [], []
@@ -94,7 +94,7 @@ class ConfigReader:
             component_config = component_class(component_dict)
 
             # merge the global configuration to the component configuration
-            component_config.merge_other_config(base_config)
+            component_config.merge_other_config(global_config)
             components.append(component_config)
             component_names.append(component_name)
         return component_names, components

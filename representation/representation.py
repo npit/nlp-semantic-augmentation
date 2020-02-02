@@ -53,7 +53,7 @@ class Representation(Serializable):
     # add exra representations-specific serialization paths
     def set_additional_serialization_sources(self):
         # compute names
-        aggr = "".join(list(map(str, [self.config.representation.aggregation] + [self.sequence_length])))
+        aggr = "".join(list(map(str, [self.config.aggregation] + [self.sequence_length])))
         self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
         self.add_serialization_source(self.serialization_path_aggregated, handler=self.handle_aggregated)
 
@@ -96,12 +96,12 @@ class Representation(Serializable):
 
     # shortcut for reading configuration values
     def set_params(self):
-        self.aggregation = self.config.representation.aggregation
-        self.dimension = self.config.representation.dimension
+        self.aggregation = self.config.aggregation
+        self.dimension = self.config.dimension
         self.dataset_name = self.source_name
 
-        self.sequence_length = self.config.representation.sequence_length
-        self.do_train_vectors = self.config.representation.train
+        self.sequence_length = self.config.sequence_length
+        self.do_train_vectors = self.config.train
 
     def check_params(self):
         if self.aggregation not in self.compatible_aggregations:
@@ -113,7 +113,7 @@ class Representation(Serializable):
 
     @staticmethod
     def generate_name(config, input_name):
-        return "{}_{}_dim{}".format(config.representation.name, input_name, config.representation.dimension)
+        return "{}_{}_dim{}".format(config.name, input_name, config.dimension)
 
     # name setter function, exists for potential overriding
     def set_name(self):
@@ -155,7 +155,7 @@ class Representation(Serializable):
         self.compute_dense()
         self.aggregate_instance_vectors()
         self.outputs.set_vectors(Vectors(vecs=self.embeddings))
-        self.outputs.set_indices(Indices(self.dataset_vectors))
+        self.outputs.set_indices(Indices(self.dataset_vectors, roles=self.inputs.get_indices().roles))
 
     def process_component_inputs(self):
         if self.loaded_aggregated or self.loaded_preprocessed:

@@ -79,6 +79,10 @@ class Evaluator:
         return self.reference_labels[self.test_index]
 
     def update_reference(self, train_index, test_index, embeddings):
+        if not self.test_via_validation:
+            # if we have a dedicated test set, no need to update anything
+            return
+        # update train/test index instances
         self.train_index = train_index
         self.test_index = test_index
         self.embeddings = embeddings
@@ -122,14 +126,16 @@ class Evaluator:
 
         if self.test_via_validation:
             self.reference_labels = self.train_labels
+            # the train/test index will be updated via the update_reference function
         else:
             self.reference_labels = self.test_labels
+            self.test_index = np.arange(len(self.test_labels))
 
     def check_setting(self, setting, available, what="configuration", adj="Erroneous", fatal=False):
         if not setting:
             return True
         clash = [x for x in setting if x not in available]
-        msg = f"{adj} {what}(s): {clash} for current data and/or learner ({self.config.learner.name}). "
+        msg = f"{adj} {what}(s): {clash} for current data and/or learner ({self.config.name}). "
         if clash:
             if fatal:
                 msg += f"Use among: {available}"
@@ -251,7 +257,7 @@ class Evaluator:
 
         # gather the rest of the aggregations
         aggregations = ["macro avg", "weighted avg"]
-        if "micro" in cr:
+        if "micro avg" in cr:
             aggregations = ["micro avg"] + aggregations
         else:
             aggregations = ["accuracy"] + aggregations

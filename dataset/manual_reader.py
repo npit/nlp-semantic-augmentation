@@ -9,7 +9,6 @@ from utils import error
 class ManualDatasetReader:
     """Reader class for reading custom serialized datasets"""
     def read_instances(self, json_object, data_key="text", labels_key="labels"):
-        
         """Read a json object containing text dataset instances
 
         Arguments:
@@ -80,6 +79,7 @@ class ManualDatasetReader:
         self.test, test_labels, test_labelset, self.test_is_labelled, self.test_fully_labelled, _ = \
             self.read_instances(data["test"])
 
+        self.roles = ("train", "test")
         # read metadata
         try:
             self.language = json_data["language"]
@@ -99,17 +99,15 @@ class ManualDatasetReader:
             if "label_names" in json_data:
                 # read manual label names
                 self.label_names = json_data["label_names"]
+                if type(self.label_names) is not list:
+                    error(f"Expected list of strings for labelnames, got {type(self.label_names)} : {self.label_names}")
             else:
                 # assign numeric indexes as label names
                 self.label_names = [str(x) for x in self.labelset]
-            if self.max_num_instance_labels > 1:
-                # labels to ndarray lists
-                self.train_labels = [np.asarray(x) for x in train_labels]
-                self.test_labels = [np.asarray(x) for x in test_labels]
-            else:
-                # labels to ndarray
-                self.train_labels = np.squeeze(np.asarray(train_labels, dtype=np.int32))
-                self.test_labels = np.squeeze(np.asarray(test_labels, dtype=np.int32))
+
+            # always set labels to ndarray lists, for compatibility for multilabel data
+            self.train_labels = [np.asarray(x) for x in train_labels]
+            self.test_labels = [np.asarray(x) for x in test_labels]
 
     def read_dataset(self, raw_data, format="json"):
         """Read a manual dataset based on the configuration options"""

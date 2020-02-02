@@ -63,7 +63,7 @@ class DNN(Classifier):
 
         self.model_path = self.get_current_model_path()
 
-        if self.validation.use_for_training:
+        if not self.validation.use_for_testing:
             # model saving with early stoppingtch_si
             weights_path = self.model_path
 
@@ -202,7 +202,7 @@ class DNN(Classifier):
         return self.model_saver.filepath
 
     def save_model(self, model):
-        if self.validation.use_for_training:
+        if not self.validation.use_for_testing:
             # handled by the model saver callback
             return
         # serialize model
@@ -234,8 +234,8 @@ class MLP(DNN):
 
     def __init__(self, config):
         self.config = config
-        self.hidden = self.config.learner.hidden_dim
-        self.layers = self.config.learner.num_layers
+        self.hidden = self.config.hidden_dim
+        self.layers = self.config.num_layers
         DNN.__init__(self)
 
     def make(self):
@@ -270,9 +270,9 @@ class LSTM(DNN):
 
     def __init__(self, config):
         self.config = config
-        self.hidden = self.config.learner.hidden_dim
-        self.layers = self.config.learner.num_layers
-        self.sequence_length = self.config.learner.sequence_length
+        self.hidden = self.config.hidden_dim
+        self.layers = self.config.num_layers
+        self.sequence_length = self.config.sequence_length
         self.input_aggregation = ""
         if self.sequence_length is None:
             error("Undefined learning sequence length, but required for {}.".

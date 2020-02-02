@@ -14,13 +14,13 @@ class ExistingVectors(Embedding):
 
     def __init__(self, config):
         self.config = config
-        self.name = self.base_name = self.config.representation.name
+        self.name = self.base_name = self.config.name
         Embedding.__init__(self)
 
     def set_resources(self):
         if self.loaded():
             return
-        dataset_name = self.config.dataset.name
+        dataset_name = self.config.name
         if isfile(dataset_name):
             dataset_name = basename(dataset_name)
         csv_mapping_name = "{}/{}.{}.csv".format(self.raw_data_dir, dataset_name, self.base_name)

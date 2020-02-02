@@ -27,6 +27,8 @@ class Classifier(SupervisedLearner):
 
 class SKLClassifier(Classifier):
     """Scikit-learn classifier"""
+    args = {}
+
     def __init__(self):
         Classifier.__init__(self)
 
@@ -48,7 +50,7 @@ class SKLClassifier(Classifier):
 
     def train_model(self, train_index, embeddings, train_labels, val_data, val_labels):
         train_data = self.get_data_from_index(train_index, embeddings)
-        model = self.model()
+        model = self.model(**self.args)
         model.fit(train_data, np.asarray(train_labels).ravel())
         return model
 
@@ -92,7 +94,9 @@ class LogisticRegression(SKLClassifier):
     def __init__(self, config):
         self.config = config
         self.model = sk_LogReg
+        self.args = {"solver": "lbfgs"}
         SKLClassifier.__init__(self)
+
     def make(self):
         error("Cannot apply {} to multilabel data.".format(self.name), self.multilabel_input)
         SKLClassifier.make(self)

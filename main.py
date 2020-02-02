@@ -14,16 +14,15 @@ def main(config_file):
     # # time the entire run
     with tictoc("Total run"):
         # initialize configuration
-        conf = ConfigReader.read_configuration(config_file)
-        pipeline = conf.get_pipeline()
+        global_config, pipeline = ConfigReader.read_configuration(config_file)
 
         pipeline.configure_names()
         pipeline.run()
 
         if num_warnings > 0:
             warning("{} warnings occured.".format(num_warnings - 1))
-        info("Logfile is at: {}".format(conf.logfile))
-    tictoc.log(conf.logfile + ".timings")
+        info("Logfile is at: {}".format(global_config.logfile))
+    tictoc.log(global_config.logfile + ".timings")
 
 
 if __name__ == "__main__":

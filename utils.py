@@ -175,7 +175,7 @@ def single_data_summary(data, data_index, recursion_depth=0):
     debug(msg)
 
 
-def data_summary(data, msg="", data_index="", recursion_depth=0):
+def data_summary(data, msg="", data_index="", recursion_depth=1):
     """ Print a summary of data in the input"""
     coll_len_lim = 2
     recursion_depth_lim = 1

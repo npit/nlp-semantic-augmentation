@@ -2,6 +2,7 @@
 """
 import defs
 from config.config import Configuration
+from utils import as_list
 
 
 class manip_conf(Configuration):
@@ -76,8 +77,8 @@ class transform_conf(Configuration):
         super().__init__(conf)
         if conf is None:
             return
-        self.transform.name = self.conf["name"]
-        self.transform.dimension = self.conf["dimension"]
+        self.name = self.conf["name"]
+        self.dimension = self.conf["dimension"]
 
 
 class semantic_conf(Configuration):
@@ -149,4 +150,19 @@ class learner_conf(Configuration):
         self.train.sampling_ratios = self.get_value("sampling_ratios", default=None, base=config, expected_type=list)
 
 
-chain_component_classes = [manip_conf, dataset_conf, representation_conf, transform_conf, semantic_conf, learner_conf]
+class link_conf(Configuration):
+    """Dummy configuration, linking chains with each other"""
+    conf_key_name = "link"
+
+    def __init__(self, config):
+        super().__init__(config)
+        if config is None:
+            return
+        # pass the linking value
+        self.links = as_list(config)
+
+    def get_links(self):
+        return self.links
+
+
+chain_component_classes = [manip_conf, dataset_conf, representation_conf, transform_conf, semantic_conf, learner_conf, link_conf]

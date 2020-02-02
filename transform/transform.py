@@ -4,9 +4,10 @@ This module provides methods that transform existing representations into others
 
 import numpy as np
 
-from bundle.bundle import Bundle, BundleList
-from bundle.datatypes import Labels, Vectors
+from bundle.bundle import BundleList
+from bundle.datatypes import Indices, Labels, Vectors
 from component.component import Component
+from defs import roles
 from serializable import Serializable
 from utils import (debug, error, info, match_labels_to_instances, shapes_list,
                    write_pickled)
@@ -37,7 +38,7 @@ class Transform(Serializable):
             self.consumes = [Vectors.name, Labels.name]
         self.name = self.base_name
         self.config = config
-        self.dimension = config.transform.dimension
+        self.dimension = config.dimension
 
     def populate(self):
         Serializable.__init__(self, self.dir_name)
@@ -53,49 +54,49 @@ class Transform(Serializable):
     def compute(self):
         """Apply transform on input features"""
         if self.loaded():
-            debug(
-                "Skipping {} computation due to transform data already loaded."
-                .format(self.name))
+            debug("Skipping {} computation due to transform data already loaded." .format(self.name))
             return
 
         # sanity checks
-        error(
-            "Got transform dimension of {} but input dimension is {}.".format(
-                self.dimension, self.input_dimension),
-            self.input_dimension < self.dimension)
+        error("Got transform dimension of {} but input dimension is {}.".format(self.dimension, self.input_dimension), self.input_dimension < self.dimension)
 
         # output containers
-        self.vectors = []
         self.term_components = []
 
         # compute
-        num_chunks = len(self.input_vectors)
         info("Applying {} {}-dimensional transform on the raw representation.".
              format(self.base_name, self.dimension))
-        for v, vecs in enumerate(self.input_vectors):
-            if v == 0:
-                info("Transforming training input data shape {}/{}: {}".format(
-                    v + 1, num_chunks, vecs.shape))
-                if self.is_supervised:
-                    ground_truth = np.reshape(
-                        match_labels_to_instances(
-                            self.elements_per_instance[v], self.labels[v]),
-                        (len(vecs), ))
-                    self.vectors.append(
-                        self.process_func_train(vecs, ground_truth))
-                else:
-                    self.vectors.append(self.process_func_train(vecs))
-            else:
-                info("Transforming test input data shape {}/{}: {}".format(
-                    v + 1, num_chunks, vecs.shape))
-                self.vectors.append(self.process_func_test(vecs))
-            self.verify_transformed(self.vectors[-1])
-            self.term_components.append(self.get_term_representations())
 
-        info("Output shapes (train/test): {}, {}".format(
-            *shapes_list(self.vectors)))
-        write_pickled(self.serialization_path_preprocessed,
-                      self.get_all_preprocessed())
+        # train
+        train_data = self.input_vectors[self.train_index, :]
+
+        info("Transforming training input data shape: {}".format(train_data.shape))
+        if self.is_supervised:
+            ground_truth = np.reshape(match_labels_to_instances(self.train_epi, self.train_labels), (len(train_data), ))
+            self.vectors = self.process_func_train(train_data, ground_truth)
+        else:
+            self.vectors = self.process_func_train(train_data)
+        self.output_roles = (roles.train,)
+
+        if self.test_index.size > 0:
+            # make zero output matrix
+            output_data = np.zeros((len(self.input_vectors), self.dimension), np.float32)
+            output_data[self.train_index, :] = self.vectors
+
+            test_data = self.input_vectors[self.test_index, :]
+            info("Transforming test input data shape: {}".format(test_data.shape))
+            vecs = self.process_func_test(test_data)
+            output_data[self.test_index, :] = vecs
+            self.vectors = output_data
+
+            self.output_roles = (roles.train, roles.test)
+        else:
+            info(f"Skipping empty test indexes.")
+
+        self.term_components = self.get_term_representations()
+        self.verify_transformed(self.vectors)
+        info(f"Output shape: {self.vectors.shape}")
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_raw_path(self):
         return None
@@ -144,17 +145,16 @@ class Transform(Serializable):
             self.input_name = self.inputs.get_source_name()
         self.name = "{}_{}_{}".format(self.input_name, self.base_name,
                                       self.dimension)
+        Component.configure_name(self)
 
     def run(self):
-        error("{} needs vector information.".format(self.get_full_name()),
-              not self.inputs.has_vectors())
+        """Transform component run function"""
+        error("{} needs vector information.".format(self.get_full_name()), not self.inputs.has_vectors())
+
         if self.is_supervised:
-            error(
-                "{} is supervised and needs an input bundle list.".format(
-                    self.get_full_name()),
+            error("{} is supervised and needs an input bundle list.".format(self.get_full_name()),
                 type(self.inputs) is not BundleList)
-            error(
-                "{} got a {}-long bundle list, but a length of at most 2 is required."
+            error("{} got a {}-long bundle list, but a length of at most 2 is required."
                 .format(self.get_full_name(), len(self.inputs)),
                 len(self.inputs) > 2)
             # verify that the input name is of the vectors source bundle
@@ -165,27 +165,26 @@ class Transform(Serializable):
             expected_name = self.inputs.get(
                 vectors_bundle_index).get_source_name()
             if self.input_name != expected_name:
-                error(
-                    "Supervised transform was configured to name {} but the vector bundle {} is encountered at runtime."
+                error("Supervised transform was configured to name {} but the vector bundle {} is encountered at runtime."
                     .format(self.input_name, expected_name))
 
-            self.input_vectors = self.inputs.get(
-                vectors_bundle_index).get_vectors().instances
-            self.elements_per_instance = self.inputs.get(
-                vectors_bundle_index).get_vectors().elements_per_instance
-            error(
-                "{} is supervised and needs label information.".format(
-                    self.get_full_name()), not self.inputs.has_labels())
-            self.labels = self.inputs.get_labels(single=True).instances
+            self.input_vectors = self.inputs.get(vectors_bundle_index).get_vectors().instances
+            self.train_epi = self.inputs.get(vectors_bundle_index).get_vectors().elements_per_instance
+            error(f"{self.get_full_name()} is supervised and needs label information.", not self.inputs.has_labels())
+            self.train_labels = self.inputs.get_labels(single=True, role=roles.train).instances
         else:
-            error(
-                "{} is not supervised but got an input bundle list, instead of a single bundle."
-                .format(self.get_full_name()),
-                type(self.inputs) is BundleList)
+            error("{} is not supervised but got an input bundle list, instead of a single bundle."
+                .format(self.get_full_name()), type(self.inputs) is BundleList)
             self.input_vectors = self.inputs.get_vectors().instances
-            self.elements_per_instance = self.inputs.get_vectors(
-            ).elements_per_instance
+            self.elements_per_instance = self.inputs.get_vectors().elements_per_instance
+
+        # indexes
+        self.train_index = self.inputs.get_indices(role=roles.train)
+        self.test_index = self.inputs.get_indices(role=roles.test)
+
         self.populate()
         self.input_dimension = self.input_vectors[0].shape[-1]
         self.compute()
+        # set the outputs: transformed vectors and identical indices
         self.outputs.set_vectors(Vectors(vecs=self.vectors, epi=self.elements_per_instance))
+        self.outputs.set_indices(self.inputs.get_indices())

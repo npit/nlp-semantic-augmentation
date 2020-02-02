@@ -1,4 +1,4 @@
-from learning.classifier import Dummy, NaiveBayes, LogisticRegression
+from learning.classifier import Dummy, LogisticRegression, NaiveBayes
 from learning.clusterer import KMeansClusterer
 from learning.dnn import LSTM, MLP, BiLSTM
 from learning.neural.mlp import MLP as tMLP
@@ -11,7 +11,7 @@ class Instantiator:
     @staticmethod
     def create(config):
         """Function to instantiate a learning"""
-        name = config.learner.name
+        name = config.name
         candidates = [MLP, LSTM, BiLSTM, KMeansClusterer, NaiveBayes, Dummy, tMLP, LogisticRegression]
         for candidate in candidates:
             if name == candidate.name:

@@ -1,10 +1,13 @@
+"""Module defining bundle and bundle-list objects
+"""
 from bundle.datatypes import Labels, Text, Vectors
+from defs import datatypes
 from utils import data_summary, debug, error, info
 
 
-"""Data container class to pass data around
-"""
 class Bundle:
+    """Data container class to pass data around
+    """
     # data types
     vectors = None
     labels = None
@@ -93,40 +96,73 @@ class Bundle:
             data_summary(self.labels, msg="labels")
         if self.text is not None:
             data_summary(self.text, msg="text")
+        if self.indices is not None:
+            data_summary(self.indices, msg="text")
 
     # region: getters
 
     def get_available(self):
         return list(self.content_dict.keys())
 
-    def get_labels(self):
-        return self.labels
+    def get_element(self, element, role=None):
+        """Retrieve element based on input type and role"""
+        res = None
+        if element == datatypes.vectors:
+            res = self.vectors
+        elif element == datatypes.labels:
+            res = self.labels
+        elif element == datatypes.text:
+            res = self.text
+        elif element == datatypes.indices:
+            res = self.indices
+        else:
+            error(f"Undefined element {element} to get from bundle.")
+        # filter with respect to role
+        if res is not None and role is not None:
+            # make sure indices are set
+            if self.indices is None:
+                error(f"Requested role {role} but current bundle {self.get_full_name()} has no indices!")
+            try:
+                role_index = self.indices.roles.index(role)
+                res = res.instances[role_index]
+            except ValueError:
+                error(f"Role {role} not in bundle indices roles: {self.indices.roles}")
+            except IndexError:
+                error(f"Index of requested role {role} is {role_index} but bundle {element} elements contain {len(res.instances)} instances.")
+        return res
+
+    def get_vectors(self, role=None):
+        return self.get_element(datatypes.vectors, role)
+
+    def get_indices(self, role=None):
+        return self.get_element(datatypes.indices, role)
+
+    def get_text(self, role=None):
+        return self.get_element(datatypes.text, role)
+
+    def get_labels(self, role=None):
+        return self.get_element(datatypes.labels, role)
 
     def get_source_name(self):
         return self.source_name
 
     def get_chain_name(self):
         return self.chain_name
-
-    def get_vectors(self):
-        return self.vectors
-
-    def get_indices(self):
-        return self.indices
-
-    def get_text(self):
-        return self.text
     # endregion
 
     # region: has-ers
     def has_labels(self):
         return self.labels is not None
+
     def has_source_name(self):
         return self.source_name is not None
+
     def has_vectors(self):
         return self.vectors is not None
+
     def has_text(self):
         return self.text is not None
+
     def has_indices(self):
         return self.text is not None
     # endregion
@@ -134,23 +170,35 @@ class Bundle:
     # region: setters
     def set_text(self, text):
         self.text = text
+
     def set_vectors(self, vectors):
         self.vectors = vectors
+
     def set_labels(self, labels):
         self.labels = labels
+
     def set_indices(self, indices):
         self.indices = indices
+
     def set_source_name(self, name):
         self.source_name = name
+
     def set_chain_name(self, name):
         self.chain_name = name
+
+    def set_train(self, idx):
+        self.train_idx = idx
+
+    def set_test(self, idx):
+        self.test_idx = idx
     # endregion
 
 
-"""Class to represent a collection of bundles
-"""
 class BundleList:
+    """Class to represent a collection of bundles
+    """
     bundles = None
+
     def __len__(self):
         return len(self.bundles) if self.bundles else 0
 
@@ -173,7 +221,6 @@ class BundleList:
         for bundle in self.bundles:
             bundle.summarize_content()
 
-
     def set_demand(self, chain_name, component_name):
         for bundle in self.bundles:
             bundle.set_demand(chain_name, component_name)
@@ -187,38 +234,41 @@ class BundleList:
         self.bundles.append(bundle)
 
     # region: getters
-    def single_filter(self, data, do_filter):
-        if do_filter:
-            data = [x for x in data if x is not None]
-            error("Requested single-bundle data but multiple exist in bundles {}".format(
-                map(lambda x: x.get_source_name(), data)), len(data) > 1)
-            data = data[0]
-        return data
+    def get(self, index):
+        """Get the index-th bundle in the bundle list."""
+        return self.bundles[index]
+
+    def get_element(self, element, only_single=False, role=None):
+        res = [x.get_element(element, role) for x in self.bundles]
+        # non-None
+        res_idxs = [i for i in range(len(res)) if res[i] is not None]
+        res = [r for r in res if r is not None]
+        if only_single:
+            # ensure single
+            names = list(map(lambda x: x.get_source_name(), [self.bundles[i] for i in res_idxs]))
+            if len(res) > 1:
+                error(f"Requested single-bundle {element} {role} data but multiple exist in bundles {names}")
+            res = res[0]
+        return res
 
     def get_source_name(self):
         return [x.get_source_name() for x in self.bundles]
 
-    def get_vectors(self, single=False):
-        res = [x.get_vectors() for x in self.bundles]
-        return self.single_filter(res, single)
+    def get_vectors(self, single=False, role=None):
+        return self.get_element(datatypes.vectors, single, role)
 
-    def get_indices(self, single=False):
-        res = [x.get_indices() for x in self.bundles]
-        return self.single_filter(res, single)
+    def get_indices(self, single=False, role=None):
+        return self.get_element(datatypes.indices, single, role)
 
-    def get(self, index):
-        return self.bundles[index]
+    def get_labels(self, single=False, role=None):
+        return self.get_element(datatypes.labels, single, role)
 
-    def get_labels(self, single=False):
-        res = [x.get_labels() for x in self.bundles]
-        return self.single_filter(res, single)
-
-    def get_texts(self, single=False):
-        res = [x.get_text() for x in self.bundles]
-        return self.single_filter(res, single)
+    def get_texts(self, single=False, role=None):
+        return self.get_element(datatypes.texts, single, role)
 
     def get_names(self):
         return [x.get_source_name() for x in self.bundles]
+
     def get_chain_names(self):
         return [x.get_chain_name() for x in self.bundles]
 
@@ -238,6 +288,17 @@ class BundleList:
             if bundle.get_chain_name() == name:
                 return bundle
         return None
+
+    def get_bundle_like(self, element, role=None, single=False):
+        """Retrieve a bundle based on specified characteristics"""
+        res = []
+        for bundle in self.bundles:
+            if bundle.get_element(element, role=role) is not None:
+                res.append(bundle)
+        if single:
+            error(f"Requested a single bundles with {element} and role: {role} but {len(res)} were found!", len(res)>1)
+            res = res[0]
+        return res
     # endregion
 
     # region : #has'ers - enforce uniqueness

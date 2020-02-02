@@ -1,11 +1,11 @@
 import pickle
-import numpy as np
-from os.path import basename, splitext, exists
+from os.path import basename, exists, splitext
 
+import numpy as np
 from scipy import spatial
 
 from semantic.semantic_resource import SemanticResource
-from utils import error, info, debug, write_pickled, warning
+from utils import debug, error, info, warning, write_pickled
 
 
 class ContextEmbedding(SemanticResource):
@@ -13,14 +13,15 @@ class ContextEmbedding(SemanticResource):
 
     def __init__(self, config):
         self.config = config
+        error("Context embedding is TODO")
         # incompatible with embedding training
         error("Embedding context data missing: {}".format("Embedding train mode incompatible with semantic embeddings."),
               self.config.representation.name == "train")
         # read specific params
-        self.embedding_aggregation = self.config.semantic.context_aggregation
+        self.embedding_aggregation = self.config.context_aggregation
         self.representation_dim = self.config.representation.dimension
-        self.context_threshold = self.config.semantic.context_threshold
-        self.context_file = self.config.semantic.context_file
+        self.context_threshold = self.config.context_threshold
+        self.context_file = self.config.context_file
         # calculate the synset embeddings path
         SemanticResource.__init__(self)
         if not any([x for x in self.load_flags]):
@@ -138,5 +139,3 @@ class ContextEmbedding(SemanticResource):
                     if self.semantic_embedding_aggregation == "avg":
                         doc_vector = np.mean(doc_sem_embeddings, axis=0)
                 semantic_document_vectors[d].append(doc_vector)
-
-

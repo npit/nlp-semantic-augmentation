@@ -8,6 +8,7 @@ from sklearn.model_selection import KFold, ShuffleSplit
 from bundle.bundle import BundleList
 from bundle.datatypes import Labels, Vectors
 from component.component import Component
+from defs import datatypes, roles
 from learning.evaluator import Evaluator
 from learning.sampling import Sampler
 from learning.validation import ValidationSetting
@@ -58,8 +59,8 @@ class Learner(Component):
         self.allow_prediction_loading = self.config.misc.allow_prediction_loading
         self.allow_model_loading = self.config.misc.allow_model_loading
 
-        self.sequence_length = self.config.learner.sequence_length
-        self.train_embedding = self.config.learner.train_embedding
+        self.sequence_length = self.config.sequence_length
+        self.train_embedding = self.config.train_embedding
 
         self.results_folder = self.config.folders.results
         self.models_folder = join(self.results_folder, "models")
@@ -199,6 +200,7 @@ class Learner(Component):
                 train_labels, val_labels, test_labels = self.validation.get_run_labels(iteration_index, trainval)
 
                 # show training data statistics
+                import ipdb; ipdb.set_trace()
                 self.show_train_statistics(train_labels, val_labels)
 
                 # make a sample count for printing
@@ -331,22 +333,23 @@ class Learner(Component):
         self.outputs.set_vectors(Vectors(vecs=self.evaluator.predictions))
 
     def process_component_inputs(self):
-        # get data and labels
-        error("Learner needs at least two-input bundle input list.",
-              type(self.inputs) is not BundleList)
-        error("{} needs vector information.".format(self.component_name),
-              not self.inputs.has_vectors())
+        """Component processing for input indexes and vectors"""
+        # get data
+        error("Learner needs at least two-input bundle input list.", type(self.inputs) is not BundleList)
+        error(f"{self.component_name} needs vector information.", not self.inputs.has_vectors())
+        error(f"{self.component_name} needs vector information.", not self.inputs.has_indices())
 
-        self.train_index, self.test_index = (np.squeeze(np.asarray(x)) for x in self.inputs.get_indices(single=True).instances)
-        self.embeddings = self.inputs.get_vectors(single=True).instances
-        if self.is_supervised():
-            error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
-            self.train_labels, self.test_labels = self.inputs.get_labels(single=True).instances
-            if len(self.train_index) != len(self.train_labels):
-                error(f"Train data-label instance number mismatch: {len(self.train_index)} data and {len(self.train_labels)}")
-            if len(self.test_index) != len(self.test_labels):
-                error(f"Test data-label instance number mismatch: {len(self.test_index)} data and {len(self.test_labels)}")
-            self.multilabel_input = self.inputs.get_labels(single=True).multilabel
+        # get vectors and their indices
+        vectors_bundle = self.inputs.get_bundle_like(datatypes.vectors, roles.train, single=True)
+        self.embeddings = vectors_bundle.get_vectors().instances
+        self.train_index = vectors_bundle.get_indices(role=roles.train)
+        # get_train self.inputs.get_indices(single=True, role=roles.train)
+
+        if vectors_bundle.get_indices().has_role(roles.test):
+            self.test_index = vectors_bundle.get_indices(role=roles.test)
+        else:
+            self.test_index = np.ndarray((), np.float32)
+
 
     def load_existing_predictions(self, current_test_instance_indexes, current_test_labels):
         # get predictions and instance indexes they correspond to

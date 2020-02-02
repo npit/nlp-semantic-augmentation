@@ -1,14 +1,15 @@
-from os.path import join, exists, dirname
 from os import makedirs
+from os.path import dirname, exists, join
 
-from bundle.bundle import Bundle
-from bundle.datatypes import Vectors, Text
-from component.component import Component
-from utils import tictoc, error, info, debug, write_pickled, read_pickled, shapes_list, warning
-from serializable import Serializable
-from representation.bag import Bag, TFIDF
-from defs import is_none
 import defs
+from bundle.bundle import Bundle
+from bundle.datatypes import Text, Vectors
+from component.component import Component
+from defs import is_none
+from representation.bag import TFIDF, Bag
+from serializable import Serializable
+from utils import (debug, error, info, read_pickled, shapes_list, tictoc,
+                   warning, write_pickled)
 
 
 class SemanticResource(Serializable):
@@ -50,8 +51,8 @@ class SemanticResource(Serializable):
         semantic_names = []
         # + no filtering, if filtered is specified
         filter_vals = [defs.limit.none]
-        if not is_none(self.config.semantic.limit):
-            filter_vals.append(self.config.semantic.limit)
+        if not is_none(self.config.limit):
+            filter_vals.append(self.config.limit)
         # any combo of weights, since local and global freqs are stored
         weight_vals = defs.weights.avail
 
@@ -168,27 +169,27 @@ class SemanticResource(Serializable):
         error("Attempted to lookup from the base class")
 
     def set_parameters(self):
-        if not is_none(self.config.semantic.limit):
-            self.limit_type, self.limit_number = self.config.semantic.limit
+        if not is_none(self.config.limit):
+            self.limit_type, self.limit_number = self.config.limit
 
-        self.semantic_weights = self.config.semantic.weights
-        # self.semantic_unit = self.config.semantic.unit
+        self.semantic_weights = self.config.weights
+        # self.semantic_unit = self.config.unit
 
-        self.disambiguation = self.config.semantic.disambiguation.lower()
+        self.disambiguation = self.config.disambiguation.lower()
 
-        if self.config.semantic.spreading_activation:
+        if self.config.spreading_activation:
             self.do_spread_activation = True
-            self.spread_steps, self.spread_decay_factor = self.config.semantic.spreading_activation
+            self.spread_steps, self.spread_decay_factor = self.config.spreading_activation
 
         self.set_name()
 
     @staticmethod
     def generate_name(config, input_name=None):
-        name_components = [config.semantic.name,
-                           "w{}".format(config.semantic.weights),
-                           "" if is_none(config.semantic.limit) else "".join(map(str, config.semantic.limit)),
-                           "" if is_none(config.semantic.disambiguation) else "disam{}".format(config.semantic.disambiguation),
-                           "" if is_none(config.semantic.spreading_activation) else "spread{}".format("-".join(map(str, config.semantic.spreading_activation)))
+        name_components = [config.name,
+                           "w{}".format(config.weights),
+                           "" if is_none(config.limit) else "".join(map(str, config.limit)),
+                           "" if is_none(config.disambiguation) else "disam{}".format(config.disambiguation),
+                           "" if is_none(config.spreading_activation) else "spread{}".format("-".join(map(str, config.spreading_activation)))
                            ]
         if input_name is not None and not config.misc.independent_component:
             # include the dataset in the sem. resource name
@@ -199,7 +200,7 @@ class SemanticResource(Serializable):
     # make name string from components
     def set_name(self):
         self.name = self.generate_name(self.config, self.source_name)
-        self.config.semantic.full_name = self.name
+        self.config.full_name = self.name
 
     # apply disambiguation to choose a single semantic unit from a collection of such
     def disambiguate(self, concepts, word_information, override=None):
@@ -260,7 +261,7 @@ class SemanticResource(Serializable):
 
         Some prost-processing is required to arrive at the exact configuration (e.g. filtering or TFIDF scaling)"""
         # if loaded non-filtered data and limiting is applied
-        if not is_none(self.config.semantic.limit):
+        if not is_none(self.config.limit):
             if self.limit_type == defs.limit.top and len(self.reference_concepts) < self.limit_number:
                 # only left to filtering with the bag object
                 self.bag = Bag()
@@ -313,7 +314,7 @@ class SemanticResource(Serializable):
         info("Extracting {}-{} semantic information from the training dataset".format(self.name, self.semantic_weights))
         self.bag_train.set_term_weighting_function(self.get_concept)
         self.bag_train.set_term_delineation_function(self.get_term_delineation)
-        if not is_none(self.config.semantic.limit):
+        if not is_none(self.config.limit):
             self.bag_train.set_term_filtering(self.limit_type, self.limit_number)
         self.bag_train.set_term_extraction_function(lambda x: x)
         self.bag_train.map_collection(train_data)

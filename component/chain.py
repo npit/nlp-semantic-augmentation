@@ -1,7 +1,7 @@
 import defs
 from component import instantiator
 from component.component import Component
-from utils import as_list, debug, error, info, warning
+from utils import as_list, debug, error, info
 
 
 class Chain(Component):
@@ -22,7 +22,8 @@ class Chain(Component):
         # parse potential inputs
         if defs.alias.link in fields:
             idx = fields.index(defs.alias.link)
-            self.required_finished_chains = as_list(getattr(configs[idx], defs.alias.link))
+            link_component = configs[idx]
+            self.required_finished_chains = link_component.get_links()
             del fields[idx]
             del configs[idx]
 

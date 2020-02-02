@@ -10,7 +10,7 @@ class Clusterer(Learner):
     def __init__(self):
         """clusterer constructor"""
         self.sequence_length = 1
-        self.num_clusters = self.config.learner.num_clusters
+        self.num_clusters = self.config.num_clusters
         error("Attempted to create clusterer with a number of clusters equal to [{}]".format(self.num_clusters), self.num_clusters is None or self.num_clusters < 2)
         Learner.__init__(self)
 

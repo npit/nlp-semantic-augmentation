@@ -9,8 +9,8 @@ from utils import align_index, debug, error, info, warning
 
 class Sampler:
     def __init__(self, config):
-        self.dlim = config.dataset.data_limit
-        self.clim = config.dataset.class_limit
+        self.dlim = config.data_limit
+        self.clim = config.class_limit
 
     def get_limited_name(self, name):
         """Modify name to reflect data / class limiting"""
@@ -51,7 +51,7 @@ class Sampler:
             # remove by index of index
             idx_idx = maxfreq_label_idx.index(idx)
             del maxfreq_label_idx[idx_idx]
-        return data, np.asarray(labels)
+        return data, labels
 
     def limit_data_simple(self, num_limit, data, labels=None):
         """Simple data limiter"""
@@ -140,6 +140,8 @@ class Sampler:
             labelset = retained_classes
             if multilabel:
                 debug("Max train/test labels per item post: {} {}".format(max(map(len, train_labels)), max(map(len, test_labels))))
+        train_labels = [np.asarray(x) for x in train_labels]
+        test_labels = [np.asarray(x) for x in test_labels]
         return (train, test), (train_labels, test_labels), (labelset, label_names)
 
     def subsample(self, data, labels=None, labelset=None, label_names=None, multilabel=None):
@@ -147,6 +149,7 @@ class Sampler:
         if any(l is not None for l in labels) and self.clim is not None:
             data, labels, (labelset, label_names) = self.apply_class_limit(data, labels, labelset, label_names, multilabel)
         data, labels = self.apply_data_limit(data, labels)
+
         return data, labels, labelset, label_names
 
     # endregion

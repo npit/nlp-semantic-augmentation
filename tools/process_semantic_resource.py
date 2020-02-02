@@ -1,12 +1,15 @@
+import argparse
 import pickle
+
 import tqdm
 import yaml
-import argparse
 from nltk.corpus import wordnet as wn
-from semantic.semantic_resource import SemanticResource
+
 import dataset
 import settings
-from utils import to_namedtuple, info, setup_simple_logging
+from semantic.semantic_resource import SemanticResource
+from utils import info, setup_simple_logging, to_namedtuple
+
 
 """
 Script to preprocess a semantic information resource for text classification.
@@ -121,7 +124,7 @@ def produce_semantic_neighbourhood(config_file):
         config = settings.Config(config_file)
         config.misc.independent_component = True
         config.misc.deserialization_allowed = False
-        config.semantic.spreading_activation = config.semantic.spreading_activation[0], 0.5
+        config.spreading_activation = config.spreading_activation[0], 0.5
         semres = SemanticResource.create(config)
     except:
         print("Problematic configuration in {}".format(config_file))

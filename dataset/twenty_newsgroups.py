@@ -35,6 +35,7 @@ class TwentyNewsGroups(Dataset):
         self.label_names = train.target_names
         self.labelset = list(sorted(set(train.target)))
         self.num_labels = len(self.label_names)
+        self.roles = "train", "test"
         # write serialized data
         write_pickled(self.serialization_path, self.get_all_raw())
         self.loaded_raw = True

@@ -27,7 +27,7 @@ class Embedding(Representation):
         self.resource_handler_functions.append(lambda x: x)
 
         # need the raw embeddings even if processed embedding data is available
-        # if self.config.has_semantic() and self.config.semantic.name == "context":
+        # if self.config.has_semantic() and self.config.name == "context":
         #     # need the raw embeddings even if processed embedding data is available
         #     self.resource_always_load_flag.append(True)
         #     info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
@@ -163,11 +163,13 @@ class Embedding(Representation):
             self.embeddings = new_embedding_matrix
         self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.arange(len(self.embeddings)))
         self.embeddings = self.embeddings[new_embedding_index]
+        # flatten dataset vectors
+        self.dataset_vectors = [np.concatenate(x) if x else np.ndarray((0,), np.int32) for x in self.dataset_vectors]
         info("Aggregated shapes, indices: {}, matrix: {}".format(shapes_list(self.dataset_vectors), self.embeddings.shape))
 
     # shortcut for reading configuration values
     def set_params(self):
-        self.map_missing_unks = self.config.representation.missing_words == "unk"
+        self.map_missing_unks = self.config.missing_words == "unk"
         self.compatible_aggregations = defs.aggregation.avail
         self.compatible_sequence_lengths = defs.sequence_length.avail
         Representation.set_params(self)

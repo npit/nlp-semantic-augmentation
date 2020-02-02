@@ -10,7 +10,7 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-from bundle.datatypes import Labels, Text
+from bundle.datatypes import Indices, Labels, Text
 from component.component import Component
 from dataset.sampling import Sampler
 from semantic.wordnet import Wordnet
@@ -30,12 +30,12 @@ class Dataset(Serializable):
     undefined_word_index = None
     preprocessed = False
     train, test = None, None
-    data_names = ["train-data", "test-data"]
+    data_names = ["train-data", "test-data", "traintest-roles"]
     label_data_names = ["train-labels", "label-names", "test-labels"]
     train_labels, test_labels = None, None
     multilabel = False
-
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
+    roles = None
 
     @staticmethod
     def generate_name(config):
@@ -47,9 +47,9 @@ class Dataset(Serializable):
             The generated name
         """
 
-        name = basename(config.dataset.name)
-        if config.dataset.prepro is not None:
-            name += "_" + config.dataset.prepro
+        name = basename(config.name)
+        if config.prepro is not None:
+            name += "_" + config.prepro
         return name
 
     def nltk_dataset_resource_exists(self, name):
@@ -79,7 +79,7 @@ class Dataset(Serializable):
         if skip_init or self.config is None:
             return
         Serializable.__init__(self, self.dir_name)
-        self.config.dataset.full_name = self.name
+        self.config.full_name = self.name
 
     def populate(self):
         self.set_serialization_params()
@@ -110,7 +110,7 @@ class Dataset(Serializable):
             self.set_serialization_params()
             write_pickled(self.serialization_path, self.get_all_raw())
 
-        self.config.dataset.full_name = self.name
+        self.config.full_name = self.name
         info("Acquired dataset:{}".format(str(self)))
         self.check_sanity()
 
@@ -135,7 +135,7 @@ class Dataset(Serializable):
         self.loaded_raw_serialized = False
         self.loaded_preprocessed = True
 
-    #region getters
+    # region getters
     def get_data(self):
         return self.train, self.test
 
@@ -164,23 +164,24 @@ class Dataset(Serializable):
     def handle_raw(self, raw_data):
         error("Need to override raw data handler for {}".format(self.name))
 
+    def contains_multilabel(self, labels):
+        """Checks wether labels contain multi-label annotations"""
+        try:
+            for instance_labels in labels:
+                if len(instance_labels) > 1:
+                    return True
+        except TypeError:
+            pass
+        return False
+
     def handle_raw_serialized(self, deserialized_data):
-        self.train, self.test = [deserialized_data[n] for n in self.data_names]
+        self.train, self.test, self.roles = [deserialized_data[n] for n in self.data_names]
         self.train_labels, self.label_names, self.test_labels = [deserialized_data[n] for n in self.label_data_names]
         self.num_labels = len(set(self.label_names))
-        if type(self.train_labels) is np.ndarray:
-            self.multilabel = False
-        else:
-            if type(self.train_labels[0]) is int:
-                self.multilabel = False
-            else:
-                self.multilabel = any(len(ll) for ll in self.train_labels)
+        self.multilabel = self.contains_multilabel(self.train_labels)
         self.loaded_raw_serialized = True
 
-    def get_num_labels(self):
-        """Placeholder number of labels getter"""
-        return None
-    #endregion
+    # endregion
 
     def setup_nltk_resources(self):
         try:
@@ -201,10 +202,10 @@ class Dataset(Serializable):
         # setup word prepro
         while True:
             try:
-                if self.config.dataset.prepro == "stem":
+                if self.config.prepro == "stem":
                     self.stemmer = PorterStemmer()
                     self.word_prepro = lambda w_pos: (self.stemmer.stem(w_pos[0]), w_pos[1])
-                elif self.config.dataset.prepro == "lemma":
+                elif self.config.prepro == "lemma":
                     self.lemmatizer = WordNetLemmatizer()
                     self.word_prepro = self.apply_lemmatizer
                 else:
@@ -263,7 +264,7 @@ class Dataset(Serializable):
                 text_words_pos = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
                                                           word_prepro=self.word_prepro, stopwords=self.stopwords)
                 if text_words_pos is None:
-                    error("Text {}/{} preprocessed to an empty list:\n{}".format(i+1,len(document_list), document_list[i]))
+                    error("Text {}/{} preprocessed to an empty list:\n{}".format(i + 1, len(document_list), document_list[i]))
 
                 ret_words_pos.append(text_words_pos)
                 if track_vocabulary:
@@ -295,7 +296,7 @@ class Dataset(Serializable):
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        data = {"train-data": self.train, "test-data": self.test}
+        data = {lbl: data for (lbl, data) in zip(self.data_names, (self.train, self.test, self.roles))}
         for key, value in zip(self.label_data_names, [self.train_labels, self.label_names, self.test_labels]):
             data[key] = value
         return data
@@ -325,13 +326,14 @@ class Dataset(Serializable):
         except:
             return self.base_name
 
-
     # region # chain methods
 
     def set_outputs(self):
         """Set text data to the output bundle"""
         self.outputs.set_text(Text((self.train, self.test), self.vocabulary))
         self.outputs.set_labels(Labels((self.train_labels, self.test_labels), self.multilabel))
+        idxs = Indices(indices=(np.arange(len(self.train)), np.arange(len(self.test))), roles=self.roles)
+        self.outputs.set_indices(idxs)
 
     def load_inputs(self, inputs):
         error("Attempted to load inputs into a {} component.".format(self.base_name), inputs is not None)

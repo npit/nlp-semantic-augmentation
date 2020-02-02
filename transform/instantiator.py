@@ -12,7 +12,7 @@ class Instantiator:
     avail = [LSA, KMeansClustering, GMMClustering, LiDA, LDA, PCA]
 
     def create(config):
-        name = config.transform.name
+        name = config.name
         for tra in Instantiator.avail:
             if tra.base_name == name:
                 return tra(config)

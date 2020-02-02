@@ -14,7 +14,7 @@ class DocumentEmbedding(Embedding):
 
     def __init__(self, config):
         self.config = config
-        self.name = self.base_name = self.config.representation.name
+        self.name = self.base_name = self.config.name
         Embedding.__init__(self)
 
     def set_resources(self):

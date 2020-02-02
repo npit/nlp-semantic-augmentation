@@ -2,8 +2,10 @@ from os import makedirs
 from os.path import dirname
 
 import numpy as np
-from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.model_selection import (KFold, StratifiedKFold,
+                                     StratifiedShuffleSplit)
 
+from defs import roles
 from learning.learner import Learner
 from learning.sampling import Sampler
 from learning.validation import ValidationSetting
@@ -65,7 +67,7 @@ class SupervisedLearner(Learner):
     def show_train_statistics(self, train_labels, val_labels):
         msg = "Training label distribution for validation setting: " + self.validation.get_current_descr()
         self.evaluator.show_label_distribution(count_label_occurences(train_labels), message=msg)
-        if val_labels is not None:
+        if val_labels is not None and val_labels.size > 0:
             msg = "Validation label distribution for validation setting: " + self.validation.get_current_descr()
             self.evaluator.show_label_distribution(count_label_occurences(val_labels), message=msg)
 
@@ -79,31 +81,22 @@ class SupervisedLearner(Learner):
 
         if self.do_folds:
             # stratified fold splitting
-            info(
-                "Training {} with input data: {} samples, {} labels, on {} stratified folds"
-                .format(self.name, self.num_train, self.num_train_labels,
-                        self.folds))
+            info("Training {} with input data: {} samples, {} labels, on {} stratified folds"
+                .format(self.name, self.num_train, self.num_train_labels, self.folds))
             # for multilabel K-fold, stratification is not available. Also convert label format.
             if self.do_multilabel:
-                splitter = KFold(self.folds,
-                                 shuffle=True,
-                                 random_state=self.seed)
+                splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
             else:
-                splitter = StratifiedKFold(self.folds,
-                                           shuffle=True,
-                                           random_state=self.seed)
+                splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
                 # convert to 2D array
                 self.train_labels = np.squeeze(self.train_labels)
 
         if self.do_validate_portion:
-            info(
-                "Splitting {} with input data: {} samples, {} labels, on a {} validation portion"
-                .form,
-                random_state=self.seed)
+            info("Splitting {self.name} with input data: {self.num_train} samples, {self.num_train_labels} labels, on a {self.validation_portion} validation portion")
+            splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
 
         # generate. for multilabel K-fold, stratification is not usable
-        splits = list(
-            splitter.split(np.zeros(self.num_train_labels), self.train_labels))
+        splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
 
         # do sampling processing
         if self.do_sampling:
@@ -114,3 +107,15 @@ class SupervisedLearner(Learner):
         makedirs(dirname(trainval_serialization_file), exist_ok=True)
         write_pickled(trainval_serialization_file, splits)
         return splits
+
+    def process_component_inputs(self):
+        """Component processing for label-related data"""
+        super().process_component_inputs()
+        error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
+        self.train_labels = self.inputs.get_labels(single=True, role=roles.train)
+        self.test_labels = self.inputs.get_labels(single=True, role=roles.test)
+        if len(self.train_index) != len(self.train_labels):
+            error(f"Train data-label instance number mismatch: {len(self.train_index)} data and {len(self.train_labels)}")
+        if len(self.test_index) != len(self.test_labels):
+            error(f"Test data-label instance number mismatch: {len(self.test_index)} data and {len(self.test_labels)}")
+        self.multilabel_input = self.inputs.get_labels(single=True).multilabel

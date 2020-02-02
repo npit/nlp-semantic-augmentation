@@ -107,7 +107,7 @@ class ValidationSetting:
             #     val_labels = np.squeeze(np.asarray(val_labels))
             curr_val_idx = np.squeeze(np.asarray([self.train_index[idx] for idx in val_idx]))
         else:
-            curr_val_idx = None
+            curr_val_idx = np.empty((0,), np.int32)
 
         if self.use_for_testing:
             curr_test_idx = curr_val_idx

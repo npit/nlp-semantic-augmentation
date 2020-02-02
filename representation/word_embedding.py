@@ -187,6 +187,7 @@ class WordEmbedding(Embedding):
 
     # getter for semantic processing, filtering only to present words
     def process_data_for_semantic_processing(self, train, test):
+        """Deprecated"""
         if self.map_missing_unks:
             return Embedding.process_data_for_semantic_processing(self, train, test)
         # if we discard words that are not in the vocabulary, return those that are in the vocabulary
@@ -197,8 +198,9 @@ class WordEmbedding(Embedding):
 
 
     def __init__(self, config):
+        """Constructor for the word embeddings class"""
         self.config = config
-        self.name = self.base_name = self.config.representation.name
+        self.name = self.base_name = self.config.name
         Embedding.__init__(self)
 
 

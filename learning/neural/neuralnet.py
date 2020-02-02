@@ -1,12 +1,13 @@
-import numpy as np
-import torch
-from torch import nn, optim
-from torch.utils.data import DataLoader, Dataset
-
-from learning.classifier import Classifier
-from utils import debug, error, one_hot, info
 from copy import deepcopy
 from os.path import exists
+
+import numpy as np
+
+import torch
+from learning.classifier import Classifier
+from torch import nn, optim
+from torch.utils.data import DataLoader, Dataset
+from utils import debug, error, info, one_hot
 
 """Base torch-based neural model with learnable input embeddings"""
 class NeuralNet(Classifier):
@@ -18,11 +19,11 @@ class NeuralNet(Classifier):
 
     def make(self):
         Classifier.make(self)
-        self.num_layers = self.config.learner.num_layers
-        self.hidden_dim = self.config.learner.hidden_dim
+        self.num_layers = self.config.num_layers
+        self.hidden_dim = self.config.hidden_dim
         if type(self.hidden_dim) is int:
             self.hidden_dim = [self.hidden_dim] * self.num_layers
-        self.model_class = self.config.learner.name
+        self.model_class = self.config.name
 
     def get_model(self):
         error("Attempted to access base neuralnet model getter.")

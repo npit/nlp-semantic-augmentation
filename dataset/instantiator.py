@@ -9,7 +9,7 @@ class Instantiator:
     component_name = "dataset"
 
     def create(config):
-        name = config.dataset.name
+        name = config.name
         if name == TwentyNewsGroups.name:
             return TwentyNewsGroups(config)
         elif name == Reuters.name:

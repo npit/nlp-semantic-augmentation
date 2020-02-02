@@ -1,4 +1,5 @@
-from representation.bag_representation import BagRepresentation, TFIDFRepresentation
+from representation.bag_representation import (BagRepresentation,
+                                               TFIDFRepresentation)
 from representation.document_embedding import DocumentEmbedding
 from representation.existing_vectors import ExistingVectors
 from representation.word_embedding import WordEmbedding
@@ -6,8 +7,9 @@ from representation.word_embedding import WordEmbedding
 
 class Instantiator:
     component_name = "representation"
+
     def create(config):
-        name = config.representation.name
+        name = config.name
         if name == BagRepresentation.name:
             return BagRepresentation(config)
         if name == TFIDFRepresentation.name:
