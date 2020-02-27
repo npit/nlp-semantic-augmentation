@@ -137,7 +137,7 @@ class Sampler:
             test_labels = align_index(test_labels, retained_classes)
             # fix the label names
             label_names = [label_names[rc] for rc in retained_classes]
-            labelset = retained_classes
+            labelset = list(range(len(retained_classes)))
             if multilabel:
                 debug("Max train/test labels per item post: {} {}".format(max(map(len, train_labels)), max(map(len, test_labels))))
         train_labels = [np.asarray(x) for x in train_labels]

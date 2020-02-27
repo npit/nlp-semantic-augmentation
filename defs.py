@@ -31,6 +31,10 @@ sampling = make_def("sampling")
 roles = make_def("roles")
 datatypes = make_def("datatypes")
 
+def roles_compatible(roles):
+    # just singleton rolesets for now
+    return len(roles) == 1
+
 def is_none(elem):
     return elem == '' or elem is None or elem == alias.none or not elem
 

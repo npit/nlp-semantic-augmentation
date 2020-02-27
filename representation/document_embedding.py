@@ -83,9 +83,6 @@ class DocumentEmbedding(Embedding):
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
-    def aggregate_instance_vectors(self):
-        pass
-
     def set_params(self):
         Embedding.set_params(self)
         # define compatible aggregations

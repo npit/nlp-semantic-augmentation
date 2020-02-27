@@ -94,8 +94,11 @@ class Representation(Serializable):
         return self.elements_per_instance
     # endregion
 
-    # shortcut for reading configuration values
     def set_params(self):
+        """Set baseline compatibilities and read relevant config values"""
+        self.compatible_aggregations = [defs.alias.none, None]
+        self.compatible_sequence_lengths = [defs.sequence_length.unit]
+
         self.aggregation = self.config.aggregation
         self.dimension = self.config.dimension
         self.dataset_name = self.source_name
@@ -119,23 +122,21 @@ class Representation(Serializable):
     def set_name(self):
         self.name = Representation.generate_name(self.config, self.source_name)
 
-    # set one element per instance
     def set_constant_elements_per_instance(self, num=1):
+        """Function to assign single-element (default) instances"""
         if not self.dataset_vectors:
             error("Attempted to set constant epi before computing dataset vectors.")
         self.elements_per_instance = [np.asarray([num for _ in ds], np.int32) for ds in self.dataset_vectors]
+
+    def set_identity_indexes(self, data):
+        """Function to assign unique indexes to data"""
+        self.dataset_vectors = [np.arange(len(d)) for d in data]
 
     # data getter for semantic processing
     def process_data_for_semantic_processing(self, train, test):
         return train, test
 
     # abstracts
-    def aggregate_instance_vectors(self):
-        error("Attempted to run abstract aggregate_instance_vectors for {}".format(self.name))
-
-    def compute_dense(self):
-        error("Attempted to run abstract compute_dense for {}".format(self.name))
-
     def map_text(self):
         error("Attempted to access abstract function map_text of {}".format(self.name))
 
@@ -152,8 +153,6 @@ class Representation(Serializable):
         self.populate()
         self.process_component_inputs()
         self.map_text()
-        self.compute_dense()
-        self.aggregate_instance_vectors()
         self.outputs.set_vectors(Vectors(vecs=self.embeddings))
         self.outputs.set_indices(Indices(self.dataset_vectors, roles=self.inputs.get_indices().roles))
 

@@ -1,4 +1,5 @@
 import math
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -115,8 +116,11 @@ class WordEmbedding(Embedding):
         # saves a lot of memory
         if self.embedding_vocabulary_index:
             self.map_text_partial_load()
-            return
+        else:
+            self.map_text_nonpartial_load()
+        self.aggregate_instance_vectors()
 
+    def map_text_nonpartial_load(self):
         # initialize unknown token embedding, if it's not defined
         if self.unknown_word_token not in self.embeddings and self.map_missing_unks:
             warning("[{}] unknown token missing from embeddings, adding it as zero vector.".format(self.unknown_word_token))
@@ -165,19 +169,9 @@ class WordEmbedding(Embedding):
                     self.elements_per_instance[dset_idx].append(len(doc_indices))
                     pbar.update()
 
-            # if self.do_train_vectors:
-            #     # just use the saved indices
-            #     pass
-            # else:
-            #     if len(self.dataset_vectors[dset_idx]) > 0:
-            #         self.dataset_vectors[dset_idx] = pd.concat(self.dataset_vectors[dset_idx]).values
-
             word_stats.print_word_stats()
             self.elements_per_instance[dset_idx] = np.asarray(self.elements_per_instance[dset_idx], np.int32)
 
-        # if self.do_train_vectors:
-        #     self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.asarray(list(range(len(self.embeddings.index)))))
-        #     self.embeddings = self.embeddings.iloc[new_embedding_index]
         self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.asarray(list(range(len(self.embeddings.index)))))
         self.embeddings = self.embeddings.iloc[new_embedding_index].values
         # write
@@ -209,13 +203,11 @@ class WordEmbeddingStats:
 
     def __init__(self, dataset_vocabulary, embedding_vocab):
         self.hist = {w: 0 for w in embedding_vocab}
-        self.hist_missing = {}
+        self.hist_missing = Counter()
         self.dataset_vocabulary = dataset_vocabulary
 
     def update_word_stats(self, word, word_in_embedding_vocabulary):
         if not word_in_embedding_vocabulary:
-            if word not in self.hist_missing:
-                self.hist_missing[word] = 0
             self.hist_missing[word] += 1
         else:
             self.hist[word] += 1

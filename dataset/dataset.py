@@ -331,7 +331,7 @@ class Dataset(Serializable):
     def set_outputs(self):
         """Set text data to the output bundle"""
         self.outputs.set_text(Text((self.train, self.test), self.vocabulary))
-        self.outputs.set_labels(Labels((self.train_labels, self.test_labels), self.multilabel))
+        self.outputs.set_labels(Labels((self.train_labels, self.test_labels), self.labelset, self.multilabel))
         idxs = Indices(indices=(np.arange(len(self.train)), np.arange(len(self.test))), roles=self.roles)
         self.outputs.set_indices(idxs)
 

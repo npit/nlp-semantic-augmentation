@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from defs import avail_roles
+from defs import avail_roles, roles_compatible
 from utils import error
 
 
@@ -37,10 +37,12 @@ class Vectors:
 class Labels:
     name = "labels"
     instances = None
+    labelset = None
     is_multilabel = None
 
-    def __init__(self, labels, multilabel):
+    def __init__(self, labels, labelset, multilabel):
         self.instances = labels
+        self.labelset = labelset
         self.multilabel = multilabel
 
 
@@ -54,6 +56,7 @@ class Indices:
         if roles is not None:
             error(f"Undefined role(s): {roles}", any(x not in avail_roles for x in roles))
             error(f"Mismatch role / indices lengths: {len(roles)} {len(indices)}", len(roles) != len(indices))
+            # error(f"Multiple-role incompatibility: {roles}", not roles_compatible(roles))
         self.roles = roles
 
     def has_role(self, role):

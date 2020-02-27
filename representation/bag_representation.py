@@ -91,19 +91,6 @@ class BagRepresentation(Representation):
                 "term_list": self.term_list, "embeddings": self.embeddings}
 
     # sparse to dense
-    def compute_dense(self):
-        # dense already computed.
-        pass
-        # info("Computing dense representation for the bag.")
-        # b = Bag()
-        # self.dataset_vectors = [b.get_dense(input_sparse=x) for x in self.dataset_vectors]
-        # info("Computed dense dataset shapes: {} {}".format(*shapes_list(self.dataset_vectors)))
-
-    def aggregate_instance_vectors(self):
-        # bag representations produce a single instance-level vectors
-        if self.aggregation != defs.alias.none:
-            error("Specified [{}] aggregation with {} representation, but only {} is compatible.".format(self.aggregation, self.name, defs.alias.none))
-        pass
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True

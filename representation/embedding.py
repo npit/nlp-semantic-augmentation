@@ -78,10 +78,6 @@ class Embedding(Representation):
     def get_dense_vector(self, vector):
         return vector
 
-    # compute dense elements
-    def compute_dense(self):
-        pass
-
     # prepare embedding data to be ready for classification
     def aggregate_instance_vectors(self):
         """Method that maps features to a single vector per instance"""
