@@ -78,6 +78,7 @@ class Transform(Serializable):
             self.vectors = self.process_func_train(train_data)
         self.output_roles = (roles.train,)
 
+        import ipdb; ipdb.set_trace()
         if self.test_index.size > 0:
             # make zero output matrix
             output_data = np.zeros((len(self.input_vectors), self.dimension), np.float32)

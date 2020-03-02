@@ -166,6 +166,6 @@ class Embedding(Representation):
     # shortcut for reading configuration values
     def set_params(self):
         self.map_missing_unks = self.config.missing_words == "unk"
+        Representation.set_params(self)
         self.compatible_aggregations = defs.aggregation.avail
         self.compatible_sequence_lengths = defs.sequence_length.avail
-        Representation.set_params(self)

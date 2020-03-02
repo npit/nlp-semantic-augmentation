@@ -2,6 +2,7 @@
 
 import numpy as np
 
+import defs
 from defs import avail_roles, roles_compatible
 from utils import error
 
@@ -64,3 +65,11 @@ class Indices:
         if not self.roles:
             return False
         return role in self.roles
+
+    def get_train_role_indexes(self):
+        """Retrieve instance indexes with a training role"""
+        res = []
+        for r, role in enumerate(self.roles):
+            if role == defs.roles.train:
+                res.append(r)
+        return res

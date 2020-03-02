@@ -50,21 +50,16 @@ class DocumentEmbedding(Embedding):
         if self.loaded_preprocessed or self.loaded_aggregated:
             return
         info("Mapping to {} embeddings.".format(self.name))
-        word_lists = self.text
-        labels = self.labels[0]
-        if type(labels[0]) is not list:
-            labels = [[l] for l in labels]
-        train_words = [wp[0] for doc in word_lists[0] for wp in doc]
-        d2v = self.fit_doc2vec(train_words, labels)
+        train_words = [wp[0] for doc in self.text_train for wp in doc]
+        d2v = self.fit_doc2vec(train_words, self.labels_train)
 
-        text_bundles = self.text
         self.dataset_vectors = [[], []]
 
         # loop over input text bundles (e.g. train & test)
-        for dset_idx in range(len(text_bundles)):
-            dset_word_list = word_lists[dset_idx]
-            with tictoc("Embedding mapping for text bundle {}/{}".format(dset_idx + 1, len(text_bundles))):
-                info("Mapping text bundle {}/{}: {} texts".format(dset_idx + 1, len(text_bundles), len(text_bundles[dset_idx])))
+        for dset_idx in range(len(self.text)):
+            dset_word_list = self.text[dset_idx]
+            with tictoc("Embedding mapping for text bundle {}/{}".format(dset_idx + 1, len(self.text))):
+                info("Mapping text bundle {}/{}: {} texts".format(dset_idx + 1, len(self.text), len(self.text[dset_idx])))
                 # num_documents = len(text_bundles[dset_idx])
                 for doc_word_pos in dset_word_list:
                     doc_words = [wp[0] for wp in doc_word_pos]
@@ -76,7 +71,7 @@ class DocumentEmbedding(Embedding):
 
         # assign
         num_train, num_test = len(self.dataset_vectors[0]), len(self.dataset_vectors[1])
-        indexes = (list(range(num_train)), list(range(num_train, num_train + num_test)))
+        indexes = (np.arange(num_train), np.arange(num_train, num_train + num_test))
         self.embeddings = np.vstack(self.dataset_vectors)
         self.dataset_vectors = indexes
         # write
@@ -93,4 +88,8 @@ class DocumentEmbedding(Embedding):
         Representation.process_component_inputs(self)
         if self.loaded_aggregated or self.loaded_preprocessed:
             return
+        train_idx = self.inputs.get_indices().get_train_role_indexes()
+        self.labels_train = np.concatenate([self.inputs.get_labels().instances[i] for i in train_idx])
+        self.text_train = np.concatenate([self.inputs.get_text().instances[i] for i in train_idx])
         self.labels = self.inputs.get_labels().instances
+        self.text = self.inputs.get_text().instances
