@@ -4,7 +4,7 @@ This module provides methods that transform existing representations into others
 
 import numpy as np
 
-from bundle.bundle import BundleList
+from bundle.bundle import Bundle
 from bundle.datatypes import Indices, Labels, Vectors
 from component.component import Component
 from defs import roles
@@ -78,7 +78,6 @@ class Transform(Serializable):
             self.vectors = self.process_func_train(train_data)
         self.output_roles = (roles.train,)
 
-        import ipdb; ipdb.set_trace()
         if self.test_index.size > 0:
             # make zero output matrix
             output_data = np.zeros((len(self.input_vectors), self.dimension), np.float32)
@@ -132,7 +131,7 @@ class Transform(Serializable):
             error(
                 "{} is supervised and needs an input bundle list.".format(
                     self.get_full_name()),
-                type(self.inputs) is not BundleList)
+                len(self.inputs) <= 1)
             # get the longest name, most probable
             print(self.inputs.get_source_name())
             self.input_name = max(self.inputs.get_source_name(),
@@ -141,7 +140,7 @@ class Transform(Serializable):
             error(
                 "{} is not supervised but got an input bundle list, instead of a single bundle."
                 .format(self.get_full_name()),
-                type(self.inputs) is BundleList)
+                len(self.inputs) <= 1)
             # get the longest name, most probable
             self.input_name = self.inputs.get_source_name()
         self.name = "{}_{}_{}".format(self.input_name, self.base_name,
@@ -154,7 +153,7 @@ class Transform(Serializable):
 
         if self.is_supervised:
             error("{} is supervised and needs an input bundle list.".format(self.get_full_name()),
-                type(self.inputs) is not BundleList)
+                  len(self.inputs) <= 1)
             error("{} got a {}-long bundle list, but a length of at most 2 is required."
                 .format(self.get_full_name(), len(self.inputs)),
                 len(self.inputs) > 2)
@@ -172,10 +171,10 @@ class Transform(Serializable):
             self.input_vectors = self.inputs.get(vectors_bundle_index).get_vectors().instances
             self.train_epi = self.inputs.get(vectors_bundle_index).get_vectors().elements_per_instance
             error(f"{self.get_full_name()} is supervised and needs label information.", not self.inputs.has_labels())
-            self.train_labels = self.inputs.get_labels(single=True, role=roles.train).instances
+            self.train_labels = self.inputs.get_labels(enforce_single=True, roles=roles.train)
         else:
             error("{} is not supervised but got an input bundle list, instead of a single bundle."
-                .format(self.get_full_name()), type(self.inputs) is BundleList)
+                .format(self.get_full_name()), len(self.inputs) <= 1)
             self.input_vectors = self.inputs.get_vectors().instances
             self.elements_per_instance = self.inputs.get_vectors().elements_per_instance
 

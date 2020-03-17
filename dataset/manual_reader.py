@@ -78,7 +78,6 @@ class ManualDatasetReader:
             self.read_instances(data["train"])
         self.test, test_labels, test_labelset, self.test_is_labelled, self.test_fully_labelled, _ = \
             self.read_instances(data["test"])
-
         self.roles = ("train", "test")
         # read metadata
         try:

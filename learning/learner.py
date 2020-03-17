@@ -5,7 +5,7 @@ from os.path import dirname, exists, join
 import numpy as np
 from sklearn.model_selection import KFold, ShuffleSplit
 
-from bundle.bundle import BundleList
+from bundle.bundle import Bundle
 from bundle.datatypes import Vectors
 from component.component import Component
 from defs import datatypes, roles
@@ -331,25 +331,30 @@ class Learner(Component):
         self.configure_sampling()
         self.check_sanity()
         self.do_traintest()
-        self.outputs.set_vectors(Vectors(vecs=self.evaluator.predictions))
+        self.outputs.set_vectors(Vectors(vecs=self.evaluator.predictions["run"]))
 
-    def process_component_inputs(self):
-        """Component processing for input indexes and vectors"""
+    def acquire_embedding_information(self):
+        """Get embedding and embedding information"""
         # get data
-        error("Learner needs at least two-input bundle input list.", type(self.inputs) is not BundleList)
+        error("Learner needs at least two-input bundle input list.", len(self.inputs) <= 1)
         error(f"{self.component_name} needs vector information.", not self.inputs.has_vectors())
         error(f"{self.component_name} needs vector information.", not self.inputs.has_indices())
 
         # get vectors and their indices
-        vectors_bundle = self.inputs.get_bundle_like(datatypes.vectors, roles.train, single=True)
+        vectors_bundle = self.inputs.get_vectors(full_search=True, enforce_single=True)
+
         self.embeddings = vectors_bundle.get_vectors().instances
-        self.train_embedding_index = vectors_bundle.get_indices(role=roles.train)
+        self.train_embedding_index = vectors_bundle.get_indices(role=roles.train, enforce_single=True)
         # get_train self.inputs.get_indices(single=True, role=roles.train)
 
         if vectors_bundle.get_indices().has_role(roles.test):
-            self.test_embedding_index = vectors_bundle.get_indices(role=roles.test)
+            self.test_embedding_index = vectors_bundle.get_indices(role=roles.test, enforce_single=True)
         else:
             self.test_embedding_index = np.ndarray((), np.float32)
+
+    def process_component_inputs(self):
+        """Component processing for input indexes and vectors"""
+        self.acquire_embedding_information()
         # initialize current meta-indexes to data
         self.train_index = np.arange(len(self.train_embedding_index))
         self.test_index = np.arange(len(self.test_embedding_index))

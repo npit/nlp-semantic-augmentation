@@ -1,8 +1,10 @@
-from bundle.bundle import Bundle, BundleList
+import numpy as np
+
+from bundle.bundle import Bundle
 from bundle.datatypes import Vectors
 from manip.manip import Manipulation
-from utils import error, shapes_list, info, warning
-import numpy as np
+from utils import error, info, shapes_list, warning
+
 """Class that implements the combination of two chains"""
 
 
@@ -40,7 +42,7 @@ class Fusion(Manipulation):
         self.num_elements_per_instance = all_epis[0]
 
         # error("Unequal elements per instance during {} manip".format(str(epis)), np.all(np.diff(epis)) == 0)
-        error("{} can only fuse a collection of bundles".format(self.name), type(self.inputs) is not BundleList)
+        error("{} can only fuse a collection of bundles".format(self.name), len(self.inputs) <= 1)
         for v, vecs in enumerate(self.vectors):
             if vecs is None:
                 bund = self.inputs.get(v)

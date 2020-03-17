@@ -58,6 +58,7 @@ class ConfigReader:
         os.makedirs(global_config.folders.serialization, exist_ok=True)
         return global_config
 
+    @staticmethod
     def read_pipeline(chains_config, global_config):
         """Read all chains defined in the configuration
         Arguments:

@@ -1,6 +1,7 @@
 from learning.classifier import Dummy, LogisticRegression, NaiveBayes
 from learning.clusterer import KMeansClusterer
 from learning.dnn import LSTM, MLP, BiLSTM
+from learning.neural.languagemodel.huggingface_learner import Bert
 from learning.neural.mlp import MLP as tMLP
 from utils import error
 
@@ -12,7 +13,7 @@ class Instantiator:
     def create(config):
         """Function to instantiate a learning"""
         name = config.name
-        candidates = [MLP, LSTM, BiLSTM, KMeansClusterer, NaiveBayes, Dummy, tMLP, LogisticRegression]
+        candidates = [MLP, LSTM, BiLSTM, KMeansClusterer, NaiveBayes, Dummy, tMLP, LogisticRegression, Bert]
         for candidate in candidates:
             if name == candidate.name:
                 return candidate(config)

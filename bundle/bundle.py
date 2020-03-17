@@ -6,7 +6,7 @@ from utils import data_summary, debug, error, info
 
 
 class Bundle:
-    """Data container class to pass data around
+    """Container class to pass data around
     """
     # data types
     vectors = None
@@ -20,6 +20,83 @@ class Bundle:
 
     content_dict = None
     demand = None
+
+    # named links to the next bundle
+    linkage = {}
+    default_linkage = "overall_output"
+    active_linkage = None
+
+    def set_active_linkage(self, linkage_name):
+        """Set the current linkage"""
+        self.active_linkage = linkage_name
+    def get_fallback_linkage(self):
+        return self.active_linkage
+
+    @staticmethod
+    def print_linkages(bundle, linkage_name=None, visited_bundles=None, print_indent=""):
+        if linkage_name is None:
+            linkage_name = bundle.get_fallback_linkage()
+
+        all_bundles = bundle.get_bundle_list(linkage_name=Bundle.default_linkage)
+        edge_landing_bundles = []
+        relevant_bundles = []
+        for b in all_bundles:
+            if linkage_name in b.linkage:
+                relevant_bundles.append(b)
+                # track leafs
+                if b.linkage[linkage_name] is not None:
+                    edge_landing_bundles.append(b.linkage[linkage_name])
+                # if not b.has_next(linkage_name) or b.linkage[linkage_name] is None:
+                #     candidate_heads.append(b)
+        
+        if not relevant_bundles:
+            info(f"(no linkage bundles for {linkage_name})")
+            return
+        candidate_heads = [x for x in relevant_bundles if x not in edge_landing_bundles]
+        if len(candidate_heads) > 1:
+            error(f"Found multiple roots for linkage {linkage_name}: {candidate_heads}")
+
+        candidate_heads[0].print_linkage_sequence(linkage_name)
+
+    def print_linkage_sequence(self, linkage_name=None):
+        info(f"Linkage {linkage_name}")
+        if linkage_name is None:
+            linkage_name = self.get_fallback_linkage()
+        curr = self
+        info(curr)
+        while curr.has_next(linkage_name):
+            curr = curr.next(linkage_name)
+            if curr is None:
+                break
+            info(curr)
+        
+    def __len__(self, linkage_name=None):
+        ln = 1
+        if linkage_name is None:
+            linkage_name = self.get_fallback_linkage()
+        x = self
+        while True:
+            if x is None:
+                break
+            x = x.next(linkage_name)
+            ln += 1
+        return ln
+    
+    def has_next(self, active_linkage=None):
+        if active_linkage is None:
+            active_linkage = self.get_fallback_linkage()
+        return active_linkage in self.linkage
+
+    def next(self, active_linkage=None):
+        if active_linkage is None:
+            active_linkage = self.get_fallback_linkage()
+        return self.linkage[active_linkage]
+
+    def clear_data(self, chain_name, component_name):
+        self.remove_fulfilled_demand(chain_name, component_name)
+        # should not propagate
+        # if self.has_next():
+        #     self.next().remove_fulfilled_demand(chain_name, component_name)
 
     def __str__(self):
         """Generate bundle name
@@ -38,10 +115,15 @@ class Bundle:
             parts.append(Text.name)
         return "_".join(parts)
 
+    def __repr__(self):
+        return self.__str__()
+
     def __init__(self, source_name=None, vectors=None, labels=None, text=None, indices=None):
         self.source_name = source_name
         self.content_dict = {}
         self.demand = {}
+        self.active_linkage = self.default_linkage
+        self.linkage = {}
         if vectors is not None:
             self.content_dict["vectors"] = vectors
             self.vectors = vectors
@@ -55,18 +137,19 @@ class Bundle:
             self.content_dict["indices"] = indices
             self.indices = indices
 
-    def clear_data(self, chain_name, component_name):
+
+    def remove_fulfilled_demand(self, chain, component):
         """Delete unneeded data
-        chain_name: the chain that just used the bundle
-        component_name: the component that just used the bundle
+        chain: the chain that just used the bundle
+        component: the component that just used the bundle
         """
-        debug("Removing demand {}-{} from bundle {}".format(chain_name, component_name, self.get_full_name()))
-        error("Attempted to clear data after run of non-registered chain {}".format(chain_name), chain_name not in self.demand)
+        debug("Removing demand {}-{} from bundle {}".format(chain, component, self.get_full_name()))
+        error("Attempted to clear data after run of non-registered chain {}".format(chain), chain not in self.demand)
         error("Attempted to clear data after run of non-registered component {} of chain {}. Registered components are {}.".format(
-            component_name, chain_name, self.demand[chain_name]), component_name not in self.demand[chain_name])
-        self.demand[chain_name].remove(component_name)
-        if not self.demand[chain_name]:
-            del self.demand[chain_name]
+            component, chain, self.demand[chain]), component not in self.demand[chain])
+        self.demand[chain].remove(component)
+        if not self.demand[chain]:
+            del self.demand[chain]
         if not self.demand:
             debug("Deleting bundle {}.".format(self.get_full_name()))
             if self.vectors:
@@ -82,89 +165,240 @@ class Bundle:
         return "({}|{})".format(self.chain_name, self.source_name)
 
     def set_demand(self, chain_name, component_name):
+        """Update the bundle with a requesting component"""
+        # add a dummy linkage to the chain, with no next bundle
+        # if chain_name in self.linkage:
+        #     error("Attempted to add a dummy linkage but a linkage to the chain exists!")
+        # self.linkage[chain_name] = None
+        # mark the chain / component demand
         if chain_name not in self.demand:
             self.demand[chain_name] = []
         self.demand[chain_name].append(component_name)
 
-    def summarize_content(self, msg=None):
+    def add_bundle(self, bundle, chain_name=None, linkage_name=None):
+        """Add a new bundle to the linked collection. Override chain name, if submitted."""
+        if chain_name is not None:
+            bundle.set_chain_name(chain_name)
+        if linkage_name is None:
+            linkage_name = self.get_fallback_linkage()
+        tail = self.get_via_condition(lambda x: linkage_name not in x.linkage, enforce_single=True)
+        tail.linkage[linkage_name] = bundle
+    
+    def get_chain_bundles(self, name):
+        """Get bundles that belong to the input chain name"""
+        res = self.get_via_condition(lambda x: x.get_chain_name() == name)
+        error(f"Multi-bundle chain output found: {name}!", len(res) > 1)
+        return res[0]
+
+    def summarize_content(self, msg=None, do_propagate=True):
         msg = "" if msg is None else msg + ": "
-        msg += "Bundle source chain: {}, component {}:".format(self.chain_name, self.source_name)
+        msg += f"Bundle: source chain: {self.chain_name}, component {self.source_name}"
         debug(msg)
         if self.vectors is not None:
+            print()
             data_summary(self.vectors, msg="vectors")
         if self.labels is not None:
+            print()
             data_summary(self.labels, msg="labels")
         if self.text is not None:
+            print()
             data_summary(self.text, msg="text")
         if self.indices is not None:
+            print()
             data_summary(self.indices, msg="text")
+        if do_propagate:
+            # move along the chain
+            if self.has_next():
+                self.next().summarize_content(msg)
 
     # region: getters
+
+    def get_bundle_list(x, linkage_name=None):
+        """Make list out of the current linked list bundles"""
+        if linkage_name is None:
+            linkage_name = x.get_fallback_linkage()
+        res = [x]
+        while x.has_next(linkage_name):
+            x = x.next(linkage_name)
+            res.append(x)
+        return res
+
+    @staticmethod
+    def append_request_bundle(bundle, client_name, tail_bundle):
+        """Append a bundle to a client request linked list"""
+        current_bundle = bundle
+        while client_name in current_bundle.linkage and current_bundle.linkage[client_name] is not None:
+            current_bundle = current_bundle.linkage[client_name]
+        current_bundle.linkage[client_name] = tail_bundle
+        # add dummy linkage on the tail bundle
+        Bundle.add_dummy_client_linkage(tail_bundle, client_name)
+        return bundle
+
+    @staticmethod
+    def add_dummy_client_linkage(bundle, client_name):
+        """Make a dangling linkage to mark request from a client"""
+        if client_name in bundle.linkage:
+            error("Attempted to make a dummy linkage on a existing linkage with targets: {self.linkage[client_name]}")
+        bundle.linkage[client_name] = None
+
+    def make_request_bundlelist_by_chain_names(self, chain_names, client_name):
+        """Get bundles that belong to the input chain names and form them in a request linked list"""
+        if type(chain_names) is str:
+            chain_names = [chain_names]
+        res = None
+        for bundle in self.get_bundle_list():
+            if bundle.get_chain_name() in chain_names:
+                if res is None:
+                    res = bundle
+                    # add a dummy linkage from the client, with no sibling
+                    Bundle.add_dummy_client_linkage(bundle, client_name)
+                else:
+                    res = Bundle.append_request_bundle(res, client_name, bundle)
+        return res
+
+    def get_request_bundlelist(self, client_name):
+        """Get bundles that belong to the input chain names and form them in a request linked list"""
+        # find head of request list 
+        candidate_heads = self.get_via_condition(lambda x: client_name in x.linkage)
+        if not candidate_heads:
+            error(f"Could not find requested bundles from client {client_name}")
+        edge_tails = [x.linkage[client_name] for x in candidate_heads]
+        # candidate heads cannot have an incoming link
+        candidate_heads = [x for x in candidate_heads if x not in edge_tails]
+        if len(candidate_heads) > 1:
+            error(f"Found multiple heads for request bundle list from {client_name}: {candidate_heads}")
+        return candidate_heads[0]
+
+    def get(self, index):
+        """Get the index-th bundle in the bundle list."""
+        try:
+            return self.get_bundle_list()[index]
+        except IndexError:
+            error(f"Failed to retrieve the non-existing {index}-th bundle.")
 
     def get_available(self):
         return list(self.content_dict.keys())
 
-    def get_element(self, element, role=None):
-        """Retrieve element based on input type and role"""
+    def get_element(self, element, full_search=False, enforce_single=False, role=None):
+        """
+        Retrieve a bundle member element based on input restrictions
+        """
         res = None
+        error(f"Specified both full-search fetching and specified input role(s): {role}", role is not None and full_search)
         if element == datatypes.vectors:
-            res = self.vectors
+            if full_search:
+                res = self.get_via_condition(lambda x: x.vectors is not None)
+            else:
+                res = self.vectors
         elif element == datatypes.labels:
-            res = self.labels
+            if full_search:
+                res = self.get_via_condition(lambda x: x.labels is not None)
+            else:
+                res = self.labels
         elif element == datatypes.text:
-            res = self.text
+            if full_search:
+                res = self.get_via_condition(lambda x: x.text is not None)
+            else:
+                res = self.text
         elif element == datatypes.indices:
-            res = self.indices
+            if full_search:
+                res = self.get_via_condition(lambda x: x.indices is not None)
+            else:
+                res = self.indices
+        elif element == "source_name":
+            if full_search:
+                res = [x.source_name for x in self.get_bundle_list()]
+            else:
+                res = self.source_name
+        elif element == "chain_name":
+            if full_search:
+                res = [x.chain_name for x in self.get_bundle_list()]
+            else:
+                res = self.chain_name
         else:
             error(f"Undefined element {element} to get from bundle.")
+
+        if res is None:
+            return res
         # filter with respect to role
-        if res is not None and role is not None:
-            # make sure indices are set
-            if self.indices is None:
-                error(f"Requested role {role} but current bundle {self.get_full_name()} has no indices!")
-            try:
-                role_index = self.indices.roles.index(role)
-                res = res.instances[role_index]
-            except ValueError:
-                error(f"Role {role} not in bundle indices roles: {self.indices.roles}")
-            except IndexError:
-                error(f"Index of requested role {role} is {role_index} but bundle {element} elements contain {len(res.instances)} instances.")
+        if role is not None:
+            res = self.filter_to_role_instances(res, role, enforce_single)
+        if full_search and enforce_single:
+            res = self.do_enforce_single(res)
         return res
 
-    def get_vectors(self, role=None):
-        return self.get_element(datatypes.vectors, role)
+    def do_enforce_single(self, data):
+        if type(data) is list:
+            if len(data) != 1:
+                error(f"Enforced single but got {len(data)} data.")
+                data.summarize_content()
+            return data[0]
 
-    def get_indices(self, role=None):
-        return self.get_element(datatypes.indices, role)
+    @staticmethod
+    def filter_to_role_instances(datum, role, enforce_single=False):
+        """Limit bundle instances to those of a specified role"""
+        res = []
+        if datum.has_role(role):
+            role_index = datum.roles.index(role)
+            res.append(datum.instances[role_index])
+        if enforce_single:
+            error(f"Enforced single acquisition of role {role} but found {len(res)} matching instances!", len(res) != 1)
+            res = res[0]
+        return res
 
-    def get_text(self, role=None):
-        return self.get_element(datatypes.text, role)
+    def get_indices(self, full_search=False, enforce_single=False, role=None):
+        return self.get_element(datatypes.indices, full_search, enforce_single, role)
+    def get_vectors(self, full_search=False, enforce_single=False, role=None):
+        return self.get_element(datatypes.vectors, full_search, enforce_single, role)
+    def get_text(self, full_search=False, enforce_single=False, role=None):
+        return self.get_element(datatypes.text, full_search, enforce_single, role)
+    def get_labels(self, full_search=False, enforce_single=False, role=None):
+        return self.get_element(datatypes.labels, full_search, enforce_single, role)
+    def get_source_name(self, full_search=False, enforce_single=False, role=None):
+        return self.get_element("source_name", full_search, enforce_single, role)
+    def get_chain_name(self, full_search=False, enforce_single=False, role=None):
+        return self.get_element("chain_name", full_search, enforce_single, role)
 
-    def get_labels(self, role=None):
-        return self.get_element(datatypes.labels, role)
-
-    def get_source_name(self):
-        return self.source_name
-
-    def get_chain_name(self):
-        return self.chain_name
+    def get_via_condition(self, cond, linkage_name=None, enforce_single=False):
+        """Return bundles matching an input condition"""
+        if linkage_name is None:
+            linkage_name = self.get_fallback_linkage()
+        res = []
+        # start from the base node
+        x = self
+        while True:
+            if cond(x):
+                res.append(x)
+            if not x.has_next(linkage_name):
+                break
+            x = x.next(linkage_name)
+            if x is None:
+                break
+        if enforce_single:
+            error(f"Enforced single acquisition of condition {cond} but found {len(res)} matching instances!", len(res) != 1)
+            res = res[0]
+        return res
     # endregion
 
     # region: has-ers
     def has_labels(self):
-        return self.labels is not None
+        return self.has_condition(lambda x: x.labels is not None)
 
     def has_source_name(self):
-        return self.source_name is not None
+        return self.has_condition(lambda x: x.source_name is not None)
 
     def has_vectors(self):
-        return self.vectors is not None
+        return self.has_condition(lambda x: x.vectors is not None)
 
     def has_text(self):
-        return self.text is not None
+        return self.has_condition(lambda x: x.text is not None)
+
+    def has_condition(self, cond):
+        x = self.get_via_condition(cond)
+        return x is not None
 
     def has_indices(self):
-        return self.text is not None
+        return self.has_condition(lambda x: x.indices is not None)
     # endregion
 
     # region: setters
@@ -191,127 +425,4 @@ class Bundle:
 
     def set_test(self, idx):
         self.test_idx = idx
-    # endregion
-
-
-class BundleList:
-    """Class to represent a collection of bundles
-    """
-    bundles = None
-
-    def __len__(self):
-        return len(self.bundles) if self.bundles else 0
-
-    def __init__(self, input_list=None):
-        self.bundles = [] if input_list is None else input_list
-
-    def clear_data(self, chain_name, component_name):
-        for bundle in self.bundles:
-            bundle.clear_data(chain_name, component_name)
-
-    def summarize_content(self, msg=""):
-        """Summarize all bundlelist bundles"""
-        if not self.bundles:
-            info("Empty bundle list.")
-            return
-        if msg:
-            msg += ": "
-        msg += "Summary of {}-long bundle list".format(len(self.bundles))
-        info(msg)
-        for bundle in self.bundles:
-            bundle.summarize_content()
-
-    def set_demand(self, chain_name, component_name):
-        for bundle in self.bundles:
-            bundle.set_demand(chain_name, component_name)
-
-    def add_bundle(self, bundle, chain_name=None):
-        """Add a bundle to the collection. Override name, if submitted."""
-        if type(bundle) is BundleList:
-            error("Attempted to add a bundle list to a bundle list.")
-        if chain_name is not None:
-            bundle.set_chain_name(chain_name)
-        self.bundles.append(bundle)
-
-    # region: getters
-    def get(self, index):
-        """Get the index-th bundle in the bundle list."""
-        return self.bundles[index]
-
-    def get_element(self, element, only_single=False, role=None):
-        res = [x.get_element(element, role) for x in self.bundles]
-        # non-None
-        res_idxs = [i for i in range(len(res)) if res[i] is not None]
-        res = [r for r in res if r is not None]
-        if only_single:
-            # ensure single
-            names = list(map(lambda x: x.get_source_name(), [self.bundles[i] for i in res_idxs]))
-            if len(res) > 1:
-                error(f"Requested single-bundle {element} {role} data but multiple exist in bundles {names}")
-            res = res[0]
-        return res
-
-    def get_source_name(self):
-        return [x.get_source_name() for x in self.bundles]
-
-    def get_vectors(self, single=False, role=None):
-        return self.get_element(datatypes.vectors, single, role)
-
-    def get_indices(self, single=False, role=None):
-        return self.get_element(datatypes.indices, single, role)
-
-    def get_labels(self, single=False, role=None):
-        return self.get_element(datatypes.labels, single, role)
-
-    def get_texts(self, single=False, role=None):
-        return self.get_element(datatypes.texts, single, role)
-
-    def get_names(self):
-        return [x.get_source_name() for x in self.bundles]
-
-    def get_chain_names(self):
-        return [x.get_chain_name() for x in self.bundles]
-
-    def get_bundles(self, chain_names):
-        """Get bundles that belong to the input chain names"""
-        if len(chain_names) == 1:
-            return self.get_bundle(chain_names[0])
-        res = BundleList()
-        for bundle in self.bundles:
-            if bundle.get_chain_name() in chain_names:
-                res.add_bundle(bundle)
-        return res
-
-    def get_bundle(self, name):
-        """Get bundles that belong to the input chain name"""
-        for bundle in self.bundles:
-            if bundle.get_chain_name() == name:
-                return bundle
-        return None
-
-    def get_bundle_like(self, element, role=None, single=False):
-        """Retrieve a bundle based on specified characteristics"""
-        res = []
-        for bundle in self.bundles:
-            if bundle.get_element(element, role=role) is not None:
-                res.append(bundle)
-        if single:
-            error(f"Requested a single bundles with {element} and role: {role} but {len(res)} were found!", len(res)>1)
-            res = res[0]
-        return res
-    # endregion
-
-    # region : #has'ers - enforce uniqueness
-    def has_indices(self):
-        return any([x.get_indices() is not None for x in self.bundles])
-    def has_labels(self):
-        return any([x.get_labels() is not None for x in self.bundles])
-    def has_chain_name(self):
-        return any([x.get_chain_name() is not None for x in self.bundles])
-    def has_source_name(self):
-        return any([x.get_source_name() is not None for x in self.bundles])
-    def has_vectors(self):
-        return any([x.get_vectors() is not None for x in self.bundles])
-    def has_text(self):
-        return any([x.get_text() is not None for x in self.bundles])
     # endregion

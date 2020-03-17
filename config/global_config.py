@@ -41,4 +41,12 @@ class GlobalConfig(Configuration):
         logger.addHandler(fhandler)
 
         self.logger = logger
+        # remove extraneous handlers
+        handlers_to_remove = []
+        for h in self.logger.handlers:
+            if h not in [fhandler, handler]:
+                handlers_to_remove.append(h)
+        for h in handlers_to_remove:
+            self.logger.removeHandler(h)
+
         return logger

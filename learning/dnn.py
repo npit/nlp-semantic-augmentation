@@ -364,11 +364,6 @@ class LSTM(DNN):
         #     debug("Outputs: {}".format(model.outputs))
         return model
 
-    # # component functions
-    # def process_component_inputs(self):
-    #     self.elements_per_instance = self.inputs.get_indices(single=True).indices
-    #     super().process_component_inputs()
-
     def get_cell(self, input_cell):
         return input_cell
 

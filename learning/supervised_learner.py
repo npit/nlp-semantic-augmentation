@@ -134,13 +134,13 @@ class SupervisedLearner(Learner):
         """Component processing for label-related data"""
         super().process_component_inputs()
         error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
-        self.train_labels = self.inputs.get_labels(single=True, role=roles.train)
-        self.test_labels = self.inputs.get_labels(single=True, role=roles.test)
+        self.train_labels = self.inputs.get_labels(enforce_single=True, role=roles.train)
+        self.test_labels = self.inputs.get_labels(enforce_single=True, role=roles.test)
         if len(self.train_embedding_index) != len(self.train_labels):
             error(f"Train data-label instance number mismatch: {len(self.train_embedding_index)} data and {len(self.train_labels)}")
         if len(self.test_embedding_index) != len(self.test_labels):
             error(f"Test data-label instance number mismatch: {len(self.test_embedding_index)} data and {len(self.test_labels)}")
-        self.multilabel_input = self.inputs.get_labels(single=True).multilabel
+        self.multilabel_input = self.inputs.get_labels(enforce_single=True).multilabel
 
     def load_existing_predictions(self):
         """Loader function for existing, already computed predictions. Checks for label matching."""

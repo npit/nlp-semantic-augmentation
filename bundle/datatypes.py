@@ -7,58 +7,21 @@ from defs import avail_roles, roles_compatible
 from utils import error
 
 
-class Text:
-    name = "text"
-    instances = None
-    vocabulary = None
-
-    def __init__(self, inst, vocab=None):
-        self.instances = inst
-        self.vocabulary = vocab
-
-
-class Vectors:
-    name = "vectors"
-    instances = None
-    elements_per_instance = None
-
-    def __init__(self, vecs, epi=None):
-        self.instances = vecs
-        if epi is None:
-            try:
-                epi = [np.ones(len(x)) for x in self.instances]
-            except:
-                epi = [len(self.instances)]
-        self.elements_per_instance = epi
-
-    def get_instances(self):
-        return self.instances
-
-
-class Labels:
-    name = "labels"
-    instances = None
-    labelset = None
-    is_multilabel = None
-
-    def __init__(self, labels, labelset, multilabel):
-        self.instances = labels
-        self.labelset = labelset
-        self.multilabel = multilabel
-
-
-class Indices:
-    name = "indices"
-    instances = None
+class Datatype:
     roles = None
-
-    def __init__(self, indices, roles=None):
-        self.instances = indices
+    instances = None
+    def __init__(self, instances, roles=None):
         if roles is not None:
             error(f"Undefined role(s): {roles}", any(x not in avail_roles for x in roles))
-            error(f"Mismatch role / indices lengths: {len(roles)} {len(indices)}", len(roles) != len(indices))
-            # error(f"Multiple-role incompatibility: {roles}", not roles_compatible(roles))
+            error(f"Mismatch role / instances lengths: {len(roles)} {len(instances)}", len(roles) != len(instances))
         self.roles = roles
+        self.instances = instances
+
+    def get_instance_index(self, idx):
+        llen = len(self.instances)
+        if llen <= idx:
+            error(f"Requested index {idx} from {self.name} datatype which has only (llen)")
+        return self.instances[idx]
 
     def has_role(self, role):
         """Checks for the existence of a role"""
@@ -73,3 +36,47 @@ class Indices:
             if role == defs.roles.train:
                 res.append(r)
         return res
+
+
+class Text(Datatype):
+    name = "text"
+    vocabulary = None
+
+    def __init__(self, inst, vocab=None, roles=None):
+        super().__init__(inst, roles)
+        self.vocabulary = vocab
+
+
+class Vectors(Datatype):
+    name = "vectors"
+    elements_per_instance = None
+
+    def __init__(self, vecs, epi=None, roles=None):
+        super().__init__(vecs, roles)
+        if epi is None:
+            try:
+                epi = [np.ones(len(x)) for x in self.instances]
+            except:
+                epi = [len(self.instances)]
+        self.elements_per_instance = epi
+
+
+class Labels(Datatype):
+    name = "labels"
+    labelset = None
+    is_multilabel = None
+
+    def __init__(self, labels, labelset, multilabel, roles=None):
+        super().__init__(labels, roles)
+        self.labelset = labelset
+        self.multilabel = multilabel
+
+
+class Indices(Datatype):
+    name = "indices"
+
+    def __init__(self, indices, roles=None):
+        super().__init__(indices, roles)
+    def summarize_content(self):
+        """Print a summary of the data"""
+        return f"{self.name} {len(self.instances)} instances, {self.roles} roles"

@@ -29,7 +29,7 @@ class Component:
         return "({}|{})".format(self.get_component_name(), self.get_name())
 
     def get_name(self):
-        return self.name
+        return self.component_name
 
     def get_required_finished_chains(self):
         return self.required_finished_chains
@@ -43,7 +43,7 @@ class Component:
 
     def configure_name(self):
         # set configured name to the output bundle
-        self.outputs.set_source_name(self.name)
+        self.outputs.set_source_name(self.component_name)
 
     def load_inputs(self, data):
         self.inputs = data
@@ -57,4 +57,4 @@ class Component:
 
     def run(self):
         """Component runner function"""
-        error("Attempted to execute abstract component run function for {}".format(self.name))
+        error(f"Attempted to execute abstract component run function for {self.component_name}")

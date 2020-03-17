@@ -226,7 +226,7 @@ class Dataset(Serializable):
 
     # map text string into list of stopword-filtered words and POS tags
     def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro, stopwords):
-        # debug("Processing raw text:\n[[[{}]]]".format(text))
+        """Apply processing for a single text element"""
         sents = sent_tokenize(text.lower())
         words = []
         for sent in sents:
@@ -330,8 +330,8 @@ class Dataset(Serializable):
 
     def set_outputs(self):
         """Set text data to the output bundle"""
-        self.outputs.set_text(Text((self.train, self.test), self.vocabulary))
-        self.outputs.set_labels(Labels((self.train_labels, self.test_labels), self.labelset, self.multilabel))
+        self.outputs.set_text(Text((self.train, self.test), self.vocabulary, roles=self.roles))
+        self.outputs.set_labels(Labels((self.train_labels, self.test_labels), self.labelset, self.multilabel, roles=self.roles))
         idxs = Indices(indices=(np.arange(len(self.train)), np.arange(len(self.test))), roles=self.roles)
         self.outputs.set_indices(idxs)
 

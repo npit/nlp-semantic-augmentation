@@ -133,10 +133,16 @@ class learner_conf(Configuration):
         if config is None:
             return
         self.name = config["name"]
-        self.hidden_dim = config["hidden_dim"]
-        self.num_layers = config["layers"]
-        self.sequence_length = self.get_value("sequence_length", default=1, base=config)
-        self.num_clusters = self.get_value("num_clusters", default=None, base=config)
+        if "hidden_dim" in config:
+            self.hidden_dim = config["hidden_dim"]
+        if "layers" in config:
+            self.num_layers = config["layers"]
+        try:
+            self.sequence_length = self.get_value("sequence_length", default=1, base=config)
+        except KeyError:
+            self.sequence_length = 1
+        if "num_clusters" in config:
+            self.num_clusters = self.get_value("num_clusters", default=None, base=config)
         self.train_embedding = self.get_value("train_embedding", default=False, base=config)
         # training parameters
         self.train = learner_conf.train()

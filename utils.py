@@ -174,8 +174,11 @@ def single_data_summary(data, data_index, recursion_depth=0):
         msg += "data of type {}".format(dtype)
     debug(msg)
 
+def data_summary(data, msg):
+    info("msg")
+    data.summarize_content()
 
-def data_summary(data, msg="", data_index="", recursion_depth=1):
+def legacy_data_summary(data, msg="", data_index="", recursion_depth=1):
     """ Print a summary of data in the input"""
     coll_len_lim = 2
     recursion_depth_lim = 1
@@ -194,7 +197,7 @@ def data_summary(data, msg="", data_index="", recursion_depth=1):
             debug("{} : ({}) {} elements:".format(msg, colltype.__name__, len(data)))
             for count, (name, datum) in enumerate(zip(names, data)):
                 if is_collection(datum):
-                    data_summary(datum, data_index=name, recursion_depth=recursion_depth)
+                    legacy_data_summary(datum, data_index=name, recursion_depth=recursion_depth)
                 else:
                     single_data_summary(datum, data_index=name, recursion_depth=recursion_depth)
                 if count == coll_len_lim:
@@ -319,11 +322,6 @@ def info(msg):
 
 
 def debug(msg):
-    logger = logging.getLogger()
-    logger.debug(msg)
-
-
-def debug2(msg):
     logger = logging.getLogger()
     logger.debug(msg)
 

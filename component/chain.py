@@ -1,10 +1,11 @@
 import defs
 from component import instantiator
 from component.component import Component
-from utils import as_list, debug, error, info
+from utils import debug, error, info
 
 
 class Chain(Component):
+    """Class to represent an ordered sequence of components"""
     components = None
     input_requirements = None
     name = None
@@ -16,10 +17,9 @@ class Chain(Component):
         return self.name
 
     def __init__(self, name, fields, configs):
-        """Constructor"""
-
+        """Constructor for the chain"""
         self.components = []
-        # parse potential inputs
+        # parse potential chain inputs
         if defs.alias.link in fields:
             idx = fields.index(defs.alias.link)
             link_component = configs[idx]
@@ -36,7 +36,7 @@ class Chain(Component):
         # info("Created chain with {} components.".format(self.num_components))
 
     def backtrack_output_demand(self, chain_name, component_name, consumes):
-        """Marks backwards the output requirement of the chain's output"""
+        """Marks backwards the requirements of the chain's output"""
         debug("Backtracking needs of chain {} (first:{}) to chain {}".format(chain_name, component_name, self.name))
         cons = [x for x in consumes]
         for comp in reversed(self.components):
@@ -49,20 +49,26 @@ class Chain(Component):
                 break
 
     def run(self):
+        """Runs the chain"""
         info("-------------------")
         info("{} chain [{}]".format("Running", self.name))
         info("-------------------")
-        data_bundle = None
-        if self.get_required_finished_chains():
-            error("Chain [{}] requires input(s), but none are available.".format(self.get_name()), self.inputs is None)
-            data_bundle = self.inputs.get_bundles(chain_names=self.get_required_finished_chains())
+        data_bundle = self.inputs 
 
+        # if self.get_required_finished_chains():
+        #     # the chain requires the output of other chains
+        #     error("Chain [{}] requires input(s), but none are available.".format(self.get_name()), self.inputs is None)
+        #     data_bundle = self.inputs.get_request_bundlelist(self.get_name())
+        #     print(type(data_bundle))
+
+        # iterate the chain components
         for c, component in enumerate(self.components):
             info("||| Running component {}/{} : type: {} - name: {}".format(c + 1, self.num_components, component.get_component_name(), component.get_name()))
-
+            if data_bundle is not None:
+                data_bundle.set_active_linkage(self.get_name())
             # if data_bundle is not None:
             #     data_bundle.summarize_content("Passing bundle(s) to component [{}]".format(component.get_name()))
-            component.load_inputs(data_bundle)
+            # component.load_inputs(data_bundle)
             component.run()
             # check if input needs deletion now
             if data_bundle is not None:
