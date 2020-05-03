@@ -85,7 +85,7 @@ class ValidationSetting:
 
         # use validation labels for testing
         if self.use_for_testing:
-            test_labels, val_labels = val_labels, None
+            test_labels, val_labels = val_labels, []
         else:
             test_labels = self.test_labels
 

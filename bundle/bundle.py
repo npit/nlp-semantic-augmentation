@@ -29,6 +29,7 @@ class Bundle:
     def set_active_linkage(self, linkage_name):
         """Set the current linkage"""
         self.active_linkage = linkage_name
+
     def get_fallback_linkage(self):
         return self.active_linkage
 
@@ -330,8 +331,8 @@ class Bundle:
     def do_enforce_single(self, data):
         if type(data) is list:
             if len(data) != 1:
-                error(f"Enforced single but got {len(data)} data.")
                 data.summarize_content()
+                error(f"Enforced single but got {len(data)} data.")
             return data[0]
 
     @staticmethod
@@ -395,7 +396,7 @@ class Bundle:
 
     def has_condition(self, cond):
         x = self.get_via_condition(cond)
-        return x is not None
+        return x is not None and len(x) > 0
 
     def has_indices(self):
         return self.has_condition(lambda x: x.indices is not None)

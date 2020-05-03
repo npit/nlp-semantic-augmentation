@@ -1,9 +1,17 @@
+# ML & DNNs
+torch
 keras
 tensorflow
-nltk
-pandas
-numpy
 sklearn
 gensim
-tqdm
+pytorch_lightning
+# NLP & semantic
+nltk
 pyspotlight
+# Utils
+pandas
+numpy
+tqdm
+# ngg
+networkx
+pygraphviz

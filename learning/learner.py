@@ -60,7 +60,6 @@ class Learner(Component):
         self.allow_model_loading = self.config.misc.allow_model_loading
 
         self.sequence_length = self.config.sequence_length
-        self.train_embedding = self.config.train_embedding
 
         self.results_folder = self.config.folders.results
         self.models_folder = join(self.results_folder, "models")
@@ -111,9 +110,6 @@ class Learner(Component):
         self.read_config_variables()
         np.random.seed(self.seed)
         self.count_samples()
-
-        self.input_dim = self.embeddings.shape[-1]
-        error("Input none dimension.", self.input_dim is None)
 
         info("Learner data: embeddings: {} train idxs: {} test idxs: {}".format(
             self.embeddings.shape, len(self.train_index), len(self.test_index)))
@@ -336,9 +332,9 @@ class Learner(Component):
     def acquire_embedding_information(self):
         """Get embedding and embedding information"""
         # get data
-        error("Learner needs at least two-input bundle input list.", len(self.inputs) <= 1)
-        error(f"{self.component_name} needs vector information.", not self.inputs.has_vectors())
-        error(f"{self.component_name} needs vector information.", not self.inputs.has_indices())
+        error("Vanilla learner needs at least two-input bundle input list.", len(self.inputs) <= 1)
+        error(f"{self.name} {self.component_name} needs vector information.", not self.inputs.has_vectors())
+        error(f"{self.name} {self.component_name} needs vector information.", not self.inputs.has_indices())
 
         # get vectors and their indices
         vectors_bundle = self.inputs.get_vectors(full_search=True, enforce_single=True)

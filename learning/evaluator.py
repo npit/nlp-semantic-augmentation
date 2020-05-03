@@ -431,7 +431,7 @@ class Evaluator:
             preds_amax = np.argmax(preds_proba, axis=1)
             # get prec, rec, f1
             for measure in "precision recall f1-score".split():
-                cw, mi, ma, we = self.get_pre_rec_f1(preds_amax, measure, self.num_labels)
+                (cw, mi, ma, we) = self.get_pre_rec_f1(preds_amax, measure, self.num_labels)
                 self.performance[run_type][measure]["classwise"]["folds"].append(cw)
                 self.performance[run_type][measure]["macro"]["folds"].append(ma)
                 self.performance[run_type][measure]["micro"]["folds"].append(mi)
@@ -536,14 +536,14 @@ class Evaluator:
 
     def consolidate_folded_test_results(self):
         """Merge predictions for validation folds"""
-        num_total_train = len(self.train_labels)
         for run_type in self.predictions:
+            full_preds = np.zeros((len(self.train_labels), self.num_labels), np.float32)
             for p, preds in enumerate(self.predictions[run_type]):
-                full_preds = np.zeros((num_total_train, self.num_labels), np.float32)
-                full_preds[:] = np.nan
                 idxs = self.predictions_instance_indexes[p]
                 full_preds[idxs] = preds
-                self.predictions[run_type][p] = full_preds
+            if len(full_preds) != len(self.train_labels):
+                error(f"Mismatch in consolidated prediction shape from validation folds: {len(full_preds)} and reference labels: {len(self.train_labels)}!")
+            self.predictions[run_type] = [full_preds]
 
     # analyze overall error of the run
     def analyze_overall_errors(self):
@@ -567,6 +567,8 @@ class Evaluator:
             if self.test_via_validation:
                 # instances vary across folds -- consolidate
                 self.consolidate_folded_test_results()
+                # reference labels are the entire training labels
+                self.test_label_index = np.arange(len(self.train_labels))
 
             for run_type in self.predictions:
                 # instance-wise

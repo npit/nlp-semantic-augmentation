@@ -12,6 +12,16 @@ def make_linear(input_dim, output_dim):
     return nn.Linear(input_dim, output_dim)
 
 
+def make_embedding_layer(embeddings, trainable):
+    """Build an embedding layer out of the input embeddings"""
+    # build the model
+    embedding_layer = torch.nn.Embedding.from_pretrained(torch.FloatTensor(embeddings))
+    if trainable:
+        embedding_layer.requires_grad = False
+    else:
+        embedding_layer.requires_grad = True
+    return embedding_layer
+
 def make_linear_chain(input_dim, dim_list):
     """Make a chain of connected linear layers
     Arguments:
@@ -21,6 +31,8 @@ def make_linear_chain(input_dim, dim_list):
 
     """
     layers = []
+    # if input_dim != dim_list[0]:
+    #     layers.append(make_linear(input_dim, dim_list[0]))
     current = input_dim
     # make the chain
     for dim in dim_list:
@@ -30,7 +42,7 @@ def make_linear_chain(input_dim, dim_list):
     return nn.ModuleList(layers)
 
 
-def run_linear_chain(layers_chain, input_data, activation_func=None):
+def run_linear_chain(layers_chain, input_data, activation_func=None, dropout_keep_prob=None):
     """Run a chain of connected linear layers
     Arguments:
         input_data {torch.Tensor} -- Input data
@@ -47,6 +59,8 @@ def run_linear_chain(layers_chain, input_data, activation_func=None):
     for layer in layers_chain:
         current_data = layer(current_data)
         current_data = activation_func(current_data)
+        if dropout_keep_prob is not None:
+            current_data = F.dropout(current_data, p=dropout_keep_prob)
     return current_data
 
 

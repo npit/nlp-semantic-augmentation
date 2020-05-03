@@ -126,6 +126,7 @@ class learner_conf(Configuration):
         batch_size = None
         sampling_method = None
         sampling_ratios = None
+        optimizer = None
 
     def __init__(self, config):
         """Constructor for the learner configuration"""
@@ -143,11 +144,12 @@ class learner_conf(Configuration):
             self.sequence_length = 1
         if "num_clusters" in config:
             self.num_clusters = self.get_value("num_clusters", default=None, base=config)
-        self.train_embedding = self.get_value("train_embedding", default=False, base=config)
         # training parameters
         self.train = learner_conf.train()
         config = config["train"]
         self.train.epochs = config["epochs"]
+        self.train.train_embedding = self.get_value("train_embedding", default=False, base=config)
+        self.train.optimizer = self.get_value("optimizer", default="sgd", base=config)
         self.train.folds = self.get_value("folds", default=None, base=config)
         self.train.validation_portion = self.get_value("validation_portion", default=None, base=config)
         self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=config)

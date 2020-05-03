@@ -178,7 +178,8 @@ class DNN(Classifier):
 
     # evaluate a dnn
     def test_model(self, model):
-        test_data = self.get_data_from_index(self.test_index, self.embeddings)
+        # test_data = self.get_data_from_index(self.test_index, self.embeddings)
+        test_data = self.test_index
         # test_data = self.test_index
         info("Network test data {}".format(test_data.shape))
         return model.predict(test_data,

@@ -5,7 +5,7 @@ from gensim.models.doc2vec import TaggedDocument
 import defs
 from representation.embedding import Embedding
 from representation.representation import Representation
-from utils import info, tictoc, write_pickled
+from utils import info, tictoc, write_pickled, error
 
 
 class DocumentEmbedding(Embedding):
@@ -52,28 +52,22 @@ class DocumentEmbedding(Embedding):
         info("Mapping to {} embeddings.".format(self.name))
         train_words = [wp[0] for doc in self.text_train for wp in doc]
         d2v = self.fit_doc2vec(train_words, self.labels_train)
-
-        self.dataset_vectors = [[], []]
+        self.embeddings = np.ndarray((0, self.dimension), np.float32)
 
         # loop over input text bundles (e.g. train & test)
         for dset_idx in range(len(self.text)):
             dset_word_list = self.text[dset_idx]
             with tictoc("Embedding mapping for text bundle {}/{}".format(dset_idx + 1, len(self.text))):
                 info("Mapping text bundle {}/{}: {} texts".format(dset_idx + 1, len(self.text), len(self.text[dset_idx])))
-                # num_documents = len(text_bundles[dset_idx])
+                num_docs = len(dset_word_list)
+                starting_instance_idx = dset_idx * len(self.embeddings)
                 for doc_word_pos in dset_word_list:
                     doc_words = [wp[0] for wp in doc_word_pos]
                     # debug("Inferring word list:{}".format(doc_words))
-                    self.dataset_vectors[dset_idx].append(d2v.infer_vector(doc_words))
-            self.dataset_vectors[dset_idx] = np.array(self.dataset_vectors[dset_idx])
+                    vec = np.expand_dims(d2v.infer_vector(doc_words), axis=0)
+                    self.embeddings = np.append(self.embeddings, vec, axis=0)
 
         self.set_constant_elements_per_instance()
-
-        # assign
-        num_train, num_test = len(self.dataset_vectors[0]), len(self.dataset_vectors[1])
-        indexes = (np.arange(num_train), np.arange(num_train, num_train + num_test))
-        self.embeddings = np.vstack(self.dataset_vectors)
-        self.dataset_vectors = indexes
         # write
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
@@ -88,8 +82,15 @@ class DocumentEmbedding(Embedding):
         Representation.process_component_inputs(self)
         if self.loaded_aggregated or self.loaded_preprocessed:
             return
-        train_idx = self.inputs.get_indices().get_train_role_indexes()
-        self.labels_train = np.concatenate([self.inputs.get_labels().instances[i] for i in train_idx])
-        self.text_train = np.concatenate([self.inputs.get_text().instances[i] for i in train_idx])
+        error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
+
+        # resources for training the d2v
+        self.labels_train = self.inputs.get_labels(role=defs.roles.train, enforce_single=True)
+        self.text_train = self.inputs.get_text(role=defs.roles.train, enforce_single=True)
+
         self.labels = self.inputs.get_labels().instances
         self.text = self.inputs.get_text().instances
+
+        train_idx = self.inputs.get_indices(role=defs.roles.train, enforce_single=True)
+        test_idx = self.inputs.get_indices(role=defs.roles.test, enforce_single=True)
+        self.dataset_vectors = [train_idx, test_idx]
