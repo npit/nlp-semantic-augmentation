@@ -5,6 +5,7 @@ tensorflow
 sklearn
 gensim
 pytorch_lightning
+transformers
 # NLP & semantic
 nltk
 pyspotlight

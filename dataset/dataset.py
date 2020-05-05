@@ -33,6 +33,7 @@ class Dataset(Serializable):
     data_names = ["train-data", "test-data", "traintest-roles"]
     label_data_names = ["train-labels", "label-names", "test-labels"]
     train_labels, test_labels = None, None
+    labelset = None
     multilabel = False
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
     roles = None

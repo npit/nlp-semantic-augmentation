@@ -56,8 +56,8 @@ class BagRepresentation(Representation):
         for w in weight_vals:
             for f in filter_vals:
                 conf = copy.deepcopy(self.config)
-                conf.representation.name = w
-                conf.representation.limit = f
+                conf.name = w
+                conf.limit = f
                 candidate_name = self.generate_name(conf, self.source_name)
                 names.append(candidate_name)
                 debug("Bag config candidate: {}".format(candidate_name))
@@ -144,8 +144,6 @@ class BagRepresentation(Representation):
             debug("Skippping {} mapping due to preloading".format(self.base_name))
             return
 
-        self.dataset_vectors = []
-
         train, test = self.text
         # train
         self.bag_train = self.bag_class()
@@ -153,7 +151,7 @@ class BagRepresentation(Representation):
         if self.do_limit:
             self.bag_train.set_term_filtering(self.limit_type, self.limit_number)
         self.bag_train.map_collection(train)
-        self.dataset_vectors.append(self.bag_train.get_weights())
+        
         if self.do_limit:
             self.term_list = self.bag_train.get_term_list()
             self.term_index = {k: v for (k, v) in self.term_index.items() if k in self.term_list}
@@ -166,7 +164,8 @@ class BagRepresentation(Representation):
         self.bag_test = self.bag_class()
         self.bag_test.set_term_list(self.term_list)
         self.bag_test.map_collection(test)
-        self.dataset_vectors = (list(range(len(train))), list(range(len(test))))
+
+        self.dataset_vectors = (np.arange(len(train)), np.arange(len(test)))
 
         # set misc required variables
         self.set_constant_elements_per_instance()
