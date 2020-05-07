@@ -31,7 +31,7 @@ class Dataset(Serializable):
     preprocessed = False
     train, test = None, None
     data_names = ["train-data", "test-data", "traintest-roles"]
-    label_data_names = ["train-labels", "label-names", "test-labels"]
+    label_data_names = ["train-labels", "label-names", "test-labels", "labelset"]
     train_labels, test_labels = None, None
     labelset = None
     multilabel = False
@@ -177,7 +177,7 @@ class Dataset(Serializable):
 
     def handle_raw_serialized(self, deserialized_data):
         self.train, self.test, self.roles = [deserialized_data[n] for n in self.data_names]
-        self.train_labels, self.label_names, self.test_labels = [deserialized_data[n] for n in self.label_data_names]
+        self.train_labels, self.label_names, self.test_labels, self.labelset = [deserialized_data[n] for n in self.label_data_names]
         self.num_labels = len(set(self.label_names))
         self.multilabel = self.contains_multilabel(self.train_labels)
         self.loaded_raw_serialized = True
@@ -298,9 +298,12 @@ class Dataset(Serializable):
 
     def get_all_raw(self):
         data = {lbl: data for (lbl, data) in zip(self.data_names, (self.train, self.test, self.roles))}
-        for key, value in zip(self.label_data_names, [self.train_labels, self.label_names, self.test_labels]):
+        for key, value in zip(self.label_data_names, self.get_labelled_data()):
             data[key] = value
         return data
+
+    def get_labelled_data(self):
+        return [self.train_labels, self.label_names, self.test_labels, self.labelset]
 
     def get_all_preprocessed(self):
         res = self.get_all_raw()

@@ -18,9 +18,16 @@ class HuggingfaceModel(BaseModel):
 
     def forward(self, inputs):
         """Huggingface model forward pass"""
+        # import ipdb; ipdb.set_trace()
+        if len(inputs) < self.config.train.batch_size:
+            x = torch.zeros(self.config.train.batch_size, dtype=torch.long, requires_grad=False)
+            x[:len(inputs)] = inputs
+            inputs = x
+            print("Padded:", inputs)
+        print("input idx shp:", inputs.shape)
+        print("embeddings shp:", self.embeddings.shape)
         input_tokens = torch.LongTensor(self.embeddings[inputs, :])
-        # print("input idx:", inputs)
-        # print("input tokens:", input_tokens)
+        print("input tokens shp:", input_tokens.shape)
         logits = self.model(input_tokens)[0]
         # print(logits)
         # print("Check https://mc.ai/part-2-bert-fine-tuning-tutorial-with-pytorch-for-text-classification-on-the-corpus-of-linguistic/ for potential training required stuff")

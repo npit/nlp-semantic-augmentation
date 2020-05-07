@@ -28,7 +28,7 @@ class BaseModel(ptl.LightningModule):
         def __init__(self, data, labels=None):
             self.data = data
             self.labels = labels
-            
+
         def __len__(self):
             return len(self.data)
 
@@ -91,32 +91,41 @@ class BaseModel(ptl.LightningModule):
     def train_dataloader(self):
         """Preparatory actions for training data"""
         self.train_dataset = self.make_dataset_from_index(self.train_index, self.train_labels)
-        return DataLoader(self.train_dataset, self.config.train.batch_size)
+        return DataLoader(self.train_dataset, self.config.train.batch_size, num_workers=1)
     def val_dataloader(self):
         """Preparatory transformation actions for validation data"""
         if self.should_do_validation():
             self.val_dataset = self.make_dataset_from_index(self.val_index, self.val_labels)
-            return DataLoader(self.val_dataset, self.config.train.batch_size)
+            return DataLoader(self.val_dataset, self.config.train.batch_size, num_workers=1)
 
     def test_dataloader(self):
         """Preparatory transformation actions for test data"""
         # self.test_dataset = self.make_dataset_from_index(self.test_index, self.test_labels)
         self.test_dataset = self.make_dataset_from_index(self.test_index, None)
-        return DataLoader(self.test_dataset, self.config.train.batch_size)
+        return DataLoader(self.test_dataset, self.config.train.batch_size, num_workers=1)
 
     # training
     def configure_optimizers(self):
         """Setup optimizers for training"""
         # optimizers
         if self.config.train.optimizer == "adam":
-            return torch.optim.Adam(self.parameters(), lr=1e-3) 
+            return torch.optim.Adam(self.parameters(), lr=1e-3)
         elif self.config.train.optimizer == "sgd":
-            return torch.optim.SGD(self.parameters(), lr=1e-3) 
+            return torch.optim.SGD(self.parameters(), lr=1e-3)
+
+    def account_for_padding(self, logits, y):
+        # account for mismatches produced by padding in the input
+        # => truncate the logits to the ground truth size
+        if len(logits) != len(y):
+            logits = logits[:len(y)]
+        return logits
 
     def training_step(self, batch, batch_idx):
         """Define a single training step"""
         x, y = batch
         logits = self.forward(x)
+        logits = self.account_for_padding(logits, y)
+
         loss = F.nll_loss(logits, y)
 
         # add logging
@@ -128,6 +137,7 @@ class BaseModel(ptl.LightningModule):
         """Define a single validation step"""
         x, y = batch
         logits = self.forward(x)
+        logits = self.account_for_padding(logits, y)
         loss = F.nll_loss(logits, y)
         return {'val_loss': loss}
 
@@ -144,6 +154,7 @@ class BaseModel(ptl.LightningModule):
         """Define a single testing step"""
         x, y = batch
         logits = self.forward(x)
+        logits = self.account_for_padding(logits, y)
         loss = F.nll_loss(logits, y)
         return {'val_loss': loss}
 
