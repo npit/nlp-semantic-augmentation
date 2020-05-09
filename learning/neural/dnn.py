@@ -18,6 +18,7 @@ class DNN:
     def assign_train_data(self, model_instance):
         """Transfer input indexes and labels to the nn model"""
         model_instance.embeddings = self.embeddings
+
         model_instance.train_index = torch.LongTensor(self.train_index)
         model_instance.val_index = torch.LongTensor(self.val_index)
 
@@ -29,12 +30,11 @@ class DNN:
         name = self.name + "_" + self.neural_model.name
         return self.validation.modify_suffix(
             join(self.results_folder, "models", "{}".format(name))) + ".model"
-    
 
     def test_model(self, model_instance):
         """Testing function"""
-        self.assign_test_data(model_instance)
         model_instance.eval()
+        self.assign_test_data(model_instance)
         with torch.no_grad():
             predictions = []
             # defer to model's forward function
@@ -45,7 +45,8 @@ class DNN:
 
     def build_model(self):
         """Build the model"""
-        self.neural_model = self.neural_model_class(self.config, self.embeddings, output_dim=self.num_labels)
+        self.neural_model = self.neural_model_class(self.config, self.embeddings, output_dim=self.num_labels, working_folder=self.config.folders.results, model_name=self.get_model_instance_name())
+        print(self.neural_model)
 
     def save_model(self, model):
         path = self.get_current_model_path()

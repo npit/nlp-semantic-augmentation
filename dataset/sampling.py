@@ -148,7 +148,8 @@ class Sampler:
         """Apply data and class sub-sampling"""
         if any(l is not None for l in labels) and self.clim is not None:
             data, labels, (labelset, label_names) = self.apply_class_limit(data, labels, labelset, label_names, multilabel)
-        data, labels = self.apply_data_limit(data, labels)
+        if self.dlim is not None:
+            data, labels = self.apply_data_limit(data, labels)
 
         return data, labels, labelset, label_names
 

@@ -54,11 +54,11 @@ def run_linear_chain(layers_chain, input_data, activation_func=None, dropout_kee
     # ReLU activations by default
     if activation_func is None:
         activation_func = F.relu
+
     current_data = input_data
-    # make the chain
+
     for layer in layers_chain:
-        current_data = layer(current_data)
-        current_data = activation_func(current_data)
+        current_data = activation_func(layer(current_data))
         if dropout_keep_prob is not None:
             current_data = F.dropout(current_data, p=dropout_keep_prob)
     return current_data

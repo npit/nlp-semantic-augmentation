@@ -1,5 +1,6 @@
 from learning.classifier import Dummy, LogisticRegression, NaiveBayes
 from learning.clusterer import KMeansClusterer
+from learning.dnn import MLP
 from utils import error, info
 
 from learning.neural.models import instantiator as neural_instantiator
@@ -11,7 +12,7 @@ class Instantiator:
     def create(config):
         """Function to instantiate a learning"""
         name = config.name
-        candidates = [KMeansClusterer, NaiveBayes, Dummy, LogisticRegression]
+        candidates = [KMeansClusterer, NaiveBayes, Dummy, LogisticRegression, MLP]
         # instantiate non-neural candidates
         for candidate in candidates:
             if name == candidate.name:

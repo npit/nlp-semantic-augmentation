@@ -103,7 +103,10 @@ class WordEmbedding(Embedding):
 
     # transform input texts to embeddings
     def map_text(self):
+        if self.loaded_aggregated:
+            return
         if self.loaded_preprocessed or self.loaded_aggregated:
+            self.aggregate_instance_vectors()
             return
         info("Mapping to {} word embeddings.".format(self.name))
 

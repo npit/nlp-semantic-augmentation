@@ -12,6 +12,7 @@ from keras.layers import LSTM as keras_lstm
 from keras.layers import Activation, Bidirectional, Dense, Dropout
 from keras.layers import Embedding as keras_embedding
 from keras.layers import Flatten
+import keras
 from keras.models import Sequential, model_from_json
 from sklearn.exceptions import UndefinedMetricWarning
 
@@ -178,7 +179,7 @@ class DNN(Classifier):
 
     # evaluate a dnn
     def test_model(self, model):
-        # test_data = self.get_data_from_index(self.test_index, self.embeddings)
+        input_shape = self.embeddings.shape
         test_data = self.test_index
         # test_data = self.test_index
         info("Network test data {}".format(test_data.shape))
@@ -191,7 +192,7 @@ class DNN(Classifier):
         if is_first:
             model.add(
                 Dense(self.num_labels,
-                      input_shape=self.input_shape,
+                      input_shape=input_shape,
                       name="dense_classifier"))
         else:
             model.add(Dense(self.num_labels, name="dense_classifier"))
@@ -231,7 +232,7 @@ class DNN(Classifier):
 
 class MLP(DNN):
     """Multi-label NN class"""
-    name = "mlp"
+    name = "tf_mlp"
 
     def __init__(self, config):
         self.config = config
@@ -242,16 +243,16 @@ class MLP(DNN):
     def make(self):
         info("Building dnn: {}".format(self.name))
         DNN.make(self)
-        self.input_shape = (self.input_dim, )
 
     # build MLP model
     def get_model(self, embeddings):
+        input_shape = embeddings.shape
         model = Sequential()
         model == self.add_embedding_layer(model, embeddings)
 
         for i in range(self.layers):
             if i == 0:
-                model.add(Dense(self.hidden, input_shape=self.input_shape))
+                model.add(Dense(self.hidden, input_shape=input_shape))
                 model.add(Activation('relu'))
                 model.add(Dropout(0.3))
             else:
@@ -261,8 +262,10 @@ class MLP(DNN):
 
         model = DNN.add_softmax(self, model)
         model.compile(loss='categorical_crossentropy',
-                      optimizer='adam',
+                      optimizer=keras.optimizers.SGD(0.01),
+                      # self.config.train.optimizer,
                       metrics=['accuracy'])
+        model.summary()
         return model
 
 
@@ -356,13 +359,14 @@ class LSTM(DNN):
         model = DNN.add_softmax(self, model)
 
         model.compile(loss='categorical_crossentropy',
-                      optimizer='adam',
+                      optimizer=self.config.train.optimizer,
                       metrics=['accuracy'])
 
         # if self.config.is_debug():
         #     debug("Inputs: {}".format(model.inputs))
         #     model.summary()
         #     debug("Outputs: {}".format(model.outputs))
+        model.summary()
         return model
 
     def get_cell(self, input_cell):

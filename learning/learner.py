@@ -116,6 +116,15 @@ class Learner(Component):
 
         info("Created learning: {}".format(self))
 
+    def get_model_instance_name(self):
+        """Get a model instance identifier from all model instances in the experiment"""
+        model_name = self.name
+        if self.do_folds:
+            model_name += "_fold_" + str(self.fold_index)
+        elif self.do_validate_portion:
+            model_name += "_valportion_" + str(self.fold_index)
+        return model_name
+
     def get_existing_predictions(self):
         path = self.validation.modify_suffix(
             join(self.results_folder, "{}".format(

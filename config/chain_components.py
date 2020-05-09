@@ -127,6 +127,7 @@ class learner_conf(Configuration):
         sampling_method = None
         sampling_ratios = None
         optimizer = None
+        lr_scheduler = None
 
     def __init__(self, config):
         """Constructor for the learner configuration"""
@@ -150,6 +151,7 @@ class learner_conf(Configuration):
         self.train.epochs = config["epochs"]
         self.train.train_embedding = self.get_value("train_embedding", default=False, base=config)
         self.train.optimizer = self.get_value("optimizer", default="sgd", base=config)
+        self.train.lr_scheduler = self.get_value("lr_scheduler", base=config)
         self.train.folds = self.get_value("folds", default=None, base=config)
         self.train.validation_portion = self.get_value("validation_portion", default=None, base=config)
         self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=config)

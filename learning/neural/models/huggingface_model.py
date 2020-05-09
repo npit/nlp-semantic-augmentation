@@ -18,7 +18,6 @@ class HuggingfaceModel(BaseModel):
 
     def forward(self, inputs):
         """Huggingface model forward pass"""
-        # import ipdb; ipdb.set_trace()
         if len(inputs) < self.config.train.batch_size:
             x = torch.zeros(self.config.train.batch_size, dtype=torch.long, requires_grad=False)
             x[:len(inputs)] = inputs

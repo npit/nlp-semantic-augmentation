@@ -1,4 +1,5 @@
 import pickle
+import json
 import random
 from os.path import join
 
@@ -52,6 +53,7 @@ class Evaluator:
     train_labels = None
     test_labels = None
     reference_labels = None
+    label_distributions = {}
 
     def get_labelwise_measures(self):
         """Get measures definable in a multiclass setting"""
@@ -288,7 +290,7 @@ class Evaluator:
             aggregations = ["micro avg"] + aggregations
         else:
             aggregations = ["accuracy"] + aggregations
-            debug("Micro-averaging mapped to accuracy in the confusion matrix.")
+            # debug("Micro-averaging mapped to accuracy in the confusion matrix.")
             self.rename_micro_to_accuracy = True
 
         for aggr in aggregations:
@@ -382,6 +384,9 @@ class Evaluator:
             df.to_csv(join(write_folder, "results.txt"))
             with open(join(write_folder, "results.pickle"), "wb") as f:
                 pickle.dump({"results": df, "error_analysis": self.error_analysis, "confusion_matrix": self.confusion_matrices}, f)
+            # write label distributions
+            with open(join(write_folder, "label_distributions.json"), "w") as f:
+                json.dump(self.label_distributions, f)
 
     # print performance of the latest run
     def print_run_performance(self, current_run_descr, fold_index=0):
@@ -463,16 +468,33 @@ class Evaluator:
         else:
             self.evaluate_unsupervised(run_type, preds_proba)
 
-    def show_label_distribution(self, labels, message="Test label distribution:"):
+    def show_label_distribution(self, labels, message="Test label distribution:", max_num_show=5):
         info("==============================")
-        info(message + " (label, count)")
+        info(message + f" (label, count) -- majorities + top {max_num_show}")
         info("------------------------------")
         distr = count_label_occurences(labels)
         local_max_lbl = max(distr, key=lambda x: x[1])[0]
+
+        majority_labels = []
+        print_lines = []
+        self.label_distributions[message] = []
         for lbl, freq in distr:
             maj = " - [input majority]" if lbl == self.majority_label else ""
             localmaj = " - [local majority]" if lbl == local_max_lbl else ""
-            info("Label {} : {:.1f}{}{}".format(lbl, freq, localmaj, maj))
+            msg = "Label {} : {:.1f}{}{}".format(lbl, freq, localmaj, maj)
+            self.label_distributions[message].append(msg)
+
+            if maj or localmaj:
+                majority_labels.append(msg)
+                continue
+            if (len(majority_labels) + len(print_lines)) <= max_num_show:
+                   print_lines.append(msg)
+        # print
+        for msg in (majority_labels + print_lines[:max_num_show]):
+            info(msg)
+
+
+
 
     # evaluate predictions and add baselines
     def evaluate_learning_run(self, predictions, instance_indexes=None):

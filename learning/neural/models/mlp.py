@@ -10,9 +10,9 @@ class MLPModel(BaseModel):
     name = "mlp"
     wrapper_name = "supervised_dnn"
 
-    def __init__(self, config, embeddings, output_dim):
-        super(MLPModel, self).__init__(config, self.wrapper_name)
-        
+    def __init__(self, config, embeddings, output_dim, working_folder, model_name):
+        super(MLPModel, self).__init__(config, self.wrapper_name, working_folder, model_name)
+
         self.config = config
         self.embedding_layer = neural_utils.make_embedding_layer(embeddings, config.train.train_embedding)
 
@@ -28,8 +28,10 @@ class MLPModel(BaseModel):
         if self.embedding_layer is not None:
             input_data = self.embedding_layer(input_data)
         # dense chain
-        output = neural_utils.run_linear_chain(self.linear_layers, input_data)
+        output = neural_utils.run_linear_chain(self.linear_layers, input_data, dropout_keep_prob=0.3)
+
         # for layer in self.linear_layers:
         #     data = F.dropout(F.relu(layer(data)), p=0.3)
         # output
+        # return F.softmax(self.linear_out(output))
         return self.linear_out(output)

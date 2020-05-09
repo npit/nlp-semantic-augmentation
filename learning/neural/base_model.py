@@ -1,14 +1,14 @@
 import torch
 from torch.nn import functional as F
 import pytorch_lightning as ptl
-from utils import error
+from utils import error, info
 
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
 
 class BaseModel(ptl.LightningModule):
     """Base class for pytorch models, organized as a pytorch-lightning module
-    
+
     This class and its derivatives must implement
     a) all functionality required by pytorch nn modules  (forward, etc.)
     b) all functionality required by pytorch-lightning modules (train_dataloader, configure_optimizers, etc.)
@@ -16,11 +16,13 @@ class BaseModel(ptl.LightningModule):
     config = None
     name = "BASE_MODEL"
 
-    def __init__(self, config, wrapper_name):
+    def __init__(self, config, wrapper_name, working_folder, model_name):
         """Model constructor"""
         self.config = config
         self.name = self.config.name
         self.wrapper_name = wrapper_name
+        self.working_folder = working_folder
+        self.model_name = model_name
         super(BaseModel, self).__init__()
 
     class Dataset:
@@ -47,17 +49,18 @@ class BaseModel(ptl.LightningModule):
     def train_model(self):
         """Training and validation function"""
         # also check https://pytorch-lightning.readthedocs.io/en/latest/fast_training.html
-        self.configure_optimizers()
+        logger = ptl.loggers.TensorBoardLogger(self.working_folder, name=self.model_name)
+
         # trainer = Trainer(val_check_interval=100)
-        trainer = Trainer(min_epochs=1, max_epochs=self.config.train.epochs)
+        trainer = Trainer(logger=logger, min_epochs=1, max_epochs=self.config.train.epochs)
         trainer.fit(self)
 
     def test_model(self):
         """Testing function
-        
+
         Since we are interested in the model predictions and make the evaluation outside ptl, this should never be required to run.
         """
-        error("Attempted to invoke test_model form within a ptl module -- a test_model() should be run in the wrapper class instead that invokes forward().")
+        error("Attempted to invoke test_model form within a ptl module -- a test_model() should be run in the wrapper class instead that just invokes forward().")
         # trainer = Trainer()
         # trainer.test(self)
 
@@ -91,27 +94,37 @@ class BaseModel(ptl.LightningModule):
     def train_dataloader(self):
         """Preparatory actions for training data"""
         self.train_dataset = self.make_dataset_from_index(self.train_index, self.train_labels)
-        return DataLoader(self.train_dataset, self.config.train.batch_size, num_workers=1)
+        return DataLoader(self.train_dataset, self.config.train.batch_size, num_workers=3, shuffle=True)
+
     def val_dataloader(self):
         """Preparatory transformation actions for validation data"""
         if self.should_do_validation():
             self.val_dataset = self.make_dataset_from_index(self.val_index, self.val_labels)
-            return DataLoader(self.val_dataset, self.config.train.batch_size, num_workers=1)
+            return DataLoader(self.val_dataset, self.config.train.batch_size, num_workers=3)
 
     def test_dataloader(self):
         """Preparatory transformation actions for test data"""
         # self.test_dataset = self.make_dataset_from_index(self.test_index, self.test_labels)
         self.test_dataset = self.make_dataset_from_index(self.test_index, None)
-        return DataLoader(self.test_dataset, self.config.train.batch_size, num_workers=1)
+        return DataLoader(self.test_dataset, self.config.train.batch_size, num_workers=3)
 
     # training
     def configure_optimizers(self):
         """Setup optimizers for training"""
         # optimizers
         if self.config.train.optimizer == "adam":
-            return torch.optim.Adam(self.parameters(), lr=1e-3)
+            optim = torch.optim.Adam(self.parameters())
         elif self.config.train.optimizer == "sgd":
-            return torch.optim.SGD(self.parameters(), lr=1e-3)
+            optim = torch.optim.SGD(self.parameters(), lr=0.01)
+        info(f"Training with optimizer {optim}")
+        # LR Scheduler
+        if self.config.train.lr_scheduler is not None:
+            if self.config.train.lr_scheduler == "plateau":
+                scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optim)
+            error(f"Undefined lr_scheduler: {self.config.train.lr_scheduler}")
+            info(f"Using LR scheduling: {scheduler}")
+            return [optim], [scheduler]
+        return optim
 
     def account_for_padding(self, logits, y):
         # account for mismatches produced by padding in the input
@@ -126,7 +139,7 @@ class BaseModel(ptl.LightningModule):
         logits = self.forward(x)
         logits = self.account_for_padding(logits, y)
 
-        loss = F.nll_loss(logits, y)
+        loss = F.cross_entropy(logits, y)
 
         # add logging
         logs = {'loss': loss}
@@ -139,7 +152,8 @@ class BaseModel(ptl.LightningModule):
         logits = self.forward(x)
         logits = self.account_for_padding(logits, y)
         loss = F.nll_loss(logits, y)
-        return {'val_loss': loss}
+        loss_dict = {'val_loss': loss}
+        return {'val_loss': loss, 'log': loss_dict}
 
         # error("Attempted to access abstract validation step function")
     def validation_epoch_end(self, outputs):
@@ -156,11 +170,12 @@ class BaseModel(ptl.LightningModule):
         logits = self.forward(x)
         logits = self.account_for_padding(logits, y)
         loss = F.nll_loss(logits, y)
-        return {'val_loss': loss}
+        loss_dict = {'test_loss': loss}
+        return {'test_loss': loss, 'log': loss_dict}
 
     def test_epoch_end(self, outputs):
         """Define metric computation at test epoch end"""
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        tensorboard_logs = {'val_loss': avg_loss}
-        return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
+        tensorboard_logs = {'test_loss': avg_loss}
+        return {'avg_test_loss': avg_loss, 'log': tensorboard_logs}
         # error("Attempted to access abstract test epoch end function")
