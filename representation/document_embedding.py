@@ -5,7 +5,7 @@ from gensim.models.doc2vec import TaggedDocument
 import defs
 from representation.embedding import Embedding
 from representation.representation import Representation
-from utils import info, tictoc, write_pickled, error
+from utils import error, info, tictoc, write_pickled
 
 
 class DocumentEmbedding(Embedding):
@@ -32,8 +32,12 @@ class DocumentEmbedding(Embedding):
 
     def fit_doc2vec(self, train_word_lists, multi_labels):
         # learn document vectors from the training dataset
-        tagged_docs = [TaggedDocument(doc, i) for doc, i in zip(train_word_lists, multi_labels)]
-        model = Doc2Vec(tagged_docs, vector_size=self.dimension, min_count=0, window=5, dm=1)
+        if multi_labels is not None:
+            tagged_docs = [TaggedDocument(doc, lbl) for doc, lbl in zip(train_word_lists, multi_labels)]
+        else:
+            tagged_docs = [TaggedDocument(doc, [i]) for i, doc in enumerate(train_word_lists)]
+
+        model = Doc2Vec(tagged_docs, vector_size=self.dimension, min_count=0, window=5, dm=1, workers=16)
         # update_term_frequency word vectors with loaded elements
         info("Updating word embeddings with loaded vectors")
         words = [w for w in self.embeddings.index.to_list() if w in model.wv.vocab.keys()]
@@ -41,7 +45,7 @@ class DocumentEmbedding(Embedding):
             word_index = model.wv.index2entity.index(word)
             model.wv.syn0[word_index] = self.embeddings.loc[word]
         # model.wv.add(words, self.embeddings.loc[words], replace=True)
-        model.train(tagged_docs, epochs=10, total_examples=len(tagged_docs))
+        model.train(tagged_docs, epochs=50, total_examples=len(tagged_docs))
         model.delete_temporary_training_data(keep_doctags_vectors=True, keep_inference=True)
         del self.embeddings
         return model

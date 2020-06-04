@@ -7,6 +7,10 @@ from utils import error
 
 
 class ManualDatasetReader:
+    train_labels, test_labels = None, None
+    train, test  = None, None
+    labelset, label_names = None, None
+
     """Reader class for reading custom serialized datasets"""
     def read_instances(self, json_object, data_key="text", labels_key="labels"):
         """Read a json object containing text dataset instances
@@ -76,8 +80,13 @@ class ManualDatasetReader:
         # read training data
         self.train, train_labels, train_labelset, self.train_is_labelled, self.train_fully_labelled, self.max_num_instance_labels = \
             self.read_instances(data["train"])
-        self.test, test_labels, test_labelset, self.test_is_labelled, self.test_fully_labelled, _ = \
-            self.read_instances(data["test"])
+
+        try:
+            self.test, test_labels, test_labelset, self.test_is_labelled, self.test_fully_labelled, _ = \
+                self.read_instances(data["test"])
+        except KeyError:
+            pass
+
         self.roles = ("train", "test")
         # read metadata
         try:

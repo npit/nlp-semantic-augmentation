@@ -52,11 +52,12 @@ class ManualDataset(Dataset):
     def handle_raw_serialized(self, deserialized_data):
         Dataset.handle_raw_serialized(self, deserialized_data)
         self.language = deserialized_data["language"]
-        self.multilabel = deserialized_data["multilabel"]
-        self.labelset = sorted(np.unique(np.concatenate(self.train_labels)))
+        if self.train_labels is not None:
+            self.multilabel = deserialized_data["multilabel"]
+            self.labelset = sorted(np.unique(np.concatenate(self.train_labels)))
 
     def handle_serialized(self, deserialized_data):
-        self.handle_raw_serialized(self, deserialized_data)
+        self.handle_raw_serialized(deserialized_data)
 
     def handle_preprocessed(self, deserialized_data):
         Dataset.handle_preprocessed(self, deserialized_data)

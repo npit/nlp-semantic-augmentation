@@ -1,9 +1,10 @@
 import torch
 from torch.nn import functional as F
-from learning.neural.dnn import SupervisedDNN
-from learning.neural.base_model import BaseModel
 
 from learning.neural import utils as neural_utils
+from learning.neural.base_model import BaseModel
+from learning.neural.dnn import SupervisedDNN
+
 
 class MLPModel(BaseModel):
     """MLP """
@@ -12,7 +13,7 @@ class MLPModel(BaseModel):
 
     def __init__(self, config, embeddings, output_dim):
         super(MLPModel, self).__init__(config, self.wrapper_name)
-        
+
         self.config = config
         self.embedding_layer = neural_utils.make_embedding_layer(embeddings, config.train.train_embedding)
 
