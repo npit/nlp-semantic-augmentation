@@ -33,6 +33,7 @@ class dataset_conf(Configuration):
         self.data_limit = self.get_value("data_limit", default=None, expected_type=list)
         self.class_limit = self.get_value("class_limit", default=None, expected_type=int)
         self.prepro = self.get_value("prepro", default=None)
+        self.filter_stopwords = self.get_value("filter_stopwords", default=None)
 
     def has_data_limit(self):
         return self.data_limit is not None and any([x is not None for x in self.data_limit])

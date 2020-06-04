@@ -1,14 +1,16 @@
 import torch
 from torch.nn import functional as F
-from learning.neural.dnn import SupervisedDNN
-from learning.neural.base_model import BaseModel
 
 from learning.neural import utils as neural_utils
+from learning.neural.base_model import BaseModel
+from learning.neural.dnn import SupervisedDNN
+
 
 class MLPModel(BaseModel):
     """MLP """
     name = "mlp"
     wrapper_name = "supervised_dnn"
+
 
     def __init__(self, config, embeddings, output_dim, working_folder, model_name):
         super(MLPModel, self).__init__(config, self.wrapper_name, working_folder, model_name)

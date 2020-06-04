@@ -33,10 +33,13 @@ class Dataset(Serializable):
     data_names = ["train-data", "test-data", "traintest-roles"]
     label_data_names = ["train-labels", "label-names", "test-labels", "labelset"]
     train_labels, test_labels = None, None
+    num_labels = None
     labelset = None
     multilabel = False
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
     roles = None
+    filter_stopwords = True
+    stopwords = None
 
     @staticmethod
     def generate_name(config):
@@ -81,6 +84,8 @@ class Dataset(Serializable):
             return
         Serializable.__init__(self, self.dir_name)
         self.config.full_name = self.name
+        if self.config.filter_stopwords is not None:
+            self.filter_stopwords = self.config.filter_stopwords
 
     def populate(self):
         self.set_serialization_params()
@@ -177,20 +182,21 @@ class Dataset(Serializable):
 
     def handle_raw_serialized(self, deserialized_data):
         self.train, self.test, self.roles = [deserialized_data[n] for n in self.data_names]
-        self.train_labels, self.label_names, self.test_labels, self.labelset = [deserialized_data[n] for n in self.label_data_names]
-        self.num_labels = len(set(self.label_names))
-        self.multilabel = self.contains_multilabel(self.train_labels)
         self.loaded_raw_serialized = True
+        self.train_labels, self.label_names, self.test_labels, self.labelset = [deserialized_data[n] for n in self.label_data_names]
+        if self.train_labels is not None:
+            self.num_labels = len(set(self.label_names))
+            self.multilabel = self.contains_multilabel(self.train_labels)
 
     # endregion
 
     def setup_nltk_resources(self):
-        try:
-            stopwords.words(self.language)
-        except LookupError:
-            nltk_download(self.config, "stopwords")
-
-        self.stopwords = set(stopwords.words(self.language))
+        if self.filter_stopwords:
+            try:
+                stopwords.words(self.language)
+            except LookupError:
+                nltk_download(self.config, "stopwords")
+            self.stopwords = set(stopwords.words(self.language))
         try:
             nltk.pos_tag("Text")
         except LookupError:
@@ -239,13 +245,15 @@ class Dataset(Serializable):
 
         # remove stopwords and numbers
         # words = [w.translate(digit_remover) for w in words if w not in stopwords and w.isalpha()]
-        words = [w for w in [w.translate(digit_remover) for w in words if w not in stopwords] if w]
+        words = [w for w in [w.translate(digit_remover) for w in words] if w]
+        if self.filter_stopwords:
+            words = [w for w in words if w not in stopwords]
         # pos tagging
         words_with_pos = nltk.pos_tag(words)
         # stemming / lemmatization
         words_with_pos = [word_prepro(wp) for wp in words_with_pos]
         if not words_with_pos:
-            warning("Text preprocessed to an empty list:\n{}".format(text))
+            # warning("Text preprocessed to an empty list:\n{}".format(text))
             return None
         return words_with_pos
 
@@ -254,9 +262,10 @@ class Dataset(Serializable):
         # filt = '!"#$%&()*+,-./:;<=>?@\[\]^_`{|}~\n\t1234567890'
         ret_words_pos, ret_voc = [], set()
         num_words = []
+        discarded_indexes = []
         if not document_list:
             info("(Empty collection)")
-            return [], []
+            return [], [], None
         with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100, unit="collection") as pbar:
             for i in range(len(document_list)):
                 pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
@@ -265,7 +274,9 @@ class Dataset(Serializable):
                 text_words_pos = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
                                                           word_prepro=self.word_prepro, stopwords=self.stopwords)
                 if text_words_pos is None:
-                    error("Text {}/{} preprocessed to an empty list:\n{}".format(i + 1, len(document_list), document_list[i]))
+                    # warning("Text {}/{} preprocessed to an empty list:\n{}".format(i + 1, len(document_list), document_list[i]))
+                    discarded_indexes.append(i)
+                    continue
 
                 ret_words_pos.append(text_words_pos)
                 if track_vocabulary:
@@ -273,7 +284,7 @@ class Dataset(Serializable):
                 num_words.append(len(text_words_pos))
         stats = [x(num_words) for x in [np.mean, np.var, np.std]]
         info("Words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
-        return ret_words_pos, ret_voc
+        return ret_words_pos, ret_voc, discarded_indexes
 
     # preprocess raw texts into word list
     def preprocess(self):
@@ -283,9 +294,18 @@ class Dataset(Serializable):
         self.setup_nltk_resources()
         with tictoc("Preprocessing {}".format(self.name)):
             info("Mapping training set to word collections.")
-            self.train, self.vocabulary = self.preprocess_text_collection(self.train, track_vocabulary=True)
+            self.train, self.vocabulary, discarded_indexes = self.preprocess_text_collection(self.train, track_vocabulary=True)
+            if discarded_indexes:
+                warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
+                if self.train_labels is not None:
+                    self.train_labels = [self.train_labels[i] for i in discarded_indexes]
+
             info("Mapping test set to word collections.")
-            self.test, _ = self.preprocess_text_collection(self.test)
+            self.test, _, discarded_indexes = self.preprocess_text_collection(self.test)
+            if discarded_indexes:
+                warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
+                if self.test_labels is not None:
+                    self.test_labels = [self.test_labels[i] for i in discarded_indexes]
             # fix word order and get word indexes
             self.vocabulary = list(self.vocabulary)
             for index, word in enumerate(self.vocabulary):
