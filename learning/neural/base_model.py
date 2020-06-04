@@ -4,7 +4,8 @@ import pytorch_lightning as ptl
 from utils import error, info
 
 from pytorch_lightning import Trainer
-from torch.utils.data import DataLoader
+from pytorch_lightning.callbacks.progress import ProgressBar
+from torch.utils.data import DataLoader, RandomSampler
 
 class BaseModel(ptl.LightningModule):
     """Base class for pytorch models, organized as a pytorch-lightning module
@@ -23,7 +24,13 @@ class BaseModel(ptl.LightningModule):
         self.wrapper_name = wrapper_name
         self.working_folder = working_folder
         self.model_name = model_name
+        self.callbacks = []
         super(BaseModel, self).__init__()
+
+    class SmaugProgressBar(ProgressBar):
+        def on_epoch_start(trainer, pl_module):
+            print()
+            super().on_epoch_start(trainer, pl_module)
 
     class Dataset:
         """Dataset class to construct the required dataloaders"""
@@ -52,6 +59,8 @@ class BaseModel(ptl.LightningModule):
         logger = ptl.loggers.TensorBoardLogger(self.working_folder, name=self.model_name)
 
         # trainer = Trainer(val_check_interval=100)
+        # self.callbacks.append(BaseModel.SmaugProgressBar())
+        # trainer = Trainer(logger=logger, min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks)
         trainer = Trainer(logger=logger, min_epochs=1, max_epochs=self.config.train.epochs)
         trainer.fit(self)
 
@@ -77,7 +86,10 @@ class BaseModel(ptl.LightningModule):
         return data[index]
 
     def should_do_validation(self):
-        return len(self.val_index) > 0
+        try:
+            return len(self.val_index) > 0
+        except TypeError:
+            return False
 
     # def get_data(self, index):
     #     return self.embeddings[index]
@@ -94,19 +106,20 @@ class BaseModel(ptl.LightningModule):
     def train_dataloader(self):
         """Preparatory actions for training data"""
         self.train_dataset = self.make_dataset_from_index(self.train_index, self.train_labels)
-        return DataLoader(self.train_dataset, self.config.train.batch_size, num_workers=3, shuffle=True)
+        return DataLoader(self.train_dataset, self.config.train.batch_size, num_workers=6, sampler=RandomSampler(self.train_dataset))
 
     def val_dataloader(self):
         """Preparatory transformation actions for validation data"""
         if self.should_do_validation():
             self.val_dataset = self.make_dataset_from_index(self.val_index, self.val_labels)
-            return DataLoader(self.val_dataset, self.config.train.batch_size, num_workers=3)
+            return DataLoader(self.val_dataset, self.config.train.batch_size, num_workers=6, sampler=RandomSampler(self.val_dataset))
+        return None
 
     def test_dataloader(self):
         """Preparatory transformation actions for test data"""
         # self.test_dataset = self.make_dataset_from_index(self.test_index, self.test_labels)
         self.test_dataset = self.make_dataset_from_index(self.test_index, None)
-        return DataLoader(self.test_dataset, self.config.train.batch_size, num_workers=3)
+        return DataLoader(self.test_dataset, self.config.train.batch_size, shuffle=False, num_workers=6)
 
     # training
     def configure_optimizers(self):
@@ -115,7 +128,7 @@ class BaseModel(ptl.LightningModule):
         if self.config.train.optimizer == "adam":
             optim = torch.optim.Adam(self.parameters())
         elif self.config.train.optimizer == "sgd":
-            optim = torch.optim.SGD(self.parameters(), lr=0.01)
+            optim = torch.optim.SGD(self.parameters(), lr=self.config.train.base_lr)
         info(f"Training with optimizer {optim}")
         # LR Scheduler
         if self.config.train.lr_scheduler is not None:

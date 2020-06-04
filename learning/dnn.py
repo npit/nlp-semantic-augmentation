@@ -158,8 +158,7 @@ class DNN(Classifier):
         # train the damn thing!
         debug("Feeding the network train shapes: {} {}".format(train_data.shape, train_labels.shape))
 
-        if self.val_index is not None:
-            # val_data = self.get_data_from_index(val_index, embeddings)
+        if self.val_index is not None and len(self.val_index) > 0:
             val_data = self.val_index
             val_labels = one_hot(self.val_labels, self.num_labels)
             debug("Using validation shapes: {} {}".format(val_data.shape, val_labels.shape))
@@ -173,6 +172,7 @@ class DNN(Classifier):
                   epochs=self.epochs,
                   validation_data=val,
                   verbose=self.config.print.training_progress,
+                  shuffle=True,
                   callbacks=self.get_callbacks())
         self.report_early_stopping()
         return model
@@ -261,8 +261,9 @@ class MLP(DNN):
                 model.add(Dropout(0.3))
 
         model = DNN.add_softmax(self, model)
+        lr = self.config.train.base_lr
         model.compile(loss='categorical_crossentropy',
-                      optimizer=keras.optimizers.SGD(0.01),
+                      optimizer=keras.optimizers.SGD(lr),
                       # self.config.train.optimizer,
                       metrics=['accuracy'])
         model.summary()

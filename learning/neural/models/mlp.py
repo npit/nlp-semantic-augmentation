@@ -30,10 +30,10 @@ class MLPModel(BaseModel):
         if self.embedding_layer is not None:
             input_data = self.embedding_layer(input_data)
         # dense chain
-        output = neural_utils.run_linear_chain(self.linear_layers, input_data, dropout_keep_prob=0.3)
+        data = neural_utils.run_linear_chain(self.linear_layers, input_data, dropout_keep_prob=0.3)
 
+        # data = input_data
         # for layer in self.linear_layers:
         #     data = F.dropout(F.relu(layer(data)), p=0.3)
-        # output
-        # return F.softmax(self.linear_out(output))
-        return self.linear_out(output)
+        # return F.softmax(self.linear_out(data))
+        return self.linear_out(data)
