@@ -3,6 +3,7 @@ from gensim.models import Doc2Vec
 from gensim.models.doc2vec import TaggedDocument
 
 import defs
+import tqdm
 from representation.embedding import Embedding
 from representation.representation import Representation
 from utils import error, info, tictoc, write_pickled
@@ -25,8 +26,7 @@ class DocumentEmbedding(Embedding):
         self.resource_paths.append(csv_mapping_name)
         self.resource_read_functions.append(self.read_raw_embedding_mapping)
         self.resource_handler_functions.append(lambda x: x)
-
-    # nothing to load, can be computed on the fly
+# nothing to load, can be computed on the fly
     def fetch_raw(self, path):
         pass
 
@@ -45,9 +45,14 @@ class DocumentEmbedding(Embedding):
             word_index = model.wv.index2entity.index(word)
             model.wv.syn0[word_index] = self.embeddings.loc[word]
         # model.wv.add(words, self.embeddings.loc[words], replace=True)
-        model.train(tagged_docs, epochs=50, total_examples=len(tagged_docs))
+        model.train(tagged_docs, epochs=5, total_examples=len(tagged_docs))
         model.delete_temporary_training_data(keep_doctags_vectors=True, keep_inference=True)
         del self.embeddings
+
+        import pickle
+        with open("doc2vecmodel.pkl", "wb") as f:
+            pickle.dump(model, f)
+
         return model
 
     def map_text(self):
@@ -65,7 +70,7 @@ class DocumentEmbedding(Embedding):
                 info("Mapping text bundle {}/{}: {} texts".format(dset_idx + 1, len(self.text), len(self.text[dset_idx])))
                 num_docs = len(dset_word_list)
                 starting_instance_idx = dset_idx * len(self.embeddings)
-                for doc_word_pos in dset_word_list:
+                for doc_word_pos in tqdm.tqdm(dset_word_list):
                     doc_words = [wp[0] for wp in doc_word_pos]
                     # debug("Inferring word list:{}".format(doc_words))
                     vec = np.expand_dims(d2v.infer_vector(doc_words), axis=0)
