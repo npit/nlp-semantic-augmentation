@@ -59,7 +59,7 @@ class SKLClassifier(Classifier):
         test_data = self.get_data_from_index(self.test_index, self.embeddings)
         predictions = model.predict(test_data)
         # convert back to one-hot
-        predictions = one_hot(predictions, self.num_labels)
+        predictions = one_hot(predictions, self.num_labels, self.do_multilabel)
         return predictions
 
 

@@ -149,7 +149,7 @@ class DNN(Classifier):
     def train_model(self):
         # define the model
         model = self.get_model(self.embeddings)
-        train_labels = one_hot(self.train_labels, self.num_labels)
+        train_labels = one_hot(self.train_labels, self.num_labels, self.do_multilabel)
 
         # get actual data here, via a method or sth
         # train_data = self.get_data_from_index(train_index, embeddings)
@@ -160,7 +160,7 @@ class DNN(Classifier):
 
         if self.val_index is not None and len(self.val_index) > 0:
             val_data = self.val_index
-            val_labels = one_hot(self.val_labels, self.num_labels)
+            val_labels = one_hot(self.val_labels, self.num_labels, self.do_multilabel)
             debug("Using validation shapes: {} {}".format(val_data.shape, val_labels.shape))
             val = (val_data, val_labels)
         else:

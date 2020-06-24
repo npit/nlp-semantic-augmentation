@@ -145,7 +145,7 @@ class Transform(Serializable):
             self.input_name = self.inputs.get_source_name()
         self.name = "{}_{}_{}".format(self.input_name, self.base_name,
                                       self.dimension)
-        Component.configure_name(self)
+        Component.configure_name(self, self.name)
 
     def run(self):
         """Transform component run function"""

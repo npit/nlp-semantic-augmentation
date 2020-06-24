@@ -24,7 +24,7 @@ from experiments.utils import (compare_dicts, filter_testing, keyseq_exists,
                                sendmail)
 from experiments.variable_config import VariableConf
 from stattests import instantiator
-from utils import (as_list, datetime_str, error, info, ordered_dump,
+from utils import (as_list, datetime_str, error, info, write_ordered_dump,
                    read_ordered_yaml, setup_simple_logging, warning)
 
 
@@ -36,7 +36,11 @@ Values in a list are interpreted as different parameters (so for list literal va
 """
 
 
-exlogger = logging.getLogger("experiments")
+
+VARIABLE_KEY_NAME = "variable"
+EXPERIMENTS_KEY_NAME = "experiments"
+
+exlogger = logging.getLogger(EXPERIMENTS_KEY_NAME)
 
 
 def expand_configs(configs, keys, values):
@@ -82,6 +86,7 @@ def populate_configs(configs, chain_name, component_name, field_name,
 
 
 def make_configs(base_config, run_dir, sources_dir="./"):
+    """Produce multiple configuration objects from a single configuration with variable fields"""
     # read chains
     configs = [VariableConf()]
     configs[0]["chains"] = {}
@@ -95,8 +100,8 @@ def make_configs(base_config, run_dir, sources_dir="./"):
                                  component_body, None)
                 continue
             for field_name, field_value in component_body.items():
-                if field_name == "variables":
-                    # print(component_body[field_name])
+                if field_name == VARIABLE_KEY_NAME:
+
                     for variable_field_name, variable_field_values in component_body[
                             field_name].items():
                         # expand configurations
@@ -111,7 +116,7 @@ def make_configs(base_config, run_dir, sources_dir="./"):
     info("Expansion resulted in {} configurations.".format(len(configs)))
     # parsed chains -- copy rest of values
     for key in base_config:
-        if key in ["experiments", "chains"]:
+        if key in [EXPERIMENTS_KEY_NAME, "chains"]:
             continue
         for conf in configs:
             conf[key] = deepcopy(base_config[key])
@@ -195,7 +200,10 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
 
     conf = read_ordered_yaml(config_file)
 
-    exps = conf["experiments"]
+    try:
+        exps = conf[EXPERIMENTS_KEY_NAME]
+    except KeyError:
+        error(f"Need an [{EXPERIMENTS_KEY_NAME}] key for large-scale experiments.")
 
     # folder to run experiments in
     run_dir = exps["run_folder"]
@@ -210,8 +218,8 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
     # dir checks
     # ----------
     # virtualenv folder
-    venv_dir = conf["experiments"]["venv"] if "venv" in conf[
-        "experiments"] else None
+    venv_dir = conf[EXPERIMENTS_KEY_NAME]["venv"] if "venv" in conf[
+        EXPERIMENTS_KEY_NAME] else None
     # results csv file
     # results_file = conf["experiments"]["results_file"]
     results_file = join(run_dir, "run_results.csv")
@@ -246,22 +254,14 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
         run_types = as_list(exps["run_types"]) if "run_types" in exps else ["run"]
         do_sstests = "sstests" in exps
         if not do_sstests:
-            while True:
-                ans = input("No statistical tests specified -- are you sure? [Y/n]").strip()
-                if not ans or ans == "y":
-                    break
-                if ans.lower() not in "y n".split():
-                    continue
-                elif ans == "n":
-                    info("Aborting.")
-                    exit(1)
+            warning("No statistical tests specified.")
         else:
             sstests = ["tukeyhsd"] if "names" not in exps["sstests"] else as_list(exps["sstests"]["names"])
             sstests_measures = ["f1-score"] if "measures" not in exps["sstests"] else as_list(exps["sstests"]["measures"])
             sstests_aggregations = ["macro"] if "aggregations" not in exps["sstests"] else as_list(exps["sstests"]["aggregations"])
             sstests_limit_vars = None if "limit_variables" not in exps["sstests"] else as_list(exps["sstests"]["limit_variables"])
     except Exception as ex:
-        error("Failed to read evaluation / testing options {}".format(ex))
+        error("Failed to read evaluation / testing options due to: [{}]".format(ex))
 
     # folder where run scripts are
     sources_dir = exps["sources_dir"] if "sources_dir" in exps else os.getcwd()
@@ -296,11 +296,10 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
         if not no_config_check:
             config_to_copy = OrderedDict(
                 {k: v
-                for (k, v) in conf.items() if k != "experiments"})
+                for (k, v) in conf.items() if k != EXPERIMENTS_KEY_NAME})
             existing_exp_conf = read_ordered_yaml(experiments_conf_path)
             existing_exp_conf = OrderedDict({
-                k: v
-                for (k, v) in existing_exp_conf.items() if k != "experiments"
+                k: v for (k, v) in existing_exp_conf.items() if k != EXPERIMENTS_KEY_NAME
             })
             equal, diff = compare_dicts(config_to_copy, existing_exp_conf)
             if not equal:
@@ -312,7 +311,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
             info("Copying experiments configuration at {}".format(
                 experiments_conf_path))
             with open(experiments_conf_path, "w") as f:
-                ordered_dump(OrderedDict(conf), f)
+                write_ordered_dump(OrderedDict(conf), f)
         else:
             info(
                 "Only-report run: will not copy experiment configuration at {}"
@@ -336,7 +335,6 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
         if not isabs(respath):
             conf["folders"]["results"] = join(experiment_dir, respath)
 
-        print(completed_file)
         if exists(completed_file):
             info("Skipping completed experiment {}".format(run_id))
         elif only_report:
@@ -364,7 +362,7 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
                 #    error("Different local config encountered at {}".format(conf_path))
             else:
                 with open(conf_path, "w") as f:
-                    ordered_dump(OrderedDict(conf), f)
+                    write_ordered_dump(OrderedDict(conf), f)
             info("Configuration file: {}".format(conf_path))
             # write the run script file
             script_path = join(experiment_dir, "run.sh")

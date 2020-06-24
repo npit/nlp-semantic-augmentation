@@ -6,6 +6,7 @@ from os.path import join
 import numpy as np
 import pandas as pd
 from sklearn import metrics
+from collections import Counter
 
 from utils import (count_label_occurences, debug, error, info,
                    numeric_to_string, one_hot, warning)
@@ -25,11 +26,17 @@ class Evaluator:
     confusion_matrices = None
 
     # available measures, aggregations and run types
+    basic_measures = ["precision", "recall", "f1-score"]
+    clustering_measures = ["precision", "recall", "f1-score", "accuracy", "ari", "shilhouette"]
     singlelabel_measures = ["precision", "recall", "f1-score", "accuracy", "ari", "shilhouette"]
+    label_aggregations = ["macro", "micro", "classwise", "weighted"]
     fold_aggregations = ["mean", "var", "std", "folds"]
     run_types = ["random", "dummy", "majority", "run"]
+    # multilabel-only measures
     multilabel_measures = ["ap", "roc_auc"]
-    label_aggregations = ["macro", "micro", "classwise", "weighted"]
+
+    # measure functions
+    measure_functions = {"precision": metrics.precision_score, "recall": metrics.recall_score, "f1-score": metrics.f1_score}
 
     # additional grouping
     unsupervised_measures = ["shilhouette"]
@@ -53,7 +60,9 @@ class Evaluator:
     train_labels = None
     test_labels = None
     reference_labels = None
-    label_distributions = {}
+    labelset = None
+    test_label_distributions = [] # to average distribution across folds
+    all_label_distributions = {} # to average distribution across folds
 
     def get_labelwise_measures(self):
         """Get measures definable in a multiclass setting"""
@@ -85,9 +94,12 @@ class Evaluator:
         """Retrieve the current labels to test against
 
         :returns: The test labels collection
-        :rtype: ndarray
+        :rtype: ndarray or list
         """
-        return self.reference_labels[self.test_label_index]
+        if self.do_multilabel:
+            return [self.reference_labels[i] for i in self.test_label_index]
+        else:
+            return self.reference_labels[self.test_label_index]
 
     def update_reference_labels(self, train_index, test_index):
         """Update indexes to data for the current evaluation
@@ -117,7 +129,7 @@ class Evaluator:
             else:
                 self.show_label_distribution(self.test_labels, message="Test label distribution")
 
-    def set_labelling(self, train_labels, num_labels, do_multilabel=False, test_labels=None):
+    def set_labelling(self, train_labels, labelset, num_labels, do_multilabel=False, test_labels=None):
         """Assign labelling information to the evaluator
 
         :param train_labels: Training label collection
@@ -131,7 +143,8 @@ class Evaluator:
         if len(train_labels) == 0:
             error("Empty train labels container passed to the evaluator.")
         self.do_multilabel = do_multilabel
-        self.num_labels = num_labels
+        self.labelset = labelset
+        self.num_labels = len(self.labelset)
         # squeeze to ndarray if necessary
         if not self.do_multilabel:
             if type(train_labels) is list:
@@ -271,17 +284,16 @@ class Evaluator:
 
 
     # aggregated evaluation measure function shortcuts
-    def get_pre_rec_f1(self, preds, metric, num_labels, gt=None):
+    def get_pre_rec_f1(self, preds, measure, num_labels, gt=None):
         """Function to compute precision, recall and F1-score"""
         if gt is None:
             gt = self.get_current_reference_labels()
         # expected column structure is label1 label2 ... labelN microavg macroavg weightedavg
         cr = pd.DataFrame.from_dict(metrics.classification_report(gt, preds, output_dict=True))
         # get classwise, micro, macro, weighted, defaulting non-precited classes to zero values
-        predicted_classes = cr.columns.to_list()[:-3]
         cw = np.zeros(num_labels, np.float32)
-        for class_index in predicted_classes:
-            cw[int(class_index)] = cr[class_index][metric]
+        for class_index in self.labelset:
+            cw[class_index] = cr[str(class_index)][measure]
         res = [cw]
 
         # gather the rest of the aggregations
@@ -295,9 +307,9 @@ class Evaluator:
 
         for aggr in aggregations:
             try:
-                r = cr[aggr][metric]
+                r = cr[aggr][measure]
             except KeyError:
-                warning("Failed to access {} avg information on the {} metric".format(aggr, metric))
+                warning("Failed to access {} avg information on the {} measure".format(aggr, measure))
                 r = -1
             res.append(r)
         return res
@@ -331,21 +343,33 @@ class Evaluator:
         """performance printing function, checking respective settings and inputs for wether to print"""
         # print the combination, if it's in the prefered stuff to print
         if all([run_type in self.preferred_types, measure in self.preferred_measures, aggr is None or aggr in self.preferred_label_aggregations]):
-            scores_str = self.get_score_stats_string(self.performance[run_type][measure][aggr])
+            if self.do_multilabel:
+                scores_str = self.get_score_stats_string(self.performance[run_type][measure])
+            else:
+                scores_str = self.get_score_stats_string(self.performance[run_type][measure][aggr])
             # print
             header = " ".join(["{:10}".format(x) for x in [run_type, aggr, measure] if x is not None])
             info("{} : {}".format(header, scores_str))
             return True
         return False
 
+    def merge_and_show_test_label_distributions(self):
+        """Merge (e.g. for kfold testing) and show the test label distribution"""
+        # average test label distributions
+        overall_distro = self.test_label_distributions.pop(0)
+        for dist in self.test_label_distributions:
+            overall_distro.update(dist)
+        self.show_label_distribution(overall_distro, "Test label (average) distribution", distribution_input=True)
+
     # print performance across folds and compute foldwise aggregations
     def report_overall_results(self, validation_description, write_folder):
         """Function to report learning results
         """
         if self.is_supervised():
+            self.merge_and_show_test_label_distributions()
             # compute overall predicted labels across all folds, if any
             overall_predictions = np.concatenate([np.argmax(x, axis=1) for x in self.predictions['run']])
-            # count distribution occurences (validation total average)
+            # count distribution occurences (prediction total average)
             self.show_label_distribution(overall_predictions, message="Predicted label (average) distribution")
             info("==============================")
             self.analyze_overall_errors()
@@ -386,7 +410,7 @@ class Evaluator:
                 pickle.dump({"results": df, "error_analysis": self.error_analysis, "confusion_matrix": self.confusion_matrices}, f)
             # write label distributions
             with open(join(write_folder, "label_distributions.json"), "w") as f:
-                json.dump(self.label_distributions, f)
+                json.dump(self.all_label_distributions, f)
 
     # print performance of the latest run
     def print_run_performance(self, current_run_descr, fold_index=0):
@@ -422,34 +446,41 @@ class Evaluator:
         if self.num_labels != preds_proba.shape[-1]:
             error("Attempted to evaluated {}-dimensional predictions against {} labels".format(preds_proba.shape[-1], self.num_labels))
 
+
         if self.do_multilabel:
-            onehot_gt = one_hot(self.get_current_reference_labels(), self.num_labels)
+            onehot_gt = one_hot(self.get_current_reference_labels(), self.num_labels, self.do_multilabel)
 
             # average precision
             ap = metrics.average_precision_score(onehot_gt, preds_proba)
-            rocauc = metrics.roc_auc_score(onehot_gt, preds_proba)
-
+            try:
+                rocauc = metrics.roc_auc_score(onehot_gt, preds_proba)
+            except ValueError as ve:
+                warning(str(ve))
+                rocauc = -1
             self.performance[run_type]["ap"]["folds"].append(ap)
             self.performance[run_type]["roc_auc"]["folds"].append(rocauc)
         else:
-            # single-label
+            # compute classwise measures
             preds_amax = np.argmax(preds_proba, axis=1)
-            # get prec, rec, f1
-            for measure in "precision recall f1-score".split():
-                (cw, mi, ma, we) = self.get_pre_rec_f1(preds_amax, measure, self.num_labels)
-                self.performance[run_type][measure]["classwise"]["folds"].append(cw)
-                self.performance[run_type][measure]["macro"]["folds"].append(ma)
-                self.performance[run_type][measure]["micro"]["folds"].append(mi)
-                self.performance[run_type][measure]["weighted"]["folds"].append(we)
-                self.confusion_matrices[run_type].append(metrics.confusion_matrix(self.get_current_reference_labels(), preds_amax, range(self.num_labels)))
-
-            # get defined accuracy measures and aggregations
-            acc, cw_acc = self.compute_accuracy(preds_amax), self.compute_classwise_accuracy(preds_amax)
-            self.performance[run_type]["accuracy"]["classwise"]["folds"].append(cw_acc)
-            self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
-
+            self.compute_basic_measures(run_type, preds_amax)
             # get defined ari measures and aggregations
             self.performance[run_type]["ari"]["macro"]["folds"].append(self.compute_ari(preds_amax))
+
+    def compute_basic_measures(self, run_type, predictions):
+        """Evaluate f1-score, precision, recall and accuracy, on all aggregations"""
+        # get prec, rec, f1
+        for measure in self.basic_measures:
+            (cw, mi, ma, we) = self.get_pre_rec_f1(predictions, measure, self.num_labels)
+            self.performance[run_type][measure]["classwise"]["folds"].append(cw)
+            self.performance[run_type][measure]["macro"]["folds"].append(ma)
+            self.performance[run_type][measure]["micro"]["folds"].append(mi)
+            self.performance[run_type][measure]["weighted"]["folds"].append(we)
+            self.confusion_matrices[run_type].append(metrics.confusion_matrix(self.get_current_reference_labels(), predictions, range(self.num_labels)))
+
+        # accuracy
+        acc, cw_acc = self.compute_accuracy(predictions), self.compute_classwise_accuracy(predictions)
+        self.performance[run_type]["accuracy"]["classwise"]["folds"].append(cw_acc)
+        self.performance[run_type]["accuracy"]["macro"]["folds"].append(acc)
 
     def evaluate_unsupervised(self, run_type, preds_proba):
         """Evaluate unsupervised run"""
@@ -468,21 +499,24 @@ class Evaluator:
         else:
             self.evaluate_unsupervised(run_type, preds_proba)
 
-    def show_label_distribution(self, labels, message="Test label distribution:", max_num_show=5):
+    def show_label_distribution(self, labels_or_distr, message="Test label distribution:", max_num_show=5, distribution_input=False):
         info("==============================")
         info(message + f" (label, count) -- majorities + top {max_num_show}")
         info("------------------------------")
-        distr = count_label_occurences(labels)
+        if distribution_input:
+            distr = labels_or_distr
+        else:
+            distr = count_label_occurences(labels_or_distr)
         local_max_lbl = max(distr, key=lambda x: x[1])[0]
 
         majority_labels = []
         print_lines = []
-        self.label_distributions[message] = []
+        self.all_label_distributions[message] = []
         for lbl, freq in distr:
             maj = " - [input majority]" if lbl == self.majority_label else ""
             localmaj = " - [local majority]" if lbl == local_max_lbl else ""
             msg = "Label {} : {:.1f}{}{}".format(lbl, freq, localmaj, maj)
-            self.label_distributions[message].append(msg)
+            self.all_label_distributions[message].append(msg)
 
             if maj or localmaj:
                 majority_labels.append(msg)
@@ -492,12 +526,16 @@ class Evaluator:
         # print
         for msg in (majority_labels + print_lines[:max_num_show]):
             info(msg)
-
-
-
+        return distr
 
     # evaluate predictions and add baselines
     def evaluate_learning_run(self, predictions, instance_indexes=None):
+        # show label distribution
+        if self.is_supervised():
+            distro = self.show_label_distribution(self.get_current_reference_labels(), message="Test label distribution")
+            self.test_label_distributions.append(distro)
+
+
         # store instance indexes
         if instance_indexes is None:
             # use the entire index set of the current test labels
@@ -524,7 +562,7 @@ class Evaluator:
             num_test, num_train = len(instance_indexes), len(self.train_labels)
             num_tile = np.ceil(num_test / num_train)
             sample_pool = np.tile(self.train_labels, int(num_tile))[:num_test]
-            dummypred = one_hot(random.sample(list(sample_pool), num_test), self.num_labels)
+            dummypred = one_hot(random.sample(list(sample_pool), num_test), self.num_labels, self.do_multilabel)
             self.evaluate_predictions("dummy", dummypred)
             self.predictions["dummy"].append(dummypred)
 
@@ -619,7 +657,7 @@ class Evaluator:
                         ranked_scores_idxs = sorted(list(zip(scores_cw, list(range(len(scores_cw))))), key=lambda x: x[0], reverse=True)
                         res["labels"][run_type][measure] = ranked_scores_idxs
         else:
-            pass
+            return
 
         self.error_analysis = res
         self.print_error_analysis()

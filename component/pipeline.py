@@ -127,8 +127,8 @@ class Pipeline:
                 completed_chain_outputs = chain.get_outputs()
             completed_chain_names.append(chain.get_name())
 
-            info(f"Default linkage after completion of chain {chain.get_name()}")
-            Bundle.print_linkages(completed_chain_outputs)
+            # info(f"Default linkage after completion of chain {chain.get_name()}")
+            # Bundle.print_linkages(completed_chain_outputs)
 
     def add_chain(self, chain):
         """Add a chain to the pipeline"""

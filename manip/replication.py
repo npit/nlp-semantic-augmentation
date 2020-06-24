@@ -19,6 +19,7 @@ class Replication(Manipulation):
         Manipulation.configure_name(self)
         # add number of replications
         self.name += "_" + str(self.replicate_times)
+        self.set_source_name(self.name)
 
     def run(self):
         self.process_component_inputs()

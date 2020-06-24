@@ -2,16 +2,15 @@ from os import makedirs
 from os.path import dirname
 
 import numpy as np
-from sklearn.model_selection import (KFold, StratifiedKFold,
-                                     StratifiedShuffleSplit)
+from sklearn.model_selection import (KFold, StratifiedKFold, ShuffleSplit, StratifiedShuffleSplit)
+from skmultilearn.model_selection import IterativeStratification, iterative_train_test_split
 
 from bundle.datatypes import Labels, Vectors
 from defs import roles
 from learning.learner import Learner
 from learning.sampling import Sampler
 from learning.validation import ValidationSetting
-from utils import (count_label_occurences, error, info, is_multilabel, tictoc,
-                   write_pickled)
+from utils import (count_label_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot)
 
 
 class SupervisedLearner(Learner):
@@ -39,7 +38,7 @@ class SupervisedLearner(Learner):
             if not (self.validation_exists and self.validation.use_for_testing):
                 error("No test data nor validation setting defined. Cannote evaluate run.")
         # add label-related information to the evaluator
-        self.evaluator.set_labelling(self.train_labels, self.num_labels, self.do_multilabel, self.test_labels)
+        self.evaluator.set_labelling(self.train_labels, self.labelset, self.do_multilabel, self.test_labels)
         if self.validation_exists and self.validation.use_for_testing:
             reference_labels = self.train_labels
         else:
@@ -48,10 +47,15 @@ class SupervisedLearner(Learner):
 
     def check_sanity(self):
         super().check_sanity()
-        # need at least one sample per class
-        zero_samples_idx = np.where(np.sum(self.train_labels, axis=0) == 0)
-        if np.any(zero_samples_idx):
-            error("No training samples for class index {}".format(zero_samples_idx))
+        if not self.do_multilabel:
+            # need at least one sample per class
+            zero_samples_idx = np.where(np.sum(self.train_labels, axis=0) == 0)
+            if np.any(zero_samples_idx):
+                error("No training samples for class index {}".format(zero_samples_idx))
+        else:
+            ok, nosamples = all_labels_have_samples(self.train_labels, self.labelset)
+            if not ok:
+                error(f"No samples for label(s): {nosamples}")
 
     def configure_validation_setting(self):
         self.validation = ValidationSetting(self.folds, self.validation_portion, self.test_data_available(), use_labels=True, do_multilabel=self.do_multilabel)
@@ -71,7 +75,7 @@ class SupervisedLearner(Learner):
     def show_train_statistics(self, train_labels, val_labels):
         msg = "Training label distribution for validation setting: " + self.validation.get_current_descr()
         self.evaluator.show_label_distribution(train_labels, message=msg)
-        if val_labels is not None and val_labels.size > 0:
+        if val_labels is not None and len(val_labels) > 0:
             msg = "Validation label distribution for validation setting: " + self.validation.get_current_descr()
             self.evaluator.show_label_distribution(val_labels, message=msg)
 
@@ -107,26 +111,42 @@ class SupervisedLearner(Learner):
         test_label_index = np.arange(len(self.test_labels)) if not self.validation.use_for_testing else val_idx
         self.evaluator.update_reference_labels(train_idx, test_label_index)
 
+    def stratified_mutltilabel_split(self):
+        stratifier = IterativeStratification(n_splits=2, order=2, sample_distribution_per_fold=[self.validation_portion, 1.0-self.validation_portion])
+        labels = one_hot(self.train_labels, self.num_labels, self.do_multilabel)
+        train_indexes, test_indexes = next(stratifier.split(np.zeros(len(self.train_labels)), labels))
+        return [(train_indexes, test_indexes)]
+        # X_train, y_train = X[train_indexes, :], y[train_indexes, :]
+        # X_test, y_test = X[test_indexes, :], y[test_indexes, :]
+        # return X_train, y_train, X_test, y_test
+
     # produce training / validation splits, with respect to sample indexes
     def compute_trainval_indexes(self):
-
         if self.do_folds:
             # stratified fold splitting
             info("Training {} with input data: {} samples, {} labels, on {} stratified folds"
                 .format(self.name, self.num_train, self.num_train_labels, self.folds))
             # for multilabel K-fold, stratification is not available. Also convert label format.
             if self.do_multilabel:
-                splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
+                # splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
+                splitter = IterativeStratification(self.folds, order=1)
             else:
                 splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
                 # convert to 2D array
                 self.train_labels = np.squeeze(self.train_labels)
 
-        if self.do_validate_portion:
-            info("Splitting {self.name} with input data: {self.num_train} samples, {self.num_train_labels} labels, on a {self.validation_portion} validation portion")
-            splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
+        elif self.do_validate_portion:
+            info(f"Splitting {self.name} with input data: {self.num_train} samples, {self.num_train_labels} labels, on a {self.validation_portion} validation portion")
+            if self.do_multilabel:
+                # splitter = ShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
 
-        # generate. for multilabel K-fold, stratification is not usable
+                # splitter = lambda X, y: iterative_train_test_split(X, y, test_size=self.validation_portion)
+                # iterative_train_test_split(np.zeros(self.num_train_labels), self.train_labels,test_size=self.validation_portion)
+                return self.stratified_mutltilabel_split()
+            else:
+                splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
+
+        # generate splits
         splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
         return splits
 
@@ -135,6 +155,8 @@ class SupervisedLearner(Learner):
         super().process_component_inputs()
         error("{} needs label information.".format(self.component_name), not self.inputs.has_labels())
         self.train_labels = self.inputs.get_labels(enforce_single=True, role=roles.train)
+        self.labelset = self.inputs.get_labels().labelset
+        self.num_labels = len(self.labelset)
         self.test_labels = self.inputs.get_labels(enforce_single=True, role=roles.test)
         if len(self.train_embedding_index) != len(self.train_labels):
             error(f"Supplied train data-label instance number mismatch: {len(self.train_embedding_index)} data and {len(self.train_labels)}")

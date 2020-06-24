@@ -51,6 +51,6 @@ class Configuration:
 
         This omits the logger object, which causes problems to the copying procedure.
         """
-        c = Configuration()
+        c = Configuration(self.conf)
         c.merge_other_config(self)
         return c

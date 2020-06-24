@@ -3,6 +3,7 @@ torch
 keras
 tensorflow
 sklearn
+scikit-multilearn
 gensim
 pytorch_lightning
 transformers
@@ -16,3 +17,4 @@ tqdm
 # ngg
 networkx
 pygraphviz
+statsmodels

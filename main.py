@@ -5,7 +5,7 @@ from config.config_reader import ConfigReader
 from utils import info, num_warnings, tictoc, warning
 
 
-def main(config_file):
+def main(config_file, ignore_undefined=False):
     """The main function
 
     Arguments:
@@ -14,7 +14,7 @@ def main(config_file):
     # # time the entire run
     with tictoc("Total run"):
         # initialize configuration
-        global_config, pipeline = ConfigReader.read_configuration(config_file)
+        global_config, pipeline = ConfigReader.read_configuration(config_file, ignore_undefined)
 
         pipeline.configure_names()
         pipeline.run()
@@ -29,5 +29,6 @@ if __name__ == "__main__":
     # Top-level entrypoint code block
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?")
+    parser.add_argument("--ignore-undefined-keys", help="Ignore undefined keys in the configuration file.", action="store_true", dest="ignore_undefined")
     args = parser.parse_args()
-    main(args.config_file)
+    main(args.config_file, args.ignore_undefined)

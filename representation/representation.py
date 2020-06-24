@@ -147,7 +147,7 @@ class Representation(Serializable):
         self.set_params()
         self.set_name()
         self.check_params()
-        Component.configure_name(self)
+        Component.configure_name(self, self.name)
 
     def run(self):
         self.populate()

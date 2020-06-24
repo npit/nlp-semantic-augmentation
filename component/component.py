@@ -41,9 +41,15 @@ class Component:
         # instantiate output bundle
         self.outputs = Bundle()
 
-    def configure_name(self):
+    def configure_name(self, name=None):
         # set configured name to the output bundle
-        self.outputs.set_source_name(self.component_name)
+        if name is None:
+            self.set_source_name(self.component_name)
+        else:
+            self.set_source_name(name)
+
+    def set_source_name(self, name):
+        self.outputs.set_source_name(name)
 
     def load_inputs(self, data):
         self.inputs = data

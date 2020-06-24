@@ -15,7 +15,7 @@ class Manipulation(Component):
         if type(self.source_name) in [list, tuple]:
             self.source_name = "_".join(self.source_name)
         self.name = "{}_{}".format(self.source_name, self.name)
-        Component.configure_name(self)
+        Component.configure_name(self, self.name)
 
     def process_component_inputs(self):
         # if len(self.inputs) > 1:

@@ -48,6 +48,7 @@ class SemanticResource(Serializable):
         self.handler_functions.insert(0, self.handle_vectorized)
 
     def set_multiple_config_names(self):
+        return
         semantic_names = []
         # + no filtering, if filtered is specified
         filter_vals = [defs.limit.none]
@@ -59,12 +60,11 @@ class SemanticResource(Serializable):
         for w in weight_vals:
             for f in filter_vals:
                 conf = self.config.get_copy()
-                conf.semantic.weights = w
-                conf.semantic.limit = f
+                conf.weights = w
+                conf.limit = f
                 candidate_name = self.generate_name(conf, self.source_name)
                 debug("Semantic config candidate: {}".format(candidate_name))
                 semantic_names.append(candidate_name)
-
         self.multiple_config_names = semantic_names
 
     def __init__(self):
@@ -99,7 +99,7 @@ class SemanticResource(Serializable):
                 error("Embedding information requires the context_embedding semantic disambiguation. It is {} instead.".format(
                     self.disambiguation), condition=self.disambiguation != "context_embedding")
                 self.semantic_document_vectors = self.get_semantic_embeddings()
-            elif self.semantic_weights in [defs.weights.frequencies, defs.weights.tfidf]:
+            elif self.semantic_weights in [defs.weights.bag, defs.weights.tfidf]:
                 # get concept-wise frequencies
                 bagtrain, bagtest = Bag(), Bag()
                 self.semantic_document_vectors = bagtrain.get_dense(self.concept_freqs[0]), bagtest.get_dense(self.concept_freqs[1])
@@ -290,7 +290,7 @@ class SemanticResource(Serializable):
             debug("Skipping mapping text due to vectorized data already loaded.")
             return
         if self.loaded_preprocessed:
-            if self.semantic_weights == defs.weights.frequencies:
+            if self.semantic_weights == defs.weights.bag:
                 debug("Skipping mapping text due to preprocessed data already loaded.")
                 return
             self.process_similar_loaded()
@@ -368,7 +368,7 @@ class SemanticResource(Serializable):
         self.source_name = self.inputs.get_source_name()
         self.set_parameters()
         self.set_name()
-        Component.configure_name(self)
+        Component.configure_name(self, self.name)
 
     def process_component_inputs(self):
         error("{} requires text.".format(self.get_full_name()), not self.inputs.has_text())

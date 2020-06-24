@@ -142,9 +142,27 @@ def is_multilabel(labels):
         pass
     return False
 
+def get_labelset(labels):
+    """Get list of unique labels in the label collection"""
+    labelset = set()
+    iterable_labels = False
+    try:
+        labels[0]
+        iterable_labels = True
+    except:
+        pass
+
+    if iterable_labels:
+        for lbls in labels:
+            labelset.update(lbls)
+    else:
+        for lbl in labels:
+            labelset.add(lbl)
+    return sorted(list(labelset))
+
 
 # function for one-hot encoding, can handle multilabel
-def one_hot(labels, num_labels):
+def one_hot(labels, num_labels, is_multilabel):
     output = np.empty((0, num_labels), np.float32)
     for annot in labels:
         binarized = np.zeros((1, num_labels), np.float32)
@@ -155,6 +173,22 @@ def one_hot(labels, num_labels):
             binarized[0, annot] = 1.0
         output = np.append(output, binarized, axis=0)
     return output
+
+def all_labels_have_samples(labels, labelset):
+    """Checks that at all labels have at least a sample in the label collection"""
+    occurences = {k: 0 for k in labelset}
+    num_labels = len(labels)
+    # manually check
+    idx = 0
+    while not all(occurences.values()) and idx < num_labels:
+        for l in labels[idx]:
+            occurences[l] = 1
+        idx += 1
+    nosamples = []
+    if idx >= num_labels:
+        nosamples = [k for k in occurences if occurences[k] == 0]
+    return idx < num_labels, nosamples
+
 
 
 def is_collection(data):
@@ -248,7 +282,7 @@ def align_index(input_list, reference):
         try:
             iter(l)
             # iterable, recurse
-            res = align_index(l, reference)
+            res = np.asarray(align_index(l, reference), np.int32)
             output.append(res)
         except TypeError:
             output.append(reference.index(l))

@@ -4,7 +4,7 @@ import random
 import numpy as np
 from sklearn.model_selection import StratifiedShuffleSplit
 
-from utils import align_index, debug, error, info, warning
+from utils import align_index, debug, error, info, warning, get_labelset
 
 
 class Sampler:
@@ -34,7 +34,7 @@ class Sampler:
         """Label distribution-aware data limiting"""
         limit_ratio = num_limit / len(data)
         splitter = StratifiedShuffleSplit(1, test_size=limit_ratio)
-        splits = list(splitter.split(np.zeros(len(data)), labels))
+        splits = list(splitter.split(data, labels))
         data = [data[n] for n in splits[0][1]]
         labels = [labels[n] for n in splits[0][1]]
 
@@ -61,7 +61,7 @@ class Sampler:
             labels = np.asarray([labels[i] for i in idxs])
         return data, labels
 
-    def apply_data_limit(self, data, labels=None):
+    def apply_data_limit(self, data, labels=None, multilabel=None):
         lim = self.dlim
         lim = lim + [-1] if len(lim) == 1 else lim
         lim = [x if x >= 0 else None for x in lim]
@@ -71,31 +71,37 @@ class Sampler:
             train_labels, test_labels = labels
         else:
             train_labels, test_labels = None, None
+        labelset = None
         if ltrain:
             if len(train) < ltrain:
                 error("Attempted to data-limit {} train items to {}".format(len(train), ltrain))
             if labels:
-                # use stratification
-                train, train_labels = self.limit_data_stratify(ltrain, train, train_labels)
-                info("Limited loaded data to {} train items.".format(len(train)))
-                error("Inconsistent limiting in train data.", len({ltrain, len(train), len(train_labels)}) != 1)
-            else:
-                warning("Resorting to non-stratified trainset limiting")
-                train, train_labels = self.limit_data_simple(ltrain, train, train_labels)
+                if not multilabel:
+                    # use stratification
+                    train, train_labels = self.limit_data_stratify(ltrain, train, train_labels)
+                    info("Limited loaded data to {} train items.".format(len(train)))
+                    error("Inconsistent limiting in train data.", len({ltrain, len(train), len(train_labels)}) != 1)
+                else:
+                    warning("Resorting to non-stratified trainset limiting")
+                    train, train_labels = self.limit_data_simple(ltrain, train, train_labels)
+                labelset = get_labelset(train_labels)
+                train_labels = align_index(train_labels, labelset)
 
         if ltest and test:
             error("Attempted to data-limit {} test items to {}".format(len(test), ltest), len(test) < ltest)
-            if labels:
-                # use stratification
-                test, test_labels = self.limit_data_stratify(ltest, test, test_labels)
-                info("Limited loaded data to {} test items.".format(len(test)))
-                error("Inconsistent limiting in test data.", len({ltest, len(test), len(test_labels)}) != 1)
-            else:
-                warning("Resorting to non-stratified testset limiting")
-                test, test_labels = self.limit_data_simple(ltest, test, test_labels)
+            if test_labels:
+                if not multilabel:
+                    # use stratification
+                    test, test_labels = self.limit_data_stratify(ltest, test, test_labels)
+                    info("Limited loaded data to {} test items.".format(len(test)))
+                    error("Inconsistent limiting in test data.", len({ltest, len(test), len(test_labels)}) != 1)
+                else:
+                    warning("Resorting to non-stratified testset limiting")
+                    test, test_labels = self.limit_data_simple(ltest, test, test_labels)
+                test_labels = align_index(test_labels, labelset)
         if labels:
-            return (train, test), (train_labels, test_labels)
-        return (train, test), labels
+            return (train, test), (train_labels, test_labels), labelset
+        return (train, test), labels, labelset
 
     def restrict_to_classes(self, data, labels, restrict_classes):
         new_data, new_labels = [], []
@@ -130,8 +136,7 @@ class Sampler:
             train, train_labels = self.restrict_to_classes(train, train_labels, retained_classes)
             test, test_labels = self.restrict_to_classes(test, test_labels, retained_classes)
             num_labels = len(retained_classes)
-            if not num_labels:
-                error("Zero labels after limiting.")
+            error("Zero labels after limiting.", not num_labels)
             # remap retained classes to indexes starting from 0
             train_labels = align_index(train_labels, retained_classes)
             test_labels = align_index(test_labels, retained_classes)
@@ -148,8 +153,9 @@ class Sampler:
         """Apply data and class sub-sampling"""
         if any(l is not None for l in labels) and self.clim is not None:
             data, labels, (labelset, label_names) = self.apply_class_limit(data, labels, labelset, label_names, multilabel)
+
         if self.dlim is not None:
-            data, labels = self.apply_data_limit(data, labels)
+            data, labels, labelset = self.apply_data_limit(data, labels, multilabel)
 
         return data, labels, labelset, label_names
 

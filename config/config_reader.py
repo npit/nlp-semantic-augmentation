@@ -13,14 +13,14 @@ from utils import debug, error
 
 class ConfigReader:
     @staticmethod
-    def read_configuration(conf_file=None):
+    def read_configuration(conf_file=None, ignore_undefined=False):
         """Configuration object constructor
         """
         # read the configuration file
         conf_dict = utils.read_ordered_yaml(conf_file)
 
         # read non-chain configuration
-        global_config = ConfigReader.read_global_configuration(conf_dict)
+        global_config = ConfigReader.read_global_configuration(conf_dict, ignore_undefined)
         # copy configuration to the run folder
         run_config_path = join(global_config.folders.run, os.path.basename(conf_file))
         if not exists(run_config_path):
@@ -33,7 +33,7 @@ class ConfigReader:
         return global_config, pipeline
 
     @staticmethod
-    def read_global_configuration(config_dict):
+    def read_global_configuration(config_dict, ignore_undefined=False):
         """Read global-level configuration (accessible to all components and chains)
         Arguments:
             input_config {dict} -- The configuration
@@ -44,7 +44,10 @@ class ConfigReader:
                 continue
             comp = [g for g in global_component_classes if g.conf_key_name == global_conf_key]
             if len(comp) != 1:
-                error(f"Undefined global configuration component: {global_conf_key}", not comp)
+                if not ignore_undefined:
+                    error(f"Undefined global configuration component: {global_conf_key}", not comp)
+                else:
+                    continue
                 error(f"Multiple global configuration component matches: {global_conf_key}", len(comp) > 1)
             comp = comp[0]
             component_config = comp(comp_conf)

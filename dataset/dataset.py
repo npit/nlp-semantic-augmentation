@@ -159,7 +159,7 @@ class Dataset(Serializable):
 
     def get_info(self):
         """Current data information getter"""
-        return f"{self.name} data: {len(self.train)} train, {len(self.test)} test, {self.num_labels}"
+        return f"{self.name} data: {len(self.train)} train, {len(self.test)} test, {self.num_labels} labels"
 
     def get_raw_path(self):
         error("Need to override raw path datasea getter for {}".format(self.name))
@@ -298,7 +298,7 @@ class Dataset(Serializable):
             if discarded_indexes:
                 warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
                 if self.train_labels is not None:
-                    self.train_labels = [self.train_labels[i] for i in discarded_indexes]
+                    self.train_labels = [self.train_labels[i] for i in range(len(self.train_labels)) if i not in discarded_indexes]
 
             info("Mapping test set to word collections.")
             self.test, _, discarded_indexes = self.preprocess_text_collection(self.test)
@@ -369,7 +369,7 @@ class Dataset(Serializable):
             self.name = self.sampler.get_limited_name(self.name)
         else:
             self.name = Dataset.generate_name(self.config)
-        Component.configure_name(self)
+        Component.configure_name(self, self.name)
 
     def run(self):
         self.populate()
