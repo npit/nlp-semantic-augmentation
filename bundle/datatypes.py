@@ -4,7 +4,7 @@ import numpy as np
 
 import defs
 from defs import avail_roles, roles_compatible
-from utils import error
+from utils import error, data_summary
 
 
 class Datatype:
@@ -37,6 +37,10 @@ class Datatype:
                 res.append(r)
         return res
 
+    def summarize_content(self):
+        data_summary(self, self.name)
+
+
 
 class Text(Datatype):
     name = "text"
@@ -49,17 +53,9 @@ class Text(Datatype):
 
 class Vectors(Datatype):
     name = "vectors"
-    elements_per_instance = None
 
     def __init__(self, vecs, epi=None, roles=None):
         super().__init__(vecs, roles)
-        if epi is None:
-            try:
-                epi = [np.ones(len(x)) for x in self.instances]
-            except:
-                epi = [len(self.instances)]
-        self.elements_per_instance = epi
-
 
 class Labels(Datatype):
     name = "labels"
@@ -74,9 +70,13 @@ class Labels(Datatype):
 
 class Indices(Datatype):
     name = "indices"
+    elements_per_instance = None
 
-    def __init__(self, indices, roles=None):
+    def __init__(self, indices, epi, roles=None):
         super().__init__(indices, roles)
+        if epi is None:
+            epi = [np.ones((len(ind),), np.int32) for ind in indices]
+        self.elements_per_instance = epi 
     def summarize_content(self):
         """Print a summary of the data"""
         return f"{self.name} {len(self.instances)} instances, {self.roles} roles"

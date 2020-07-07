@@ -53,6 +53,8 @@ class Serializable(Component):
     resource_handler_functions = []
     resource_always_load_flag = []
 
+    successfully_loaded_path = None
+
     def __init__(self, dir_name):
         self.serialization_dir = join(self.config.folders.serialization, dir_name)
         self.raw_data_dir = join(self.config.folders.raw_data, dir_name)
@@ -81,6 +83,7 @@ class Serializable(Component):
             # add extras
             self.set_additional_serialization_sources()
             self.set_resources()
+            self.successfully_loaded_path = name
             self.load_single_config_data()
             if self.loaded():
                 info("Loaded {} info by using name: {}".format(self.name, name))
@@ -112,9 +115,9 @@ class Serializable(Component):
         if not exists(self.serialization_dir):
             makedirs(self.serialization_dir, exist_ok=True)
         # raw
-        serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
+        serialization_path = "{}/raw_{}.pkl".format(self.serialization_dir, name)
         # preprocessed
-        serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
+        serialization_path_preprocessed = "{}/{}.preprocessed.pkl".format(self.serialization_dir, name)
         return [serialization_path_preprocessed, serialization_path, raw_path]
 
     def configure_serialization_paths(self):
@@ -126,8 +129,7 @@ class Serializable(Component):
 
     # attemp to load resource from specified paths
     def attempt_load(self, index):
-        path, reader, handler = [x[index] for x in
-                                 [self.data_paths, self.read_functions, self.handler_functions]]
+        path, reader, handler = [x[index] for x in [self.data_paths, self.read_functions, self.handler_functions]]
 
         # either path is None (resource is acquired without one) or it's a file that will be loaded
         if path is None or (exists(path) and isfile(path)):
@@ -137,6 +139,7 @@ class Serializable(Component):
                 # debug("Failed to load {} from path {}".format(self.name, path))
                 return False
             # debug("Reading path {} with func {} and handler {}".format(path, reader, handler))
+            self.successfully_loaded_path = path
             handler(data)
             self.load_flags[index] = True
             return True

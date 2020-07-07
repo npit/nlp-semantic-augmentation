@@ -10,13 +10,20 @@ class Concatenation(Fusion):
     name = "concat"
     axis = 1
 
+    output = None
+
     def __init__(self, config):
         Fusion.__init__(self, config)
 
-    def fuse(self, input_list):
+    def fuse(self, input_vectors):
         try:
-            debug("Concatenating input list {}".format(shapes_list(input_list)))
-            return np.concatenate(input_list, axis=1)
+            debug(f"Concatenating input chunck {input_vectors.shape}")
+            if self.output is None:
+                # output has the same number of instances as the input
+                self.output = input_vectors
+            else:
+                self.output = np.concatenate([self.output, input_vectors], axis=1)
+            return self.output
         except:
             msg = "Error during {} manip.".format(self.name)
             error(msg)

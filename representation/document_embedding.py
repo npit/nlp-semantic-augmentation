@@ -102,4 +102,4 @@ class DocumentEmbedding(Embedding):
 
         train_idx = self.inputs.get_indices(role=defs.roles.train, enforce_single=True)
         test_idx = self.inputs.get_indices(role=defs.roles.test, enforce_single=True)
-        self.dataset_vectors = [train_idx, test_idx]
+        self.vector_indices = [train_idx, test_idx]

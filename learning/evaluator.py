@@ -291,7 +291,7 @@ class Evaluator:
         # expected column structure is label1 label2 ... labelN microavg macroavg weightedavg
         cr = pd.DataFrame.from_dict(metrics.classification_report(gt, preds, output_dict=True))
         # get classwise, micro, macro, weighted, defaulting non-precited classes to zero values
-        cw = np.zeros(num_labels, np.float32)
+        cw = [0] * num_labels
         for class_index in self.labelset:
             cw[class_index] = cr[str(class_index)][measure]
         res = [cw]
@@ -337,7 +337,7 @@ class Evaluator:
             gt = self.get_current_reference_labels()
         cm = metrics.confusion_matrix(gt, preds)
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        return cm.diagonal()
+        return cm.diagonal().tolist()
 
     def print_performance(self, run_type, measure, aggr=None):
         """performance printing function, checking respective settings and inputs for wether to print"""
@@ -356,9 +356,13 @@ class Evaluator:
     def merge_and_show_test_label_distributions(self):
         """Merge (e.g. for kfold testing) and show the test label distribution"""
         # average test label distributions
-        overall_distro = self.test_label_distributions.pop(0)
-        for dist in self.test_label_distributions:
-            overall_distro.update(dist)
+        overall_distro = self.test_label_distributions[0]
+        overall_distro = Counter(dict(overall_distro))
+        for dist in self.test_label_distributions[1:]:
+            overall_distro.update(dict(dist))
+
+        # back to list of tuples
+        overall_distro = sorted(overall_distro.items(), key=lambda x: x[1], reverse=True)
         self.show_label_distribution(overall_distro, "Test label (average) distribution", distribution_input=True)
 
     # print performance across folds and compute foldwise aggregations
@@ -401,14 +405,17 @@ class Evaluator:
         if write_folder is not None:
             # write the results in csv in the results directory
             # entries in a run_type - measure configuration list are the foldwise scores, followed by the mean
+            # write results in json and pkl
             write_dict = {k: v for (k, v) in self.performance.items()}
-            write_dict["error_analysis"] = self.error_analysis
-            write_dict["confusion_matrices"] = self.confusion_matrices
-            df = pd.DataFrame.from_dict(write_dict)
-            df.to_csv(join(write_folder, "results.txt"))
-            with open(join(write_folder, "results.pickle"), "wb") as f:
-                pickle.dump({"results": df, "error_analysis": self.error_analysis, "confusion_matrix": self.confusion_matrices}, f)
-            # write label distributions
+            with open(join(write_folder, "results.json"), "w") as f:
+                json.dump(write_dict, f, indent=2)
+            with open(join(write_folder, "results.pkl"), "wb") as f:
+                pickle.dump(write_dict, f)
+            # write misc
+            with open(join(write_folder, "error_analysis.pkl"), "wb") as f:
+                pickle.dump(self.error_analysis, f)
+            with open(join(write_folder, "confusion_matrices.pkl"), "wb") as f:
+                pickle.dump(self.confusion_matrices, f)
             with open(join(write_folder, "label_distributions.json"), "w") as f:
                 json.dump(self.all_label_distributions, f)
 
@@ -445,7 +452,6 @@ class Evaluator:
         # sanity
         if self.num_labels != preds_proba.shape[-1]:
             error("Attempted to evaluated {}-dimensional predictions against {} labels".format(preds_proba.shape[-1], self.num_labels))
-
 
         if self.do_multilabel:
             onehot_gt = one_hot(self.get_current_reference_labels(), self.num_labels, self.do_multilabel)
@@ -582,13 +588,16 @@ class Evaluator:
     # compute statistics across folds
     def calc_fold_score_stats(self, container):
         # set foldwise scores to an nparray
-        container["folds"] = np.asarray(container["folds"])
         for key, func in [("mean", np.mean), ("var", np.var), ("std", np.std)]:
-            container[key] = func(container["folds"], axis=0)
+            value = func(np.asarray(container["folds"]), axis=0)
+            if type(value) is np.ndarray:
+                value = value.tolist()
+            container[key] = value
         return container
 
     # get a printable format of evaluation
     def get_score_stats_string(self, container):
+        """Convert scores to a nice printable format"""
         scores_str = []
         for stat in self.preferred_fold_aggregations:
             scores_str.append(numeric_to_string(container[stat], self.print_precision))
@@ -652,7 +661,7 @@ class Evaluator:
                     if "classwise" in self.performance[run_type][measure]:
                         scores_cw = self.performance[run_type][measure]['classwise']['folds']
                         # average accross folds
-                        scores_cw = sum(scores_cw) / len(scores_cw)
+                        scores_cw = sum(np.asarray(x) for x in scores_cw) / len(scores_cw)
                         # rank
                         ranked_scores_idxs = sorted(list(zip(scores_cw, list(range(len(scores_cw))))), key=lambda x: x[0], reverse=True)
                         res["labels"][run_type][measure] = ranked_scores_idxs

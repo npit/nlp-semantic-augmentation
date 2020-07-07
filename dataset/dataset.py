@@ -16,7 +16,7 @@ from dataset.sampling import Sampler
 from semantic.wordnet import Wordnet
 from serializable import Serializable
 from utils import (error, flatten, info, nltk_download, tictoc, warning,
-                   write_pickled)
+                   write_pickled, set_constant_epi)
 
 
 class Dataset(Serializable):
@@ -356,7 +356,9 @@ class Dataset(Serializable):
         """Set text data to the output bundle"""
         self.outputs.set_text(Text((self.train, self.test), self.vocabulary, roles=self.roles))
         self.outputs.set_labels(Labels((self.train_labels, self.test_labels), self.labelset, self.multilabel, roles=self.roles))
-        idxs = Indices(indices=(np.arange(len(self.train)), np.arange(len(self.test))), roles=self.roles)
+        indices = (np.arange(len(self.train)), np.arange(len(self.test)))
+        epi = [set_constant_epi(ind) for ind in indices]
+        idxs = Indices(indices=indices, epi=epi, roles=self.roles)
         self.outputs.set_indices(idxs)
 
     def load_inputs(self, inputs):

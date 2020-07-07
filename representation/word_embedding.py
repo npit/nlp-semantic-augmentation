@@ -20,7 +20,7 @@ class WordEmbedding(Embedding):
 
     # expected raw data path
     def get_raw_path(self):
-        return "{}/{}_dim{}.pickle".format(self.raw_data_dir, self.base_name, self.dimension)
+        return "{}/{}_dim{}.pkl".format(self.raw_data_dir, self.base_name, self.dimension)
 
     def map_text_partial_load(self):
         # iterate over files. match existing words
@@ -57,7 +57,7 @@ class WordEmbedding(Embedding):
                     pbar.update()
                     self.elements_per_instance[dset_idx].append(len(word_info_list))
             word_stats.print_word_stats()
-            self.dataset_vectors[dset_idx] = np.repeat(self.get_zero_pad_element(), current_num_words, axis=0)
+            self.vector_indices[dset_idx] = np.repeat(self.get_zero_pad_element(), current_num_words, axis=0)
             self.elements_per_instance[dset_idx] = np.asarray(self.elements_per_instance[dset_idx], np.int32)
 
         # get the embedding indexes words are mapped to
@@ -82,7 +82,7 @@ class WordEmbedding(Embedding):
                     batch_vocab_index = vocab_index - batch_size * chunk_index
                     vector = chunk.iloc[batch_vocab_index].values
                     for dset_idx, global_word_idx in vocab_to_dataset[vocab_index]:
-                        self.dataset_vectors[dset_idx][global_word_idx] = vector
+                        self.vector_indices[dset_idx][global_word_idx] = vector
                 pbar.set_description(desc="Chunk {}/{}".format(chunk_index + 1, num_chunks))
                 pbar.update()
 
@@ -110,7 +110,7 @@ class WordEmbedding(Embedding):
             return
         info("Mapping to {} word embeddings.".format(self.name))
 
-        self.dataset_vectors = [[], []]
+        self.vector_indices = [[], []]
         self.indices = [[], []]
         self.elements_per_instance = [[], []]
         self.present_words = set()
@@ -168,14 +168,14 @@ class WordEmbedding(Embedding):
 
                     # just save indices
                     doc_indices = np.asarray(doc_indices, np.int32)
-                    self.dataset_vectors[dset_idx].append(doc_indices)
+                    self.vector_indices[dset_idx].append(doc_indices)
                     self.elements_per_instance[dset_idx].append(len(doc_indices))
                     pbar.update()
 
             word_stats.print_word_stats()
             self.elements_per_instance[dset_idx] = np.asarray(self.elements_per_instance[dset_idx], np.int32)
 
-        self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.asarray(list(range(len(self.embeddings.index)))))
+        self.vector_indices, new_embedding_index = realign_embedding_index(self.vector_indices, np.asarray(list(range(len(self.embeddings.index)))))
         self.embeddings = self.embeddings.iloc[new_embedding_index].values
         # write
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))

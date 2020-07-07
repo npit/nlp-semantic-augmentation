@@ -4,6 +4,8 @@ import tqdm
 import numpy as np
 from scipy.sparse import csr_matrix
 
+import defs
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 class Bag:
     term_list = None
@@ -241,6 +243,13 @@ class TFIDF(Bag):
         # apply IDF
         self.idf_normalize()
 
+    @staticmethod
+    def idf_normalize_dense(instance_counts, global_counts):
+        global_counts_vector = np.asarray([global_counts[k] for k in sorted(global_counts)], dtype=np.float32)
+        # make a vector wrt. term list order
+        instance_counts = instance_counts / global_counts_vector
+        return instance_counts
+
     def idf_normalize(self, input_data=None):
         with tictoc("TFIDF normalization"):
             if input_data is not None:
@@ -250,3 +259,11 @@ class TFIDF(Bag):
             for indexes in zip(*self.sparse.nonzero()):
                 # last index supposed to be the term list index
                 self.sparse[indexes] /= self.global_weights[indexes[-1]]
+                
+def get_bag_class(name):
+    if name == defs.avail_weights[0]:
+        return Bag
+    if name == defs.avail_weights[1]:
+        return TFIDF
+    error(f"Undefined weights: {name}")
+    

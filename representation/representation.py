@@ -4,7 +4,7 @@ import defs
 from bundle.datatypes import Indices, Text, Vectors
 from component.component import Component
 from serializable import Serializable
-from utils import debug, error, info, shapes_list
+from utils import debug, error, info, shapes_list, set_constant_epi
 
 
 class Representation(Serializable):
@@ -13,9 +13,9 @@ class Representation(Serializable):
     compatible_aggregations = []
     compatible_sequence_lengths = []
     sequence_length = 1
-    dataset_vectors = None
+    vector_indices = None
 
-    data_names = ["dataset_vectors", "elements_per_instance", "embeddings"]
+    data_names = ["vector_indices", "elements_per_instance", "embeddings"]
 
     @staticmethod
     def get_available():
@@ -47,20 +47,20 @@ class Representation(Serializable):
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.dataset_vectors, self.elements_per_instance, self.embeddings = [preprocessed[n] for n in Representation.data_names]
-        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.dataset_vectors)))
+        self.vector_indices, self.elements_per_instance, self.embeddings = [preprocessed[n] for n in Representation.data_names]
+        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.vector_indices)))
 
     # add exra representations-specific serialization paths
     def set_additional_serialization_sources(self):
         # compute names
         aggr = "".join(list(map(str, [self.config.aggregation] + [self.sequence_length])))
-        self.serialization_path_aggregated = "{}/{}.aggregated_{}.pickle".format(self.serialization_dir, self.name, aggr)
+        self.serialization_path_aggregated = "{}/{}.aggregated_{}.pkl".format(self.serialization_dir, self.name, aggr)
         self.add_serialization_source(self.serialization_path_aggregated, handler=self.handle_aggregated)
 
     def handle_aggregated(self, data):
         self.handle_preprocessed(data)
         self.loaded_aggregated = True
-        debug("Read aggregated embeddings shapes: {}, {}".format(*shapes_list(self.dataset_vectors)))
+        debug("Read aggregated embeddings shapes: {}, {}".format(*shapes_list(self.vector_indices)))
 
     def handle_raw(self, raw_data):
         pass
@@ -79,7 +79,7 @@ class Representation(Serializable):
         return np.zeros((1, self.dimension), np.float32)
 
     def get_data(self):
-        return self.dataset_vectors
+        return self.vector_indices
 
     def get_name(self):
         return self.name
@@ -88,7 +88,7 @@ class Representation(Serializable):
         return self.dimension
 
     def get_vectors(self):
-        return self.dataset_vectors
+        return self.vector_indices
 
     def get_elements_per_instance(self):
         return self.elements_per_instance
@@ -124,13 +124,13 @@ class Representation(Serializable):
 
     def set_constant_elements_per_instance(self, num=1):
         """Function to assign single-element (default) instances"""
-        if not self.dataset_vectors:
+        if not self.vector_indices:
             error("Attempted to set constant epi before computing dataset vectors.")
-        self.elements_per_instance = [np.asarray([num for _ in ds], np.int32) for ds in self.dataset_vectors]
+        self.elements_per_instance = [set_constant_epi(ds) for ds in self.vector_indices]
 
     def set_identity_indexes(self, data):
         """Function to assign unique indexes to data"""
-        self.dataset_vectors = [np.arange(len(d)) for d in data]
+        self.vector_indices = [np.arange(len(d)) for d in data]
 
     # data getter for semantic processing
     def process_data_for_semantic_processing(self, train, test):
@@ -154,7 +154,7 @@ class Representation(Serializable):
         self.process_component_inputs()
         self.map_text()
         self.outputs.set_vectors(Vectors(vecs=self.embeddings))
-        self.outputs.set_indices(Indices(self.dataset_vectors, roles=self.inputs.get_indices().roles))
+        self.outputs.set_indices(Indices(indices=self.vector_indices, epi=self.elements_per_instance, roles=self.inputs.get_indices().roles))
 
     def process_component_inputs(self):
         if self.loaded_aggregated or self.loaded_preprocessed:

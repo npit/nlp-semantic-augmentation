@@ -2,7 +2,7 @@
 """
 from bundle.datatypes import Labels, Text, Vectors
 from defs import datatypes
-from utils import data_summary, debug, error, info
+from utils import data_summary, debug, error, info, warning
 
 
 class Bundle:
@@ -33,6 +33,20 @@ class Bundle:
     def get_fallback_linkage(self):
         return self.active_linkage
 
+    def get_linkage_bundles(self, linkage_name):
+        return self.get_via_condition(lambda x: linkage_name in x.linkage, linkage_name=Bundle.default_linkage)
+
+    def find_linkage_list_head(self, linkage_name):
+        all_bundles = self.get_linkage_bundles(linkage_name)
+        error(f"No bundles of linkage {linkage_name} found!", not all_bundles)
+        candidate_heads = [x for x in all_bundles]
+        for b in all_bundles:
+            other_bundle = b.linkage[linkage_name]
+            if other_bundle is not None:
+                candidate_heads.remove(other_bundle)
+        error(f"No single head for linkage {linkage_name} found.", len(candidate_heads) != 1)
+        return candidate_heads[0]
+
     @staticmethod
     def print_linkages(bundle, linkage_name=None, visited_bundles=None, print_indent=""):
         if linkage_name is None:
@@ -60,7 +74,10 @@ class Bundle:
         candidate_heads[0].print_linkage_sequence(linkage_name)
 
     def print_linkage_sequence(self, linkage_name=None):
-        info(f"Linkage {linkage_name}")
+        if linkage_name not in self.linkage:
+            warning(f"No linkage: {linkage_name}")
+            return
+        info(f"Linkage wrt: {linkage_name}:")
         if linkage_name is None:
             linkage_name = self.get_fallback_linkage()
         curr = self
@@ -126,24 +143,20 @@ class Bundle:
         self.active_linkage = self.default_linkage
         self.linkage = {}
         if vectors is not None:
-            self.content_dict["vectors"] = vectors
-            self.vectors = vectors
+            self.set_vectors(vectors)
         if labels is not None:
-            self.content_dict["labels"] = labels
-            self.labels = labels
+            self.set_labels(labels)
         if text is not None:
-            self.content_dict["text"] = text
-            self.text = text
+            self.set_text(text)
         if indices is not None:
-            self.content_dict["indices"] = indices
-            self.indices = indices
-
+            self.set_indices(indices)
 
     def remove_fulfilled_demand(self, chain, component):
         """Delete unneeded data
         chain: the chain that just used the bundle
         component: the component that just used the bundle
         """
+        debug(f"Demand now is: {self.demand}")
         debug("Removing demand {}-{} from bundle {}".format(chain, component, self.get_full_name()))
         error("Attempted to clear data after run of non-registered chain {}".format(chain), chain not in self.demand)
         error("Attempted to clear data after run of non-registered component {} of chain {}. Registered components are {}.".format(
@@ -167,10 +180,6 @@ class Bundle:
 
     def set_demand(self, chain_name, component_name):
         """Update the bundle with a requesting component"""
-        # add a dummy linkage to the chain, with no next bundle
-        # if chain_name in self.linkage:
-        #     error("Attempted to add a dummy linkage but a linkage to the chain exists!")
-        # self.linkage[chain_name] = None
         # mark the chain / component demand
         if chain_name not in self.demand:
             self.demand[chain_name] = []
@@ -196,16 +205,12 @@ class Bundle:
         msg += f"Bundle: source chain: {self.chain_name}, component {self.source_name}"
         debug(msg)
         if self.vectors is not None:
-            print()
             data_summary(self.vectors, msg="vectors")
         if self.labels is not None:
-            print()
             data_summary(self.labels, msg="labels")
         if self.text is not None:
-            print()
             data_summary(self.text, msg="text")
         if self.indices is not None:
-            print()
             data_summary(self.indices, msg="text")
         if do_propagate:
             # move along the chain
@@ -405,15 +410,19 @@ class Bundle:
     # region: setters
     def set_text(self, text):
         self.text = text
+        self.content_dict["text"] = text
 
     def set_vectors(self, vectors):
+        self.content_dict["vectors"] = vectors
         self.vectors = vectors
 
     def set_labels(self, labels):
         self.labels = labels
+        self.content_dict["labels"] = labels
 
     def set_indices(self, indices):
         self.indices = indices
+        self.content_dict["indices"] = indices
 
     def set_source_name(self, name):
         self.source_name = name

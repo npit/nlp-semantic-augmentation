@@ -128,7 +128,7 @@ class Learner(Component):
     def get_existing_predictions(self):
         path = self.validation.modify_suffix(
             join(self.results_folder, "{}".format(
-                self.name))) + ".predictions.pickle"
+                self.name))) + ".predictions.pkl"
         return read_pickled(path) if exists(path) else (None, None)
 
     def get_existing_trainval_indexes(self):
@@ -260,7 +260,7 @@ class Learner(Component):
         if self.do_folds and self.config.print.folds:
             self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)
         # write fold predictions
-        predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pickle"
+        predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pkl"
         write_pickled(predictions_file, [predictions, self.test_instance_indexes])
 
     def conclude_traintest(self):
@@ -277,7 +277,7 @@ class Learner(Component):
             join(self.results_folder, "models", "{}".format(self.name))) + ".model"
 
     def get_trainval_serialization_file(self):
-        sampling_suffix = "{}.trainvalidx.pickle".format(
+        sampling_suffix = "{}.trainvalidx.pkl".format(
             "" if not self.do_sampling else "{}_{}".
             format(self.sampling_method, "_".
                    join(map(str, self.sampling_ratios))))

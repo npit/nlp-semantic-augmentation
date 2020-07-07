@@ -32,6 +32,9 @@ def realign_embedding_index(data_indexes, all_indexes):
         debug("Realignment reduced embedding matrix from {} to {} elements.".format(len(all_indexes), len(new_indexes)))
     return data_indexes, new_indexes
 
+def set_constant_epi(collection):
+    """Function to assign single-element (default) instances"""
+    return np.ones((len(collection),), np.int32)
 
 def match_labels_to_instances(elements_per_instance, labels):
     """Expand, if needed, ground truth samples for multi-vector instances

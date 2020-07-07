@@ -2,11 +2,12 @@ from os import makedirs
 from os.path import dirname, exists, join
 
 import defs
+import numpy as np
 from bundle.bundle import Bundle
-from bundle.datatypes import Text, Vectors
+from bundle.datatypes import Text, Vectors, Indices
 from component.component import Component
 from defs import is_none
-from representation.bag import TFIDF, Bag
+from representation.bag import TFIDF, Bag, get_bag_class
 from serializable import Serializable
 from utils import (debug, error, info, read_pickled, shapes_list, tictoc,
                    warning, write_pickled)
@@ -29,6 +30,9 @@ class SemanticResource(Serializable):
 
     reference_concepts = None
 
+    semantic_vector_indices = None
+    semantic_epi = None
+
     disambiguation = None
     pos_tag_mapping = {}
     representation = None
@@ -36,6 +40,7 @@ class SemanticResource(Serializable):
     do_cache = True
 
     data_names = ["concept_weights", "global_weights", "reference_concepts"]
+    data_names_vectorized = ["semantic_vectors", "semantic_vector_indices", "elements_per_instance"]
 
     @staticmethod
     def get_available():
@@ -86,6 +91,9 @@ class SemanticResource(Serializable):
     def get_vectors(self):
         return self.semantic_document_vectors
 
+    def get_semantic_embeddings(self):
+        return None
+
     def generate_vectors(self):
         if self.loaded_vectorized:
             debug("Skipping generating sem. vectors, since loaded vectorized data already.")
@@ -101,12 +109,26 @@ class SemanticResource(Serializable):
                 self.semantic_document_vectors = self.get_semantic_embeddings()
             elif self.semantic_weights in [defs.weights.bag, defs.weights.tfidf]:
                 # get concept-wise frequencies
-                bagtrain, bagtest = Bag(), Bag()
-                self.semantic_document_vectors = bagtrain.get_dense(self.concept_freqs[0]), bagtest.get_dense(self.concept_freqs[1])
+                # just use the bag class to extract dense
+                bagtrain= Bag()
+                # train
+                self.semantic_document_vectors = bagtrain.get_dense(self.concept_freqs[0])
+                self.semantic_vector_indices = [np.arange(len(self.semantic_document_vectors))]
+                # test
+                if self.concept_freqs[1].shape[0] > 0:
+                    bagtest = Bag()
+                    test_features = bagtest.get_dense(self.concept_freqs[1])
+                    self.semantic_document_vectors = np.append(self.semantic_document_vectors, test_features, axis=0)
+                    self.semantic_vector_indices.append(np.arange(len(test_features), len(self.semantic_document_vectors)))
+                else:
+                    self.semantic_vector_indices.append(np.arange(0))
             else:
                 error("Unimplemented semantic vector method: {}.".format(self.semantic_weights))
 
-            write_pickled(self.serialization_path_vectorized, [self.semantic_document_vectors, self.concept_order])
+
+
+            self.semantic_epi = [np.ones((len(ind),), np.int32) for ind in self.semantic_vector_indices]
+            write_pickled(self.serialization_path_vectorized, self.get_all_vectorized())
 
     # function to get a concept from a word, using the wordnet api
     # and a local word cache. Updates concept frequencies as well.
@@ -155,12 +177,18 @@ class SemanticResource(Serializable):
 
     # vectorized data handler
     def handle_vectorized(self, data):
-        self.semantic_document_vectors, self.concept_order = data
-        self.loaded_preprocessed = True
-        self.loaded_vectorized = True
-        debug("Read vectorized concept docs shapes: {}, {} and concept order: {}".format(*shapes_list(self.semantic_document_vectors), len(self.concept_order)))
+        self.semantic_document_vectors, self.semantic_vector_indices, self.semantic_epi = \
+         [data[k] for k in self.data_names_vectorized]
+        self.loaded_preprocessed, self.loaded_vectorized = True, True
+        debug(f"Read vectorized concept docs shape: {self.semantic_document_vectors.shape}, and epi: {shapes_list(self.semantic_epi)}")
 
     # preprocessed data getter
+    def get_all_vectorized(self):
+        return {k: v for (k,v) in zip(
+            self.data_names_vectorized,
+            [self.semantic_document_vectors, self.semantic_vector_indices, self.semantic_epi])
+            }
+
     def get_all_preprocessed(self):
         return {"concept_weights": self.concept_freqs, "global_weights": self.global_freqs,
                 "reference_concepts": self.reference_concepts}
@@ -226,10 +254,10 @@ class SemanticResource(Serializable):
             error("Undefined disambiguation method: " + self.disambiguation)
 
     def get_cache_path(self):
-        return join(self.config.folders.raw_data, self.dir_name, self.base_name + ".cache.pickle")
+        return join(self.config.folders.raw_data, self.dir_name, self.base_name + ".cache.pkl")
 
     def get_hypernym_cache_path(self):
-        return join(self.config.folders.raw_data, self.dir_name, self.base_name + ".hypernym.cache.pickle")
+        return join(self.config.folders.raw_data, self.dir_name, self.base_name + ".hypernym.cache.pkl")
 
     # read existing resource-wise serialized semantic cache from previous runs to speedup resolving
     def load_semantic_cache(self):
@@ -299,10 +327,8 @@ class SemanticResource(Serializable):
         self.initialize_lookup()
 
         # compute bag from scratch
-        if self.semantic_weights == defs.weights.tfidf:
-            self.bag_train, self.bag_test = TFIDF(), TFIDF()
-        else:
-            self.bag_train, self.bag_test = Bag(), Bag()
+        bag_class = get_bag_class(self.semantic_weights)
+        self.bag_train, self.bag_test =  bag_class(), bag_class()
 
         # read the semantic resource input-concept cache , if it exists
         self.load_semantic_cache()
@@ -363,6 +389,7 @@ class SemanticResource(Serializable):
         self.map_text()
         self.generate_vectors()
         self.outputs.set_vectors(Vectors(vecs=self.semantic_document_vectors))
+        self.outputs.set_indices(Indices(indices=self.semantic_vector_indices, epi=self.semantic_epi))
 
     def configure_name(self):
         self.source_name = self.inputs.get_source_name()

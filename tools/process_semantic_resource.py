@@ -101,17 +101,17 @@ def mine_wordnet_examples_definitions():
     word_freqs(examples_def_per_synset)
 
     # write results
-    outfile = "wordnet_synset_examples.pickle"
+    outfile = "wordnet_synset_examples.pkl"
     print("Writing to {}".format(outfile))
     with open(outfile, "wb") as f:
         pickle.dump(examples_per_synset, f)
 
     print("Writing to {}".format(outfile))
-    outfile = "wordnet_synset_examples_definitions.pickle"
+    outfile = "wordnet_synset_examples_definitions.pkl"
     with open(outfile, "wb") as f:
         pickle.dump(examples_def_per_synset, f)
 
-    outfile = "wordnet_synset_definitions.pickle"
+    outfile = "wordnet_synset_definitions.pkl"
     print("Writing to {}".format(outfile))
     with open(outfile, "wb") as f:
         pickle.dump(def_per_synset, f)

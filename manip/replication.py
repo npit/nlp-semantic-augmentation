@@ -13,13 +13,16 @@ class Replication(Manipulation):
 
     def __init__(self, config):
         Manipulation.__init__(self)
-        self.replicate_times = config.manip.times
+        self.replicate_times = config.times
 
     def configure_name(self):
         Manipulation.configure_name(self)
         # add number of replications
         self.name += "_" + str(self.replicate_times)
         self.set_source_name(self.name)
+
+    def fuse():
+        return None
 
     def run(self):
         self.process_component_inputs()

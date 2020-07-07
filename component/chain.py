@@ -53,6 +53,7 @@ class Chain(Component):
         info("-------------------")
         info("{} chain [{}]".format("Running", self.name))
         info("-------------------")
+        # chain inputs
         data_bundle = self.inputs 
 
         # if self.get_required_finished_chains():
@@ -66,9 +67,13 @@ class Chain(Component):
             info("||| Running component {}/{} : type: {} - name: {}".format(c + 1, self.num_components, component.get_component_name(), component.get_name()))
             if data_bundle is not None:
                 data_bundle.set_active_linkage(self.get_name())
+                info(f"Active data bundle linkage: {data_bundle.active_linkage}")
+                # data_bundle = data_bundle.find_head_with_linkage(data_bundle.active_linkage)
+                # data_bundle.print_linkage_sequence(data_bundle.active_linkage)
+                data_bundle = data_bundle.find_linkage_list_head(data_bundle.active_linkage)
+                component.load_inputs(data_bundle)
             # if data_bundle is not None:
             #     data_bundle.summarize_content("Passing bundle(s) to component [{}]".format(component.get_name()))
-            # component.load_inputs(data_bundle)
             component.run()
             # check if input needs deletion now
             if data_bundle is not None:

@@ -62,12 +62,14 @@ class Pipeline:
                 continue
 
             data_bundle = None
+            # make all finished chains available as potential inputs
             chain.load_inputs(completed_chain_outputs)
             if required_input_chains:
                 # the first component requires an input from another chain -- check if it's loaded
                 error("Chain [{}] requires input(s), but none are available.".format(chain.get_name()), chain.inputs is None)
                 data_bundle = chain.inputs.make_request_bundlelist_by_chain_names(chain_names=required_input_chains, client_name=chain.get_name())
             for c, component in enumerate(chain.components):
+                # # get appropriate head bundle
                 component.load_inputs(data_bundle)
                 # configure names
                 component.configure_name()

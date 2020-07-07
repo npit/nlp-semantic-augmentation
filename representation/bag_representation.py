@@ -87,14 +87,15 @@ class BagRepresentation(Representation):
         return None
 
     def get_all_preprocessed(self):
-        return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance,
-                "term_list": self.term_list, "embeddings": self.embeddings}
+        return {"vector_indices": self.vector_indices, "elements_per_instance": self.elements_per_instance,
+                "term_list": self.term_list, "embeddings": self.embeddings, "global_weights": self.global_weights}
 
     # sparse to dense
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         # intead of undefined word index, get the term list
+        self.global_weights = preprocessed["global_weights"]
         self.term_list = preprocessed["term_list"]
         super().handle_preprocessed(preprocessed)
         # set misc required variables
@@ -104,18 +105,12 @@ class BagRepresentation(Representation):
         self.handle_preprocessed()
         self.loaded_aggregated = True
         # peek vector dimension
-        data_dim = len(self.dataset_vectors[0][0])
+        data_dim = len(self.vector_indices[0][0])
         if self.dimension is not None:
             if self.dimension != data_dim:
                 error("Configuration for {} set to dimension {} but read {} from data.".format(self.name, self.dimension, data_dim))
         self.dimension = data_dim
 
-    # def accomodate_dimension_change(self):
-    #     self.set_params()
-    #     # the superclass method above reads the dimension from the config -- set from the Bag field
-    #     self.set_name()
-    #     self.set_serialization_params()
-    #     self.set_additional_serialization_sources()
 
     def map_text(self):
         if self.loaded_aggregated:
@@ -151,6 +146,7 @@ class BagRepresentation(Representation):
         if self.do_limit:
             self.bag_train.set_term_filtering(self.limit_type, self.limit_number)
         self.bag_train.map_collection(train)
+        self.global_weights = self.bag_train.global_weights
         
         if self.do_limit:
             self.term_list = self.bag_train.get_term_list()
@@ -165,7 +161,7 @@ class BagRepresentation(Representation):
         self.bag_test.set_term_list(self.term_list)
         self.bag_test.map_collection(test)
 
-        self.dataset_vectors = (np.arange(len(train)), np.arange(len(test)))
+        self.vector_indices = (np.arange(len(train)), np.arange(len(test)))
 
         # set misc required variables
         self.set_constant_elements_per_instance()
@@ -192,3 +188,10 @@ class TFIDFRepresentation(BagRepresentation):
     # nothing to load, can be computed on the fly
     def fetch_raw(self, path):
         pass
+
+    def handle_preprocessed(self, preprocessed):
+        super().handle_preprocessed(preprocessed)
+        file_loaded_from = basename(self.successfully_loaded_path)
+        if file_loaded_from.startswith(BagRepresentation.name):
+            # apply IDF normalization
+            self.embeddings = TFIDF.idf_normalize_dense(self.embeddings, self.global_weights)

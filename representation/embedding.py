@@ -11,7 +11,7 @@ from utils import (debug, error, get_shape, info, realign_embedding_index,
 class Embedding(Representation):
     name = ""
     words = []
-    dataset_vectors = None
+    vector_indices = None
     embeddings = None
     words_to_numeric_idx = None
     dimension = None
@@ -33,7 +33,7 @@ class Embedding(Representation):
         #     info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
 
     def get_all_preprocessed(self):
-        return {"dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance, "undefined_element_index": self.undefined_element_index, "embeddings": self.embeddings}
+        return {"vector_indices": self.vector_indices, "elements_per_instance": self.elements_per_instance, "undefined_element_index": self.undefined_element_index, "embeddings": self.embeddings}
 
     # endregion
 
@@ -101,16 +101,15 @@ class Embedding(Representation):
 
 
 
-        for dset_idx in range(len(self.dataset_vectors)):
-            # aggregated_dataset_vectors = np.ndarray((0, self.dimension), np.float32)
+        for dset_idx in range(len(self.vector_indices)):
             aggregated_indices = []
-            info("Aggregating embedding vectors for collection {}/{}".format(dset_idx + 1, len(self.dataset_vectors)))
+            info("Aggregating embedding vectors for collection {}/{}".format(dset_idx + 1, len(self.vector_indices)))
 
 
             new_numel_per_instance = []
             curr_idx = 0
-            for inst_idx, curr_instance in enumerate(self.dataset_vectors[dset_idx]):
-                curr_instance = self.dataset_vectors[dset_idx][inst_idx]
+            for inst_idx, curr_instance in enumerate(self.vector_indices[dset_idx]):
+                curr_instance = self.vector_indices[dset_idx][inst_idx]
 
                 # average aggregation to a single vector
                 if self.aggregation == "avg":
@@ -142,26 +141,25 @@ class Embedding(Representation):
                 else:
                     error("Undefined aggregation: {}".format(self.aggregation))
 
-                # aggregated_dataset_vectors = np.append(aggregated_dataset_vectors, curr_instance, axis=0)
                 aggregated_indices.append(curr_instance)
 
                 # curr_idx += inst_len
             # update the dataset vector collection and dimension
-            self.dataset_vectors[dset_idx] = aggregated_indices
+            self.vector_indices[dset_idx] = aggregated_indices
             # update the elements per instance
             self.elements_per_instance[dset_idx] = np.asarray(new_numel_per_instance, np.int32)
 
             # report stats
             if self.aggregation == "pad":
-                info("Truncated {:.3f}% and padded {:.3f} % items.".format(*[x / len(self.dataset_vectors[dset_idx]) * 100 for x in aggregation_stats]))
+                info("Truncated {:.3f}% and padded {:.3f} % items.".format(*[x / len(self.vector_indices[dset_idx]) * 100 for x in aggregation_stats]))
 
         if new_embedding_matrix.size > 0:
             self.embeddings = new_embedding_matrix
-        self.dataset_vectors, new_embedding_index = realign_embedding_index(self.dataset_vectors, np.arange(len(self.embeddings)))
+        self.vector_indices, new_embedding_index = realign_embedding_index(self.vector_indices, np.arange(len(self.embeddings)))
         self.embeddings = self.embeddings[new_embedding_index]
         # flatten dataset vectors
-        self.dataset_vectors = [np.concatenate(x) if x else np.ndarray((0,), np.int32) for x in self.dataset_vectors]
-        info("Aggregated shapes, indices: {}, matrix: {}".format(shapes_list(self.dataset_vectors), self.embeddings.shape))
+        self.vector_indices = [np.concatenate(x) if x else np.ndarray((0,), np.int32) for x in self.vector_indices]
+        info("Aggregated shapes, indices: {}, matrix: {}".format(shapes_list(self.vector_indices), self.embeddings.shape))
 
     # shortcut for reading configuration values
     def set_params(self):

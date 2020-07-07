@@ -10,7 +10,6 @@ def make_def(name):
     avail_list = eval("avail_" + name)
     return to_namedtuple(ntname=name, conf_dict={k: k if k != "avail" else avail_list for k in avail_list + ["avail"]})
 
-
 avail_aggregation = ["pad", "avg"]
 avail_sequence_length = ["unit", "non_unit"]
 avail_weights = ["bag", "tfidf"]

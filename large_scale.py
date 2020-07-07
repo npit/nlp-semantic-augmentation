@@ -384,38 +384,36 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
                     sendmail(email, passw, "an error occurred")
                 exit(1)
         # read experiment results
-        exp_res_file = join(experiment_dir, "results", "results.pickle")
+        exp_res_file = join(experiment_dir, "results", "results.pkl")
         with open(exp_res_file, "rb") as f:
-            res_data = pickle.load(f)["results"]
+            res_data = pickle.load(f)
         results[run_id] = res_data
         result_paths[run_id] = exp_res_file
 
     # messages = []
     total_results = {}
+ 
     # show results
     for stat in stat_functions:
-        print("Results regarding {} statistic:".format(stat))
+        info("Results regarding {} statistic:".format(stat))
         print_vals = {}
         for run_id in results:
             print_vals[run_id] = {}
             for m in eval_measures:
                 for run in run_types:
                     for ag in aggr_measures:
-                        if ag not in results[run_id].loc[m][run]:
-                            # messages.append("Run {}: Aggregation {} incompatible with measure {}.".format(run_id, ag, m))
+                        try:
+                            results[run_id][run][m][ag]
+                        except KeyError:
                             continue
                         header = "{}.{}.{}.{}".format(run[:3], m[:3], ag[:3],
                                                       stat)
-                        if stat == "var":
-                            val = round(results[run_id].loc[m][run][ag]["var"],
-                                        decimals=4)
-                        elif stat == "mean":
-                            val = round(
-                                results[run_id].loc[m][run][ag]["mean"],
-                                decimals=4)
-                        elif stat == "std":
-                            val = round(results[run_id].loc[m][run][ag]["std"],
-                                        decimals=4)
+
+                        if stat in "var mean std".split():
+                            val = results[run_id][run][m][ag][stat]
+                        if val is None:
+                            continue
+                        val = round(val, decimals=4)
                         print_vals[run_id][header] = val
         # print'em
         info("SCORES:")

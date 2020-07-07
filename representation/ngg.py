@@ -92,4 +92,4 @@ class NGG(Representation):
 
     def get_all_preprocessed(self):
         """Preprocessed data getter"""
-        return {"embeddings": self.embeddings, "dataset_vectors": self.dataset_vectors, "elements_per_instance": self.elements_per_instance}
+        return {"embeddings": self.embeddings, "vector_indices": self.vector_indices, "elements_per_instance": self.elements_per_instance}

@@ -169,14 +169,13 @@ class Transform(Serializable):
                     .format(self.input_name, expected_name))
 
             self.input_vectors = self.inputs.get(vectors_bundle_index).get_vectors().instances
-            self.train_epi = self.inputs.get(vectors_bundle_index).get_vectors().elements_per_instance
+            self.train_epi = self.inputs.get(vectors_bundle_index).get_indices().elements_per_instance
             error(f"{self.get_full_name()} is supervised and needs label information.", not self.inputs.has_labels())
             self.train_labels = self.inputs.get_labels(enforce_single=True, roles=roles.train)
         else:
             error("{} is not supervised but got an input bundle list, instead of a single bundle."
                 .format(self.get_full_name()), len(self.inputs) <= 1)
             self.input_vectors = self.inputs.get_vectors().instances
-            self.elements_per_instance = self.inputs.get_vectors().elements_per_instance
 
         # indexes
         self.train_index = self.inputs.get_indices(role=roles.train)
@@ -186,5 +185,5 @@ class Transform(Serializable):
         self.input_dimension = self.input_vectors[0].shape[-1]
         self.compute()
         # set the outputs: transformed vectors and identical indices
-        self.outputs.set_vectors(Vectors(vecs=self.vectors, epi=self.elements_per_instance))
+        self.outputs.set_vectors(Vectors(vecs=self.vectors))
         self.outputs.set_indices(self.inputs.get_indices())
