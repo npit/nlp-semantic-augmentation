@@ -95,7 +95,9 @@ class Dataset(Serializable):
             self.loaded_index = self.load_flags.index(True)
         else:
             # if the dataset's limited, check for the full version, else fail
-            error("Failed to acquire dataset", not self.config.has_limit())
+            if not self.config.has_limit():
+                info(f"Dataset {self.name} not pre-defined and provided paths are not loadable/exist:{self.data_paths}")
+                error("Failed to acquire dataset")
             # check for raw dataset. Suspend limit and setup paths
             self.name = Dataset.generate_name(self.config)
             self.set_serialization_params()
@@ -276,7 +278,8 @@ class Dataset(Serializable):
                 if text_words_pos is None:
                     # warning("Text {}/{} preprocessed to an empty list:\n{}".format(i + 1, len(document_list), document_list[i]))
                     discarded_indexes.append(i)
-                    continue
+                    # continue
+                    text_words_pos = []
 
                 ret_words_pos.append(text_words_pos)
                 if track_vocabulary:
@@ -295,17 +298,17 @@ class Dataset(Serializable):
         with tictoc("Preprocessing {}".format(self.name)):
             info("Mapping training set to word collections.")
             self.train, self.vocabulary, discarded_indexes = self.preprocess_text_collection(self.train, track_vocabulary=True)
-            if discarded_indexes:
-                warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
-                if self.train_labels is not None:
-                    self.train_labels = [self.train_labels[i] for i in range(len(self.train_labels)) if i not in discarded_indexes]
+            # if discarded_indexes:
+            #     warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
+            #     if self.train_labels is not None:
+            #         self.train_labels = [self.train_labels[i] for i in range(len(self.train_labels)) if i not in discarded_indexes]
 
             info("Mapping test set to word collections.")
             self.test, _, discarded_indexes = self.preprocess_text_collection(self.test)
-            if discarded_indexes:
-                warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
-                if self.test_labels is not None:
-                    self.test_labels = [self.test_labels[i] for i in discarded_indexes]
+            # if discarded_indexes:
+            #     warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
+            #     if self.test_labels is not None:
+            #         self.test_labels = [self.test_labels[i] for i in discarded_indexes]
             # fix word order and get word indexes
             self.vocabulary = list(self.vocabulary)
             for index, word in enumerate(self.vocabulary):

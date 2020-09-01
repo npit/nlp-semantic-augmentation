@@ -164,7 +164,7 @@ def print_dataframe_results(dict_scores):
     print(ranked.to_string())
 
 
-def main(input_path, only_report=False, force_dir=False, no_config_check=False, restart=False, is_testing_run=False):
+def main(input_path, only_report=False, force_dir=False, no_config_check=False, restart=False, is_testing_run=False, manual_config_tag=None):
     # settable parameters
     ############################################################
 
@@ -325,9 +325,14 @@ def main(input_path, only_report=False, force_dir=False, no_config_check=False, 
     # prelim experiments
     for conf_index, conf in enumerate(configs):
         run_id = conf.id
+        # prepend a configuration id tag, if supplied
+        if manual_config_tag is not None:
+            run_id += manual_config_tag
+            experiment_dir = conf["folders"]["run"] + manual_config_tag
+        else:
+            experiment_dir = conf["folders"]["run"]
         info("Running experimens for configuration {}/{}: {}".format(
             conf_index + 1, len(configs), run_id))
-        experiment_dir = conf["folders"]["run"]
         completed_file = join(experiment_dir, "completed")
         error_file = join(experiment_dir, "error")
         # results to run folders, if not specified otherwise
@@ -499,15 +504,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no-config-check",
         help=
-        "Do not examine that the input configuration matches the one in the experiment directory, if it exists.",
+        "Do not examine that the input configuration matches the one in the experiment directory, if it exists. The input configuration will replace the existing one.",
         action="store_true",
         dest="no_config_check")
 
     parser.add_argument(
         "--restart",
-        help= "Restart the expeirments from scratch, deleting the output experiments directory.",
+        help= "Restart the experiments from scratch, deleting the output experiments directory.",
         action="store_true",
         dest="restart")
 
+    parser.add_argument(
+        "-tag",
+        help= "Manually add a tag to each configuration name generated from the configuration file.",
+        dest="tag")
+
     args = parser.parse_args()
-    main(args.config_file, args.only_report, args.force_dir, args.no_config_check, args.restart)
+
+    main(input_path=args.config_file, only_report=args.only_report, force_dir=args.force_dir,
+        no_config_check=args.no_config_check, restart=args.restart, manual_config_tag=args.tag)

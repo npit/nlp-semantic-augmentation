@@ -129,11 +129,10 @@ class Evaluator:
             else:
                 self.show_label_distribution(self.test_labels, message="Test label distribution")
 
-    def set_labelling(self, train_labels, labelset, num_labels, do_multilabel=False, test_labels=None):
+    def set_labelling(self, train_labels, labelset, do_multilabel=False, test_labels=None):
         """Assign labelling information to the evaluator
 
         :param train_labels: Training label collection
-        :param num_labels: Number of unique labels in the training data
         :param do_multilabel: Wether to run in a multi-label setting
         :param test_labels: Test label collection
 

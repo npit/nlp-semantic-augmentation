@@ -130,6 +130,8 @@ class SupervisedLearner(Learner):
             if self.do_multilabel:
                 # splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
                 splitter = IterativeStratification(self.folds, order=1)
+                oh_labels = one_hot(self.train_labels, self.num_labels, is_multilabel=True)
+                return list(splitter.split(np.zeros(self.num_train_labels), oh_labels))
             else:
                 splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
                 # convert to 2D array
@@ -147,6 +149,7 @@ class SupervisedLearner(Learner):
                 splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
 
         # generate splits
+        import ipdb; ipdb.set_trace()
         splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
         return splits
 

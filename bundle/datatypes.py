@@ -31,9 +31,16 @@ class Datatype:
 
     def get_train_role_indexes(self):
         """Retrieve instance indexes with a training role"""
+        return self.get_role_indexes(defs.roles.train)
+
+    def get_test_role_indexes(self):
+        """Retrieve instance indexes with a testing role"""
+        return self.get_role_indexes(defs.roles.test)
+        
+    def get_role_indexes(self, inp_role):
         res = []
         for r, role in enumerate(self.roles):
-            if role == defs.roles.train:
+            if role == inp_role:
                 res.append(r)
         return res
 
