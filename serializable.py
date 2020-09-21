@@ -1,4 +1,4 @@
-from utils import error, read_pickled, info, debug
+from utils import error, read_pickled, info, debug, write_pickled
 from component.component import Component
 from os.path import exists, isfile, join
 from os import makedirs
@@ -209,3 +209,17 @@ class Serializable(Component):
     def get_all_preprocessed(self):
         error("Need to override preprocessed data getter for {}".format(self.name))
 
+    def get_model(self):
+        error("Need to override model getterr for {}".format(self.name))
+
+    def get_model_path(self):
+        """Get a path of the trained model"""
+        return join(self.config.folders.run, self.name)
+
+    def save_model(self):
+        """Save the serializable model"""
+        write_pickled(self.get_model_path(), self.get_model())
+
+    def load_model(self):
+        """Load the transform model"""
+        return read_pickled(self.get_model_path())

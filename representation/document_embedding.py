@@ -53,14 +53,21 @@ class DocumentEmbedding(Embedding):
         with open("doc2vecmodel.pkl", "wb") as f:
             pickle.dump(model, f)
 
-        return model
+
+        # write the traine document embedding
+        self.save_model()
+        self.model = model
+
+    def get_model():
+        return self.model
 
     def map_text(self):
         if self.loaded_preprocessed or self.loaded_aggregated:
             return
         info("Mapping to {} embeddings.".format(self.name))
         train_words = [wp[0] for doc in self.text_train for wp in doc]
-        d2v = self.fit_doc2vec(train_words, self.labels_train)
+        self.fit_doc2vec(train_words, self.labels_train)
+        d2v = self.get_model()
         self.embeddings = np.ndarray((0, self.dimension), np.float32)
 
         # loop over input text bundles (e.g. train & test)

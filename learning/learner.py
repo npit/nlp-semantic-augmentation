@@ -7,6 +7,7 @@ from sklearn.model_selection import KFold, ShuffleSplit
 
 from bundle.bundle import Bundle
 from bundle.datatypes import Vectors
+# from serializable import Serializable
 from component.component import Component
 from defs import datatypes, roles
 from learning.evaluator import Evaluator
@@ -56,7 +57,7 @@ class Learner(Component):
 
     def read_config_variables(self):
         """Shortcut function for readding a load of config variables"""
-        self.allow_prediction_loading = self.config.misc.allow_prediction_loading
+        self.allow_prediction_loading = self.config.allow_prediction_loading
         self.allow_model_loading = self.config.misc.allow_model_loading
 
         self.sequence_length = self.config.sequence_length
@@ -160,11 +161,6 @@ class Learner(Component):
 
         """
         trainval_idx = None
-        # check whether they can be loaded
-        if self.allow_model_loading:
-            ret = self.get_existing_model_path()
-            if ret:
-                trainval_idx, self.existing_model_paths = ret
         if not trainval_idx:
             if not self.validation_exists:
                 # return all training indexes, no validation
@@ -272,6 +268,9 @@ class Learner(Component):
         # wrap up the current validation iteration
         self.validation.conclude_iteration()
 
+    def get_model_path(self):
+        return self.get_current_model_path()
+
     def get_current_model_path(self):
         return self.validation.modify_suffix(
             join(self.results_folder, "models", "{}".format(self.name))) + ".model"
@@ -315,17 +314,17 @@ class Learner(Component):
         error("Attempted to access abstract learner is_supervised() method")
         return None
 
-    def save_model(self, model):
-        path = self.get_current_model_path()
-        info("Saving model to {}".format(path))
-        write_pickled(path, model)
+    # def save_model(self, model):
+    #     path = self.get_current_model_path()
+    #     info("Saving model to {}".format(path))
+    #     write_pickled(path, model)
 
-    def load_model(self):
-        path = self.get_current_model_path()
-        if not path or not exists(path):
-            return None
-        info("Loading existing learning model from {}".format(path))
-        return read_pickled(self.get_current_model_path())
+    # def load_model(self):
+    #     path = self.get_current_model_path()
+    #     if not path or not exists(path):
+    #         return None
+    #     info("Loading existing learning model from {}".format(path))
+    #     return read_pickled(self.get_current_model_path())
 
     # region: component functions
     def run(self):

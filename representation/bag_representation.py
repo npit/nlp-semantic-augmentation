@@ -111,6 +111,8 @@ class BagRepresentation(Representation):
                 error("Configuration for {} set to dimension {} but read {} from data.".format(self.name, self.dimension, data_dim))
         self.dimension = data_dim
 
+    def get_model(self):
+        return self.term_list
 
     def map_text(self):
         if self.loaded_aggregated:

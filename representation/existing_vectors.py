@@ -46,7 +46,7 @@ class ExistingVectors(Embedding):
         if self.sequence_length * num_total != len(self.vectors):
             error("Loaded {} existing vectors for a seqlen of {} with a dataset of {} and {} train/test (total {}) samples.". \
                   format(len(self.vectors), self.sequence_length, num_train, num_test, num_total))
-        self.vector_indices = [train_idx, test_idx]
+        self.vector_indices = [train_idx, len(train_idx) + test_idx]
         self.set_constant_elements_per_instance(num=self.sequence_length)
         self.embeddings = self.vectors
         # write

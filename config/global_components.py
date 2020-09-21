@@ -45,7 +45,6 @@ class misc_conf(Configuration):
     independent_component = None
     allow_deserialization = None
     allow_model_loading = None
-    allow_prediction_loading = None
 
     def __init__(self, config=None):
         """Constructor for the miscellaneous configuration"""
@@ -90,4 +89,14 @@ class folders_conf(Configuration):
         # set nltk data folder
         nltk.data.path = [nltk_data_path]
 
-global_component_classes = [print_conf, misc_conf, folders_conf]
+class deploy_conf(Configuration):
+    conf_key_name = "deploy"
+    def __init__(self, config=None):
+        """Constructor for the deployment configuration"""
+        if config is None:
+            return
+        super().__init__(config)
+        self.url = self.get_value("url", base=config, default="localhsot")
+        self.port = self.get_value("port", base=config, default="5556")
+
+global_component_classes = [print_conf, misc_conf, folders_conf, deploy_conf]

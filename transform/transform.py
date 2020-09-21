@@ -10,7 +10,7 @@ from component.component import Component
 from defs import roles
 from serializable import Serializable
 from utils import (debug, error, info, match_labels_to_instances, shapes_list,
-                   write_pickled)
+                   write_pickled, read_pickled)
 
 
 class Transform(Serializable):
@@ -50,6 +50,9 @@ class Transform(Serializable):
 
     def get_name(self):
         return self.name
+
+    def get_model(self):
+        return self.transformer
 
     def compute(self):
         """Apply transform on input features"""
@@ -96,7 +99,10 @@ class Transform(Serializable):
         self.term_components = self.get_term_representations()
         self.verify_transformed(self.vectors)
         info(f"Output shape: {self.vectors.shape}")
+        # write the output data
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+        # write the trained transformer model
+        self.save_model()
 
     def get_raw_path(self):
         return None

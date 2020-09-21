@@ -27,7 +27,7 @@ class DNN:
         model_instance.test_index = torch.LongTensor(self.test_index)
 
     def get_current_model_path(self):
-        name = self.name + "_" + self.neural_model.name
+        name = self.name + "_" + self.neural_model_class.name
         return self.validation.modify_suffix(
             join(self.results_folder, "models", "{}".format(name))) + ".model"
 
@@ -56,7 +56,7 @@ class DNN:
     def load_model(self):
         path = self.get_current_model_path()
         # instantiate object
-        self.neural_model = self.build_model()
+        self.build_model()
         # load weights
         self.neural_model.load_state_dict(torch.load(path))
 

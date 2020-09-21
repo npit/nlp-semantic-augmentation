@@ -149,7 +149,6 @@ class SupervisedLearner(Learner):
                 splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
 
         # generate splits
-        import ipdb; ipdb.set_trace()
         splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
         return splits
 

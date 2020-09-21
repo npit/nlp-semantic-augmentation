@@ -37,6 +37,8 @@ class BaseModel(ptl.LightningModule):
         def __init__(self, data, labels=None):
             self.data = data
             self.labels = labels
+            if self.labels is not None:
+                self.labels = torch.LongTensor(self.labels)
 
         def __len__(self):
             return len(self.data)
@@ -140,7 +142,7 @@ class BaseModel(ptl.LightningModule):
         return optim
 
     def account_for_padding(self, logits, y):
-        # account for mismatches produced by padding in the input
+        """ Account for mismatches produced by padding in the input"""
         # => truncate the logits to the ground truth size
         if len(logits) != len(y):
             logits = logits[:len(y)]
@@ -151,7 +153,6 @@ class BaseModel(ptl.LightningModule):
         x, y = batch
         logits = self.forward(x)
         logits = self.account_for_padding(logits, y)
-
         loss = F.cross_entropy(logits, y)
 
         # add logging

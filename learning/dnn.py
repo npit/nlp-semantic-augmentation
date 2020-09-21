@@ -209,7 +209,7 @@ class DNN(Classifier):
             return
         # serialize model
         model_path, weights_path = [
-            self.get_current_model_path() + suff
+            self.get_model_path() + suff
             for suff in (".model", ".weights")
         ]
         with open(model_path, "w") as json_file:
@@ -218,7 +218,7 @@ class DNN(Classifier):
         model.save_weights(weights_path)
 
     def load_model(self):
-        path = self.get_current_model_path()
+        path = self.get_model_path()
         model_path, weights_path = [
             path + suff for suff in (".model", ".weights")
         ]
