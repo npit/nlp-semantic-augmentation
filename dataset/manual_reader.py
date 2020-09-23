@@ -9,6 +9,7 @@ from utils import error
 
 class ManualDatasetReader:
     train_labels, test_labels = None, None
+    train_targets, test_targets = None, None
     train, test  = None, None
     labelset, label_names = None, None
 
@@ -33,7 +34,7 @@ class ManualDatasetReader:
 
         
     """Reader class for reading custom serialized datasets"""
-    def read_instances(self, json_object, data_key="text", labels_key="labels"):
+    def read_instances(self, json_object, data_key="text", labels_key="labels", targets_key="targets"):
         """Read a json object containing text dataset instances
 
         Arguments:
@@ -41,10 +42,14 @@ class ManualDatasetReader:
         Keyword arguments:
             data_key {str} -- The key under which the data is contained (default: "text")
             labels_key {str} -- The key under which the labels is contained (default: "labels")
+            target_key{str} -- The key under which the generic targets are contained (e.g. textual) (default: "target")
 
         """
         data, labels, labelset, max_num_instance_labels, label_names = [], [], set(), 0, []
+        targets = []
+
         is_labelled, is_fully_labelled = False, None
+        has_ground_truth = False
         for instance in json_object:
             # read data
             data.append(instance[data_key])
@@ -64,8 +69,15 @@ class ManualDatasetReader:
                 if is_labelled:
                     labels.append([])
                     is_fully_labelled = False
+            # read other targets
+            if targets_key in instance:
+                has_ground_truth = True
+                # since targets are non-numeric, keep the format as-is without inserting into a list
+                # if type(instance[targets_key]) != list:
+                #     instance[targets_key] = [instance[targets_key]]
+                targets.append(instance[targets_key])
 
-        return data, labels, labelset, label_names, is_labelled, is_fully_labelled, max_num_instance_labels
+        return data, labels, labelset, label_names, is_labelled, is_fully_labelled, max_num_instance_labels, targets
 
     def read_json_dataset(self, path=None, data=None):
         """ Read a JSON-serialized dataset from a folder.
@@ -100,11 +112,11 @@ class ManualDatasetReader:
 
         data = json_data["data"]
         # read training data
-        self.train, train_labels, train_labelset, train_label_names, self.train_is_labelled, self.train_fully_labelled, self.max_num_instance_labels = \
+        self.train, train_labels, train_labelset, train_label_names, self.train_is_labelled, self.train_fully_labelled, self.max_num_instance_labels,  self.train_targets = \
             self.read_instances(data["train"])
 
         try:
-            self.test, test_labels, test_labelset, test_label_names, self.test_is_labelled, self.test_fully_labelled, _ = \
+            self.test, test_labels, test_labelset, test_label_names, self.test_is_labelled, self.test_fully_labelled, _, self.test_targets = \
                 self.read_instances(data["test"])
         except KeyError:
             pass
@@ -114,7 +126,8 @@ class ManualDatasetReader:
         try:
             self.language = json_data["language"]
         except KeyError:
-            self.language = "UNDEFINED"
+            # default to english
+            self.language = "english"
         # process labelling
         if train_labelset:
             # labelsets
@@ -144,9 +157,11 @@ class ManualDatasetReader:
             self.train_labels = [np.asarray(x) for x in train_labels]
             self.test_labels = [np.asarray(x) for x in test_labels]
 
+
     def read_dataset(self, raw_data, format="json"):
         """Read a manual dataset based on the configuration options"""
         # just JSON support for now
         if format == "json":
-            return self.read_json_dataset(data=raw_data)
+            self.read_json_dataset(data=raw_data)
+            return
         error(f"Undefined custom dataset format: {format}")

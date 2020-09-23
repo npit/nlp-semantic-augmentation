@@ -3,26 +3,29 @@ from sklearn.dummy import DummyClassifier as sk_Dummy
 from sklearn.linear_model import LogisticRegression as sk_LogReg
 from sklearn.naive_bayes import GaussianNB as sk_NaiveBayes
 
-from learning.supervised_learner import SupervisedLearner
+from learning.labelled_learner import LabelledLearner
 from utils import (error, ill_defined, one_hot, read_pickled, warning,
                    write_pickled)
 
 
-class Classifier(SupervisedLearner):
+class Classifier(LabelledLearner):
 
     def __init__(self):
         """Generic classifier constructor
         """
-        SupervisedLearner.__init__(self)
+        LabelledLearner.__init__(self)
 
     def make(self):
         # make sure there exist enough labels
-        SupervisedLearner.make(self)
+        LabelledLearner.make(self)
         error("Dataset supplied to classifier has only one label", ill_defined(self.num_labels, cannot_be=1))
 
     def is_supervised(self):
         """All classifiers require label information"""
         return True
+
+    def get_model(self):
+        return self.model
 
 
 class SKLClassifier(Classifier):
@@ -50,9 +53,9 @@ class SKLClassifier(Classifier):
 
     def train_model(self):
         train_data = self.get_data_from_index(self.train_index, self.embeddings)
-        model = self.model(**self.args)
-        model.fit(train_data, np.asarray(self.train_labels).ravel())
-        return model
+        self.model = self.model_class(**self.args)
+        self.model.fit(train_data, np.asarray(self.train_labels).ravel())
+        return self.model
 
     # evaluate a clustering
     def test_model(self, model):
@@ -68,7 +71,7 @@ class NaiveBayes(SKLClassifier):
 
     def __init__(self, config):
         self.config = config
-        self.model = sk_NaiveBayes
+        self.model_class = sk_NaiveBayes
         SKLClassifier.__init__(self)
 
     def make(self):
@@ -81,7 +84,7 @@ class Dummy(SKLClassifier):
 
     def __init__(self, config):
         self.config = config
-        self.model = sk_Dummy
+        self.model_class = sk_Dummy
         SKLClassifier.__init__(self)
 
     def make(self):
@@ -94,7 +97,7 @@ class LogisticRegression(SKLClassifier):
 
     def __init__(self, config):
         self.config = config
-        self.model = sk_LogReg
+        self.model_class = sk_LogReg
         self.args = {"solver": "lbfgs"}
         SKLClassifier.__init__(self)
 

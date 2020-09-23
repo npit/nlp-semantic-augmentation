@@ -203,7 +203,7 @@ class DNN(Classifier):
     def get_model_path(self):
         return self.model_saver.filepath
 
-    def save_model(self, model):
+    def save_model(self):
         if not self.validation.use_for_testing:
             # handled by the model saver callback
             return
@@ -212,10 +212,10 @@ class DNN(Classifier):
             self.get_model_path() + suff
             for suff in (".model", ".weights")
         ]
-        with open(model_path, "w") as json_file:
-            json_file.write(model.to_json())
+        with open(self.model_path, "w") as json_file:
+            json_file.write(self.model.to_json())
         # serialize weights (h5)
-        model.save_weights(weights_path)
+        self.model.save_weights(weights_path)
 
     def load_model(self):
         path = self.get_model_path()
@@ -267,6 +267,7 @@ class MLP(DNN):
                       # self.config.train.optimizer,
                       metrics=['accuracy'])
         model.summary()
+        self.model = model
         return model
 
 

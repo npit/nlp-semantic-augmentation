@@ -18,3 +18,4 @@ tqdm
 networkx
 pygraphviz
 statsmodels
+py-rouge

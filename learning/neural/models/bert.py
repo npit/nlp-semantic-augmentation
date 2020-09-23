@@ -1,10 +1,10 @@
 from learning.neural.base_model import BaseModel
 from transformers import (BertConfig, BertForSequenceClassification, BertModel, BertTokenizer)
-from learning.neural.models.huggingface_model import HuggingfaceModel
+from learning.neural.models.huggingface_classifier import HuggingfaceSequenceClassifier
 import logging
 
 
-class Bert(HuggingfaceModel):
+class Bert(HuggingfaceSequenceClassifier):
     """Class for the BERT language model"""
     name = "bert"
     huggingface_model_class = BertForSequenceClassification

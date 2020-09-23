@@ -5,16 +5,17 @@ import numpy as np
 
 import defs
 from defs import is_none
-from representation.bag import TFIDF, Bag
+from representation.bag import Bag
 from representation.representation import Representation
 from utils import debug, error, info, read_lines, shapes_list, write_pickled
+from bundle.datatypes import Text
 
 
 class BagRepresentation(Representation):
     name = "bag"
-    bag_class = Bag
     term_list = None
     do_limit = None
+    ngram_range = None
 
     data_names = Representation.data_names + ["term_list"]
 
@@ -30,6 +31,8 @@ class BagRepresentation(Representation):
         if not is_none(self.config.limit):
             self.do_limit = True
             self.limit_type, self.limit_number = self.config.limit
+        if self.config.ngram_range is not None:
+            self.ngram_range = self.config.ngram_range
         self.compatible_aggregations = [defs.alias.none]
         self.compatible_sequence_lengths = [defs.sequence_length.unit]
         Representation.set_params(self)
@@ -88,14 +91,13 @@ class BagRepresentation(Representation):
 
     def get_all_preprocessed(self):
         return {"vector_indices": self.vector_indices, "elements_per_instance": self.elements_per_instance,
-                "term_list": self.term_list, "embeddings": self.embeddings, "global_weights": self.global_weights}
+                "term_list": self.term_list, "embeddings": self.embeddings}
 
     # sparse to dense
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
         # intead of undefined word index, get the term list
-        self.global_weights = preprocessed["global_weights"]
         self.term_list = preprocessed["term_list"]
         super().handle_preprocessed(preprocessed)
         # set misc required variables
@@ -115,6 +117,7 @@ class BagRepresentation(Representation):
         return self.term_list
 
     def map_text(self):
+        """Map text to bag representations"""
         if self.loaded_aggregated:
             debug("Skippping {} mapping due to preloading".format(self.base_name))
             return
@@ -128,14 +131,9 @@ class BagRepresentation(Representation):
         else:
             self.dimension = len(self.term_list)
         self.config.dimension = self.dimension
-        # self.accomodate_dimension_change()
-        # info("Renamed representation after bag computation to: {}".format(self.name))
 
         # calc term index mapping
         self.term_index = {term: self.term_list.index(term) for term in self.term_list}
-
-        # if self.dimension is not None and self.dimension != len(self.term_list):
-        #     error("Specified an explicit bag dimension of {} but term list contains {} elements (delete it?).".format(self.dimension, len(self.term_list)))
 
         if self.loaded_preprocessed:
             debug("Skippping {} mapping due to preloading".format(self.base_name))
@@ -143,32 +141,19 @@ class BagRepresentation(Representation):
 
         train, test = self.text
         # train
-        self.bag_train = self.bag_class()
-        self.bag_train.set_term_list(self.term_list)
+        bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range)
         if self.do_limit:
-            self.bag_train.set_term_filtering(self.limit_type, self.limit_number)
-        self.bag_train.map_collection(train)
-        self.global_weights = self.bag_train.global_weights
-        
-        if self.do_limit:
-            self.term_list = self.bag_train.get_term_list()
-            self.term_index = {k: v for (k, v) in self.term_index.items() if k in self.term_list}
+            bagger.set_thresholds(self.limit_type, self.limit_number)
 
-        # # set representation dim and update name
-        # self.dimension = len(self.term_list)
-        # self.accomodate_dimension_change()
+        vec_train = bagger.map_collection(Text.get_strings(train))
+        vec_test = bagger.map_collection(Text.get_strings(test))
 
-        # test
-        self.bag_test = self.bag_class()
-        self.bag_test.set_term_list(self.term_list)
-        self.bag_test.map_collection(test)
+        self.embeddings = np.vstack((vec_train, vec_test))
 
         self.vector_indices = (np.arange(len(train)), np.arange(len(test)))
 
         # set misc required variables
         self.set_constant_elements_per_instance()
-
-        self.embeddings = np.vstack((self.bag_train.get_dense(), self.bag_test.get_dense()))
 
 
         # write mapped data
@@ -179,21 +164,5 @@ class BagRepresentation(Representation):
             with open(self.serialization_path_preprocessed + ".meta", "w") as f:
                 f.write(str(self.dimension))
 
-
 class TFIDFRepresentation(BagRepresentation):
     name = "tfidf"
-    bag_class = TFIDF
-
-    def __init__(self, config):
-        BagRepresentation.__init__(self, config)
-
-    # nothing to load, can be computed on the fly
-    def fetch_raw(self, path):
-        pass
-
-    def handle_preprocessed(self, preprocessed):
-        super().handle_preprocessed(preprocessed)
-        file_loaded_from = basename(self.successfully_loaded_path)
-        if file_loaded_from.startswith(BagRepresentation.name):
-            # apply IDF normalization
-            self.embeddings = TFIDF.idf_normalize_dense(self.embeddings, self.global_weights)

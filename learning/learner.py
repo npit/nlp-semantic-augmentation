@@ -5,9 +5,10 @@ from os.path import dirname, exists, join
 import numpy as np
 from sklearn.model_selection import KFold, ShuffleSplit
 
-from bundle.bundle import Bundle
-from bundle.datatypes import Vectors
-# from serializable import Serializable
+from bundle.bundle import DataPool
+from bundle.datatypes import *
+from bundle.datausages import *
+from serializable import Serializable
 from component.component import Component
 from defs import datatypes, roles
 from learning.evaluator import Evaluator
@@ -21,7 +22,7 @@ Abstract class representing a learning model
 """
 
 
-class Learner(Component):
+class Learner(Serializable):
 
     component_name = "learner"
     name = "learner"
@@ -41,12 +42,12 @@ class Learner(Component):
 
     train_embedding = None
 
+
     def __init__(self, consumes=None):
         """Generic learning constructor
         """
         # initialize evaluation
-        consumes = Vectors.name if consumes is None else consumes
-        Component.__init__(self, consumes=consumes)
+        Serializable.__init__(self, "")
 
     # input preproc
     def process_input(self, data):
@@ -195,7 +196,7 @@ class Learner(Component):
                 model = self.train_model()
                 # create directories
                 makedirs(self.models_folder, exist_ok=True)
-                self.save_model(model)
+                self.save_model()
             else:
                 info("Skipping training due to existing model successfully loaded.")
         return model
@@ -223,19 +224,19 @@ class Learner(Component):
                 self.evaluator.update_reference_data(train_index=self.train_index, test_index=self.test_index)
 
                 # check if the run is completed already and load existing results, if allowed
-                model, predictions = None, None
+                model, loaded_predictions = None, None
                 if self.allow_prediction_loading:
-                    predictions, test_instance_indexes = self.load_existing_predictions()
+                    loaded_predictions, test_instance_indexes = self.load_existing_predictions()
 
                 # train the model
-                if predictions is None:
+                if loaded_predictions is None:
                     model = self.acquire_trained_model()
                 else:
                     info("Skipping training due to existing predictions successfully loaded.")
 
                 # test and evaluate the model
                 with tictoc("Testing run [{}] on {} test data.".format(self.validation.descr, self.num_test)):
-                    self.do_test_evaluate(model, predictions)
+                    self.do_test_evaluate(model, loaded_predictions)
                     model_paths.append(self.get_current_model_path())
 
                 self.conclude_validation_iteration()
@@ -247,17 +248,18 @@ class Learner(Component):
 
     # evaluate a model on the test set
     def do_test_evaluate(self, model, predictions=None):
-        if predictions is None:
+        predictions_were_loaded = predictions is not None
+        if not predictions_were_loaded:
             # evaluate the model
             error("No test data supplied!", len(self.test_index) == 0)
             predictions = self.test_model(model)
-        # get performances
+            # write the predictions and relevant idxs (i.e. if testing on validation)
+            predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pkl"
+            write_pickled(predictions_file, [predictions, self.test_instance_indexes])
+        # get test performances
         self.evaluator.evaluate_learning_run(predictions, self.test_instance_indexes)
         if self.do_folds and self.config.print.folds:
             self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)
-        # write fold predictions
-        predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pkl"
-        write_pickled(predictions_file, [predictions, self.test_instance_indexes])
 
     def conclude_traintest(self):
         """Perform concuding actions for the entire traintest loop"""
@@ -335,26 +337,32 @@ class Learner(Component):
         self.configure_sampling()
         self.check_sanity()
         self.do_traintest()
-        self.outputs.set_vectors(Vectors(vecs=self.evaluator.predictions["run"]))
+        # outputs
+        output = Numeric(self.evaluator.predictions["run"])
+        output = DataPack(output, self.indices, self.name)
+        self.data_pool.add_data(output)
 
     def acquire_embedding_information(self):
         """Get embedding and embedding information"""
         # get data
-        error("Vanilla learner needs at least two-input bundle input list.", len(self.inputs) <= 1)
-        error(f"{self.name} {self.component_name} needs vector information.", not self.inputs.has_vectors())
-        error(f"{self.name} {self.component_name} needs vector information.", not self.inputs.has_indices())
-
-        # get vectors and their indices
-        vectors_bundle = self.inputs.get_vectors(full_search=True, enforce_single=True)
-
-        self.embeddings = vectors_bundle.get_vectors().instances
-        self.train_embedding_index = vectors_bundle.get_indices(role=roles.train, enforce_single=True)
-        # get_train self.inputs.get_indices(single=True, role=roles.train)
-
-        if vectors_bundle.get_indices().has_role(roles.test):
-            self.test_embedding_index = vectors_bundle.get_indices(role=roles.test, enforce_single=True)
+        vectors = self.data_pool.request_data(Numeric.name, Indices.name, self.name)
+        self.embeddings = vectors.data.instances
+        self.indices = vectors.get_usage(Indices.name)
+        self.train_embedding_index = self.indices.get_role_instances(roles.train)
+        if self.indices.has_role(roles.test):
+            self.test_embedding_index = self.indices.get_role_instances(roles.test)
         else:
             self.test_embedding_index = np.ndarray((), np.float32)
+
+
+        # self.embeddings = vectors_bundle.get_vectors().instances
+        # self.train_embedding_index = vectors_bundle.get_indices(role=roles.train, enforce_single=True)
+        # # get_train self.inputs.get_indices(single=True, role=roles.train)
+
+        # if vectors_bundle.get_indices().has_role(roles.test):
+        #     self.test_embedding_index = vectors_bundle.get_indices(role=roles.test, enforce_single=True)
+        # else:
+        #     self.test_embedding_index = np.ndarray((), np.float32)
 
     def process_component_inputs(self):
         """Component processing for input indexes and vectors"""

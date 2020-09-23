@@ -34,20 +34,28 @@ class BaseModel(ptl.LightningModule):
 
     class Dataset:
         """Dataset class to construct the required dataloaders"""
-        def __init__(self, data, labels=None):
+        def __init__(self, data, gt=None):
             self.data = data
-            self.labels = labels
-            if self.labels is not None:
-                self.labels = torch.LongTensor(self.labels)
+            self.gt = gt
+            if self.gt is not None:
+                self.gt = torch.LongTensor(self.gt)
 
         def __len__(self):
             return len(self.data)
 
         def __getitem__(self, index):
             datum = self.data[index]
-            if self.labels is not None:
-                return datum, self.labels[index]
+            if self.gt is not None:
+                return datum, self.gt[index]
             return datum
+
+    def assign_ground_truth(self, gt):
+        self.train_ground_truth = gt
+
+    def make_predictions(self, inputs):
+        # regular forward
+        return self(inputs)
+
 
     def configure_embedding(self):
         # incorporate embeddings in the neural architecture
@@ -107,13 +115,13 @@ class BaseModel(ptl.LightningModule):
 
     def train_dataloader(self):
         """Preparatory actions for training data"""
-        self.train_dataset = self.make_dataset_from_index(self.train_index, self.train_labels)
+        self.train_dataset = self.make_dataset_from_index(self.train_index, self.ground_truth)
         return DataLoader(self.train_dataset, self.config.train.batch_size, num_workers=6, sampler=RandomSampler(self.train_dataset))
 
     def val_dataloader(self):
         """Preparatory transformation actions for validation data"""
         if self.should_do_validation():
-            self.val_dataset = self.make_dataset_from_index(self.val_index, self.val_labels)
+            self.val_dataset = self.make_dataset_from_index(self.val_index, self.val_ground_truth)
             return DataLoader(self.val_dataset, self.config.train.batch_size, num_workers=6, sampler=RandomSampler(self.val_dataset))
         return None
 
@@ -148,12 +156,16 @@ class BaseModel(ptl.LightningModule):
             logits = logits[:len(y)]
         return logits
 
+    def compute_loss(self, logits, y):
+        """Return a loss estimate for the predictions"""
+        return F.cross_entropy(logits, y)
+
     def training_step(self, batch, batch_idx):
         """Define a single training step"""
         x, y = batch
         logits = self.forward(x)
         logits = self.account_for_padding(logits, y)
-        loss = F.cross_entropy(logits, y)
+        loss = self.compute_loss(logits, y)
 
         # add logging
         logs = {'loss': loss}

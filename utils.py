@@ -129,6 +129,9 @@ def get_type_name(data):
     return type(data).__name__
 
 
+def equal_lengths(*args):
+    return len(set(len(x) for x in args)) == 1
+
 def as_list(x):
     """Convert the input to a single-element list, if it's not a list
     """
@@ -195,7 +198,7 @@ def all_labels_have_samples(labels, labelset):
 
 
 def is_collection(data):
-    return type(data) in [list, dict, OrderedDict, tuple]
+    return type(data) in [list, dict, OrderedDict, tuple, np.ndarray]
 
 
 def single_data_summary(data, data_index, recursion_depth=0):
@@ -348,6 +351,7 @@ def need(condition, msg):
 def error(msg, condition=True):
     if not condition:
         return
+    msg = "ERROR:" + msg
     logger = logging.getLogger()
     logger.error(msg)
     raise Exception(msg)

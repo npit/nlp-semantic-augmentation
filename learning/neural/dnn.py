@@ -1,3 +1,4 @@
+from learning.labelled_learner import LabelledLearner
 from learning.supervised_learner import SupervisedLearner
 from learning.learner import Learner
 from learning.neural.models import instantiator
@@ -16,14 +17,14 @@ class DNN:
         self.neural_model_class = instantiator.get_neural_model_class(self.config.name)
 
     def assign_train_data(self, model_instance):
-        """Transfer input indexes and labels to the nn model"""
+        """Transfer input indexes to the nn model"""
         model_instance.embeddings = self.embeddings
 
         model_instance.train_index = torch.LongTensor(self.train_index)
         model_instance.val_index = torch.LongTensor(self.val_index)
 
     def assign_test_data(self, model_instance):
-        """Transfer input indexes and labels to the nn model"""
+        """Transfer test input indexes to the nn model"""
         model_instance.test_index = torch.LongTensor(self.test_index)
 
     def get_current_model_path(self):
@@ -35,20 +36,24 @@ class DNN:
         """Testing function"""
         model_instance.eval()
         self.assign_test_data(model_instance)
+        # import ipdb; ipdb.set_trace()
         with torch.no_grad():
             predictions = []
             # defer to model's forward function
             for input_batch in model_instance.test_dataloader():
-                batch_predictions = model_instance(input_batch)
+                batch_predictions = model_instance.make_predictions(input_batch)
+                # batch_predictions = model_instance(input_batch)
+                # account for possible batch padding TODO fix
+                batch_predictions = batch_predictions[:len(input_batch)]
                 predictions.append(batch_predictions)
         return np.concatenate(predictions, axis=0)
 
     def build_model(self):
         """Build the model"""
-        self.neural_model = self.neural_model_class(self.config, self.embeddings, output_dim=self.num_labels, working_folder=self.config.folders.results, model_name=self.get_model_instance_name())
+        self.neural_model = self.neural_model_class(self.config, self.embeddings, output_dim=self.get_output_dim(), working_folder=self.config.folders.results, model_name=self.get_model_instance_name())
         print(self.neural_model)
 
-    def save_model(self, model):
+    def save_model(self):
         path = self.get_current_model_path()
         info("Saving model to {}".format(path))
         torch.save(self.neural_model.state_dict(), path)
@@ -83,11 +88,13 @@ class SupervisedDNN(DNN, SupervisedLearner):
         SupervisedLearner.__init__(self)
 
     def assign_train_data(self, model_instance):
-        """Transfer input indexes and labels to the nn model"""
+        """Transfer input indexes and ground truth to the nn model"""
+        # base DNN for insance indexes
         super(SupervisedDNN, self).assign_train_data(model_instance)
-        # also labels
-        model_instance.train_labels = self.train_labels
-        model_instance.val_labels = self.val_labels
+        # also ground truth
+        model_instance.assign_ground_truth(self.get_ground_truth())
+        # model_instance.train_labels = self.train_labels
+        # model_instance.val_labels = self.val_labels
 
     def train_model(self):
         """Training function"""
@@ -100,9 +107,16 @@ class SupervisedDNN(DNN, SupervisedLearner):
     def get_model(self):
         """Baseline model instantiation"""
         # instantiate the model
-        self.neural_model = self.neural_model_class(self.config, self.num_labels, self.embeddings.shape[-1])
+        self.neural_model = self.neural_model_class(self.config, self.get_ground_truth_info(), self.embeddings.shape[-1])
         self.neural_model.configure_embedding(len(self.embeddings), self.embeddings.shape[-1])
 
+class LabelledDNN(SupervisedDNN):
+    def __init__(self):
+        SupervisedDNN.__init(self)
+    def get_ground_truth_info():
+        return self.get_output_dim()
+    def get_output_dim():
+        return self.num_labels
 
 class UnsupervisedDNN(DNN, Learner):
     """A supervised deep neural network"""

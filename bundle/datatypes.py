@@ -1,89 +1,86 @@
 """Module defining bundle datatypes"""
 
 import numpy as np
+from numbers import Number
+from collections import OrderedDict
 
 import defs
 from defs import avail_roles, roles_compatible
-from utils import error, data_summary
+from utils import error, data_summary, is_collection
 
 
 class Datatype:
+    """Abstract class for a data type"""
+    # whether the data should be used for training or testing
     roles = None
+    # whether the data should be treaded as data or ground truth
+
+    # variable for the distinct data units
     instances = None
-    def __init__(self, instances, roles=None):
-        if roles is not None:
-            error(f"Undefined role(s): {roles}", any(x not in avail_roles for x in roles))
-            error(f"Mismatch role / instances lengths: {len(roles)} {len(instances)}", len(roles) != len(instances))
-        self.roles = roles
+    def __init__(self, instances):
         self.instances = instances
 
-    def get_instance_index(self, idx):
-        llen = len(self.instances)
-        if llen <= idx:
-            error(f"Requested index {idx} from {self.name} datatype which has only (llen)")
-        return self.instances[idx]
+    # def get_instance_index(self, idx):
+    #     llen = len(self.instances)
+    #     if llen <= idx:
+    #         error(f"Requested index {idx} from {self.name} datatype which has only (llen)")
+    #     return self.instances[idx]
 
-    def has_role(self, role):
-        """Checks for the existence of a role"""
-        if not self.roles:
-            return False
-        return role in self.roles
+    # def has_role(self, role):
+    #     """Checks for the existence of a role in the avail. instances"""
+    #     if not self.roles:
+    #         return False
+    #     return role in self.roles
 
-    def get_train_role_indexes(self):
-        """Retrieve instance indexes with a training role"""
-        return self.get_role_indexes(defs.roles.train)
+    # def get_train_role_indexes(self):
+    #     """Retrieve instance indexes with a training role"""
+    #     return self.get_role_indexes(defs.roles.train)
 
-    def get_test_role_indexes(self):
-        """Retrieve instance indexes with a testing role"""
-        return self.get_role_indexes(defs.roles.test)
+    # def get_test_role_indexes(self):
+    #     """Retrieve instance indexes with a testing role"""
+    #     return self.get_role_indexes(defs.roles.test)
         
-    def get_role_indexes(self, inp_role):
-        res = []
-        for r, role in enumerate(self.roles):
-            if role == inp_role:
-                res.append(r)
-        return res
+    # def get_role_indexes(self, inp_role):
+    #     res = []
+    #     for r, role in enumerate(self.roles):
+    #         if role == inp_role:
+    #             res.append(r)
+    #     return res
 
-    def summarize_content(self):
-        data_summary(self, self.name)
+    # def summarize_content(self):
+    #     data_summary(self, self.name)
 
 
 
 class Text(Datatype):
+    """Textual data"""
     name = "text"
     vocabulary = None
 
-    def __init__(self, inst, vocab=None, roles=None):
-        super().__init__(inst, roles)
+    def __init__(self, inst, vocab=None):
+        super().__init__(inst)
         self.vocabulary = vocab
 
+    @staticmethod
+    def get_strings(data):
+        """Get text from the dataset outputs"""
+        return [" ".join(item["words"]) for item in data]
 
-class Vectors(Datatype):
-    name = "vectors"
-
-    def __init__(self, vecs, epi=None, roles=None):
-        super().__init__(vecs, roles)
-
-class Labels(Datatype):
-    name = "labels"
-    labelset = None
-    is_multilabel = None
-
-    def __init__(self, labels, labelset, multilabel, roles=None):
-        super().__init__(labels, roles)
-        self.labelset = labelset
-        self.multilabel = multilabel
+class Numeric(Datatype):
+    name = "numeric"
+    def __init__(self, inst):
+        super().__init__(inst)
 
 
-class Indices(Datatype):
-    name = "indices"
-    elements_per_instance = None
-
-    def __init__(self, indices, epi, roles=None):
-        super().__init__(indices, roles)
-        if epi is None:
-            epi = [np.ones((len(ind),), np.int32) for ind in indices]
-        self.elements_per_instance = epi 
-    def summarize_content(self):
-        """Print a summary of the data"""
-        return f"{self.name} {len(self.instances)} instances, {self.roles} roles"
+def get_data_class(inputs):
+    # text info dict
+    if type(inputs) in [dict, OrderedDict] and "words" in inputs:
+        return Text
+    if is_collection(inputs[0]):
+        return get_data_class(inputs[0])
+    if type(inputs[0]) in (str, np.str_):
+        return Text
+    elif isinstance(inputs[0], Number) or type(inputs[0]) is np.ndarray:
+        return Numeric
+    else:
+        error(f"Unsupported type of data: {inputs[0]}")

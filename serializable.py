@@ -210,7 +210,7 @@ class Serializable(Component):
         error("Need to override preprocessed data getter for {}".format(self.name))
 
     def get_model(self):
-        error("Need to override model getterr for {}".format(self.name))
+        error("Need to override model getter for {}".format(self.name))
 
     def get_model_path(self):
         """Get a path of the trained model"""

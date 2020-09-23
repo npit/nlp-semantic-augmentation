@@ -3,9 +3,11 @@ from learning.neural.dnn import SupervisedDNN
 import defs
 from utils import error, info, one_hot
 import numpy as np
+from bundle.datatypes import *
+from bundle.datausages import *
 
 
-class SupervisedNeuralLanguageModel(SupervisedDNN):
+class NeuralLanguageModel(SupervisedDNN):
     """Class to implement a neural language model that ingests text sequences"""
 
     def __init__(self):
@@ -18,21 +20,30 @@ class SupervisedNeuralLanguageModel(SupervisedDNN):
         """In language models, the neural model is already built to generate embeddings from text"""
         pass
 
-
     def acquire_embedding_information(self):
         """Embedding acquisition for language models"""
         # produce input token embeddings from input text instead;
         # initialize the model
-        self.configure_language_model(self.inputs.get_labels().labelset)
-        # check existence
-        error(f"{self.name} requires input texts", not self.inputs.has_text())
+        info("Preparing the language model.")
+        self.configure_language_model()
+
+        # read necessary inputs
+        self.fetch_language_model_inputs()
+
         # produce embeddings and/or masks
+        info("Tokenizing LM textual input data to tokens")
         self.map_text()
 
-    def encode_text(self, text):
-        """Encode text into a sequence of tokens"""
-        # return self.model.encode_text(text)
-        return self.encode_text(text)
+    def fetch_language_model_inputs(self):
+        # read input texts
+        texts = self.data_pool.request_data(Text, Indices, usage_matching="subset", usage_exclude=GroundTruth, client=self.name)
+        self.text = texts.data
+        self.indices = texts.get_usage(Indices.name)
+
+    # def encode_text(self, text):
+    #     """Encode text into a sequence of tokens"""
+    #     # return self.model.encode_text(text)
+    #     return self.encode_text(text)
 
     def map_text(self):
         """Process input text into tokenized elements"""
@@ -43,34 +54,31 @@ class SupervisedNeuralLanguageModel(SupervisedDNN):
         except TypeError:
             error(f"Need to set a sequence length for {self.name}")
 
-        self.embeddings = np.empty((0, self.sequence_length))
-        self.masks = np.empty((0, self.sequence_length))
+        self.embeddings, self.masks, self.train_embedding_index, self.test_embedding_index = \
+             self.map_text_collection(self.text, self.indices)
 
-        self.test_embedding_index = np.ndarray((0,), np.int32)
-        self.train_embedding_index = np.ndarray((0,), np.int32)
-
-        texts = self.inputs.get_text()
+    def map_text_collection(self, texts, indices):
+        """Encode a collection of texts into tokens, masks and train/test indexes"""
+        train_index, test_index = [], []
+        tokens, masks = [], []
         for i in range(len(texts.instances)):
-            role = texts.roles[i]
-            text = texts.instances[i]
-            info(f"Feeding {role} text to the language model for tokenization.")
+            texts_instance = texts.instances[i]
+            role = indices.roles[i]
+            for doc_data in texts_instance:
+                words = doc_data["words"]
+                text = " ".join(words)
+                toks, mask = self.encode_text(text)
+                tokens.append(toks)
+                masks.append(mask)
+
+            idxs = list(range(len(texts_instance)))
             if role == defs.roles.train:
-                self.train_embedding_index = np.append(self.train_embedding_index, np.arange(len(text)))
+                train_index.extend([x + len(tokens) for x in idxs])
             elif role == defs.roles.test:
-                self.test_embedding_index = np.append(self.test_embedding_index, np.arange(len(text)))
+                test_index.extend([x + len(tokens) for x in idxs])
 
-            # text has to be non-tokenized
-            # input_ids = torch.tensor(tokenizer.encode(txt, add_special_tokens=True)).unsqueeze(0)  # Batch size 1
-            text = [" ".join([wpos[0] for wpos in doc]) for doc in text]
-            for txt in text:
-                ids, mask = self.encode_text(txt)
-                # # ids = torch.tensor(self.tokenizer.encode(txt, add_special_tokens=True).unsqueeze(0))
-                # sizediff = ids.shape[-1] - self.sequence_length
-                # if sizediff > 0:
-                #     ids = ids[:, :self.sequence_length]
-                # elif sizediff < 0:
-                #     ids = np.append(ids, np.zeros((1, -sizediff)), axis=1)
-                self.embeddings = np.append(self.embeddings, ids, axis=0)
-                self.masks = np.append(self.masks, mask, axis=0)
-
-        info(f"{self.name} mapped text to input tokens")
+        tokens = np.concatenate(tokens)
+        masks = np.concatenate(masks)
+        train_index = np.asarray(train_index, dtype=np.long)
+        test_index = np.asarray(test_index, dtype=np.long)
+        return tokens, masks, train_index, test_index

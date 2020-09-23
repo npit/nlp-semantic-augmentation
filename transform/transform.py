@@ -4,8 +4,9 @@ This module provides methods that transform existing representations into others
 
 import numpy as np
 
-from bundle.bundle import Bundle
-from bundle.datatypes import Indices, Labels, Vectors
+from bundle.bundle import DataPool
+from bundle.datatypes import *
+from bundle.datausages import *
 from component.component import Component
 from defs import roles
 from serializable import Serializable
@@ -28,14 +29,16 @@ class Transform(Serializable):
     is_supervised = False
     term_components = None
 
+    produces=Numeric.name
+    consumes=Numeric.name
+
     @staticmethod
     def get_available():
         return [cls.base_name for cls in Transform.__subclasses__()]
 
     def __init__(self, config):
-        Component.__init__(self, produces=Vectors.name, consumes=Vectors.name)
         if self.is_supervised:
-            self.consumes = [Vectors.name, Labels.name]
+            self.consumes = [Numeric.name, Labels.name]
         self.name = self.base_name
         self.config = config
         self.dimension = config.dimension
@@ -191,5 +194,5 @@ class Transform(Serializable):
         self.input_dimension = self.input_vectors[0].shape[-1]
         self.compute()
         # set the outputs: transformed vectors and identical indices
-        self.outputs.set_vectors(Vectors(vecs=self.vectors))
+        self.outputs.set_vectors(Numeric(vecs=self.vectors))
         self.outputs.set_indices(self.inputs.get_indices())

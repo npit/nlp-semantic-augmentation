@@ -25,7 +25,8 @@ class Clusterer(Learner):
     def is_supervised(self):
         """All clusterers don't require label information"""
         return False
-
+    def get_model(self):
+        return self.model
 
 class KMeansClusterer(Clusterer):
     name = "kmeans"
@@ -45,14 +46,14 @@ class KMeansClusterer(Clusterer):
     def train_model(self):
         # define the model
         train_data = self.get_data_from_index(self.train_index, self.embeddings)
-        model = KMeans(self.num_clusters)
+        self.model = KMeans(self.num_clusters)
         # train the damn thing!
         debug("Feeding the network train shapes: {}".format(train_data.shape))
         if self.val_index is not None and self.val_index.size > 0:
             val_data = self.get_data_from_index(self.val_index, self.embeddings)
             debug("Using validation shapes: {}".format(val_data.shape))
-        model.fit(train_data)
-        return model
+        self.model.fit(train_data)
+        return self.model
 
     # evaluate a clustering
     def test_model(self, model):

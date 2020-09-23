@@ -1,4 +1,4 @@
-from bundle.datatypes import Vectors
+from bundle.datatypes import Numeric
 import numpy as np
 from utils import info, error
 
@@ -34,8 +34,8 @@ class Replication(Manipulation):
             vec = np.reshape(np.tile(vec, (1, self.replicate_times)), (-1, vec.shape[-1]))
             info(msg + " {}".format(vec.shape))
             self.vectors[v] = vec
-        self.outputs.set_vectors(Vectors(vecs=self.vectors, epi=[np.ones(len(vec), np.int32) * self.replicate_times for vec in self.vectors]))
-        self.outputs.set_source_name(self.name)
+        self.outputs.set_vectors(Numeric(vecs=self.vectors, epi=[np.ones(len(vec), np.int32) * self.replicate_times for vec in self.vectors]))
+        # self.outputs.set_source_name(self.name)
 
     # def process_component_inputs(self):
     #     # input is a bundle

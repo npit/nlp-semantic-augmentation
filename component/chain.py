@@ -2,6 +2,7 @@ import defs
 from component import instantiator
 from component.component import Component
 from utils import debug, error, info
+from bundle.bundle import DataPool
 
 
 class Chain(Component):
@@ -35,54 +36,39 @@ class Chain(Component):
             debug("Created chain {} component {}/{}: {}".format(name, idx + 1, self.num_components, str(self.components[-1])))
         # info("Created chain with {} components.".format(self.num_components))
 
-    def backtrack_output_demand(self, chain_name, component_name, consumes):
-        """Marks backwards the requirements of the chain's output"""
-        debug("Backtracking needs of chain {} (first:{}) to chain {}".format(chain_name, component_name, self.name))
-        cons = [x for x in consumes]
-        for comp in reversed(self.components):
-            # comp.add_output_demand(chain_name, component_name)
-            comp.add_output_demand(chain_name, component_name)
-            overlap = [x for x in comp.produces if x in consumes]
-            cons = [c for c in cons if c not in overlap]
-            debug("Component {} covers {}need {}".format(comp.get_full_name(), "final" if not cons else "", overlap))
-            if not cons:
-                break
+    # def backtrack_output_demand(self, requesting_chain_name, requesting_component_name, consumes, data_pool):
+    #     """Marks backwards the requirements of the chain's output"""
+    #     debug("Backtracking needs of chain {} (first:{}) to chain {}".format(chain_name, component_name, self.name))
+    #     cons = [x for x in consumes]
+    #     # start with the last component
+    #     for comp in reversed(self.components):
 
-    def run(self):
+    #         data_pool.set_demand(chain_name, component_name)
+    #     self.outputs.set_demand(chain_name, component_name)
+
+    #         comp.add_output_demand(chain_name, component_name)
+    #         overlap = [x for x in comp.produces if x in consumes]
+    #         cons = [c for c in cons if c not in overlap]
+    #         debug("Component {} covers {}need {}".format(comp.get_full_name(), "final" if not cons else "", overlap))
+    #         if not cons:
+    #             break
+
+    def run(self, data_pool):
         """Runs the chain"""
         info("-------------------")
         info("{} chain [{}]".format("Running", self.name))
         info("-------------------")
-        # chain inputs
-        data_bundle = self.inputs 
 
-        # if self.get_required_finished_chains():
-        #     # the chain requires the output of other chains
-        #     error("Chain [{}] requires input(s), but none are available.".format(self.get_name()), self.inputs is None)
-        #     data_bundle = self.inputs.get_request_bundlelist(self.get_name())
-        #     print(type(data_bundle))
-
+        data_pool.on_chain_start(self.get_name())
         # iterate the chain components
         for c, component in enumerate(self.components):
             info("||| Running component {}/{} : type: {} - name: {}".format(c + 1, self.num_components, component.get_component_name(), component.get_name()))
-            if data_bundle is not None:
-                data_bundle.set_active_linkage(self.get_name())
-                info(f"Active data bundle linkage: {data_bundle.active_linkage}")
-                # data_bundle = data_bundle.find_head_with_linkage(data_bundle.active_linkage)
-                # data_bundle.print_linkage_sequence(data_bundle.active_linkage)
-                data_bundle = data_bundle.find_linkage_list_head(data_bundle.active_linkage)
-                component.load_inputs(data_bundle)
-            # if data_bundle is not None:
-            #     data_bundle.summarize_content("Passing bundle(s) to component [{}]".format(component.get_name()))
+            component.assign_data_pool(data_pool)
             component.run()
-            # check if input needs deletion now
-            if data_bundle is not None:
-                data_bundle.clear_data(self.get_name(), component.get_name())
-            # update current component and chain output
-            data_bundle = component.get_outputs()
-            self.outputs = data_bundle
-        # chain done - set the source chain name
-        self.outputs.set_chain_name(self.name)
+            data_pool.on_component_completion(self.get_name(), component.get_name())
+            data_pool.clear_feeders()
+            data_pool.add_feeders(None, component.get_name())
+        data_pool.on_chain_completion(self.get_name())
 
     def configure_component_names(self):
         for c, component in enumerate(self.components):

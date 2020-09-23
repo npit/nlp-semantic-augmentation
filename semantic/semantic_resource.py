@@ -3,11 +3,12 @@ from os.path import dirname, exists, join
 
 import defs
 import numpy as np
-from bundle.bundle import Bundle
-from bundle.datatypes import Text, Vectors, Indices
+from bundle.bundle import DataPool
+from bundle.datatypes import Text, Numeric
+from bundle.datausages import *
 from component.component import Component
 from defs import is_none
-from representation.bag import TFIDF, Bag, get_bag_class
+from representation.bag import Bag
 from serializable import Serializable
 from utils import (debug, error, info, read_pickled, shapes_list, tictoc,
                    warning, write_pickled)
@@ -42,6 +43,9 @@ class SemanticResource(Serializable):
     data_names = ["concept_weights", "global_weights", "reference_concepts"]
     data_names_vectorized = ["semantic_vectors", "semantic_vector_indices", "elements_per_instance"]
 
+    consumes=Text.name
+    produces=Numeric.name
+
     @staticmethod
     def get_available():
         return [cls.name for cls in SemanticResource.__subclasses__()]
@@ -73,7 +77,6 @@ class SemanticResource(Serializable):
         self.multiple_config_names = semantic_names
 
     def __init__(self):
-        Component.__init__(self, consumes=Text.name, produces=Vectors.name)
         self.base_name = self.name
 
     def populate(self):
@@ -388,7 +391,7 @@ class SemanticResource(Serializable):
         self.populate()
         self.map_text()
         self.generate_vectors()
-        self.outputs.set_vectors(Vectors(vecs=self.semantic_document_vectors))
+        self.outputs.set_vectors(Numeric(vecs=self.semantic_document_vectors))
         self.outputs.set_indices(Indices(indices=self.semantic_vector_indices, epi=self.semantic_epi))
 
     def configure_name(self):

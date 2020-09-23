@@ -41,6 +41,7 @@ class ManualDataset(Dataset):
         mdr.read_dataset(raw_data=raw_data)
         self.train, self.test = mdr.train, mdr.test
         self.train_labels, self.test_labels = mdr.train_labels, mdr.test_labels
+        self.train_targets, self.test_targets = mdr.train_targets, mdr.test_targets
         self.multilabel = mdr.max_num_instance_labels > 1
         self.labelset, self.label_names = mdr.labelset, mdr.label_names
         self.language = mdr.language

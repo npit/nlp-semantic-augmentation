@@ -33,6 +33,7 @@ class dataset_conf(Configuration):
         self.data_limit = self.get_value("data_limit", default=None, expected_type=list)
         self.class_limit = self.get_value("class_limit", default=None, expected_type=int)
         self.prepro = self.get_value("prepro", default=None)
+        self.extract_pos = self.get_value("extract_pos", default=False)
         self.filter_stopwords = self.get_value("filter_stopwords", default=None)
 
     def has_data_limit(self):
@@ -51,7 +52,6 @@ class representation_conf(Configuration):
     dimension = None
     term_list = None
     aggregation = None
-    train = None
 
     def __init__(self, config):
         """Constructor for the representation configuration"""
@@ -64,8 +64,8 @@ class representation_conf(Configuration):
         self.sequence_length = self.get_value("sequence_length", default=1, base=config)
         self.missing_words = self.get_value("unknown_words", default="unk", base=config)
         self.term_list = self.get_value("term_list", base=config)
+        self.ngram_range = self.get_value("ngram_range", base=config, default=None)
         self.limit = self.get_value("limit", base=config, default=[])
-        self.train = self.get_value("train", base=config, default=False)
 
 
 class transform_conf(Configuration):
@@ -160,7 +160,6 @@ class learner_conf(Configuration):
         self.train.batch_size = config["batch_size"]
         self.train.sampling_method = self.get_value("sampling_method", default=None, base=config)
         self.train.sampling_ratios = self.get_value("sampling_ratios", default=None, base=config, expected_type=list)
-
         self.allow_prediction_loading = self.get_value("allow_prediction_loading", default=False, base=config)
 
 

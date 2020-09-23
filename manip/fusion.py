@@ -1,7 +1,7 @@
 import numpy as np
 
-from bundle.bundle import Bundle
-from bundle.datatypes import Vectors
+from bundle.bundle import DataPool
+from bundle.datatypes import Numeric
 from manip.manip import Manipulation
 from utils import error, info, shapes_list, warning
 
@@ -24,7 +24,7 @@ class Fusion(Manipulation):
         for i, vecs in enumerate(self.vectors):
             output_vectors = self.fuse(vecs.instances)
             info(f"Applied {self.component_name} fusion {i+1}/{len(self.vectors)} with inputs: {vecs.instances.shape}, shape now: {output_vectors.shape}")
-        self.outputs.set_vectors(Vectors(vecs=output_vectors))
+        self.outputs.set_vectors(Numeric(vecs=output_vectors))
         # set the first index
         self.outputs.set_indices(self.indices)
 
@@ -40,7 +40,7 @@ class Fusion(Manipulation):
         #     self.vectors[v] = self.fuse(vecs)
         #     info(msg + " {}".format(self.vectors[v].shape))
 
-        # self.outputs.set_vectors(Vectors(vecs=self.vectors, epi=[np.ones(len(vecs), np.int32) * self.num_elements_per_instance for vecs in self.vectors]))
+        # self.outputs.set_vectors(Numeric(vecs=self.vectors, epi=[np.ones(len(vecs), np.int32) * self.num_elements_per_instance for vecs in self.vectors]))
 
     def process_component_inputs(self):
         # make sure input is a collection of bundles

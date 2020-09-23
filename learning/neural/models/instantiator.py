@@ -1,13 +1,15 @@
 """Instantiator for neural models"""
 from learning.neural.models.bert import Bert
+from learning.neural.models.bert_seq2seq import BertSeq2Seq
 from learning.neural.models.mlp import MLPModel
 from utils import error
 from learning.neural.dnn import SupervisedDNN, UnsupervisedDNN
-from learning.neural.languagemodel.language_model import SupervisedNeuralLanguageModel
-from learning.neural.languagemodel.huggingface_transformer_language_model import HuggingfaceTransformerLanguageModel
+# from learning.neural.languagemodel.language_model import NeuralLanguageModel
+from learning.neural.languagemodel.huggingface_seq2seq_transformer_lm import HuggingfaceSeq2SeqTransformerLanguageModel
+from learning.neural.languagemodel.huggingface_transformer_lm import HuggingfaceTransformerLanguageModel 
 
-available_models = [Bert, MLPModel]
-available_wrappers = [SupervisedDNN, UnsupervisedDNN, HuggingfaceTransformerLanguageModel]
+available_models = [Bert, MLPModel, BertSeq2Seq]
+available_wrappers = [SupervisedDNN, UnsupervisedDNN, HuggingfaceTransformerLanguageModel, HuggingfaceSeq2SeqTransformerLanguageModel]
 
 def get_neural_model_class(name):
     """Retrieve DNN architecture"""

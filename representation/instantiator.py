@@ -1,5 +1,4 @@
-from representation.bag_representation import (BagRepresentation,
-                                               TFIDFRepresentation)
+from representation.bag_representation import BagRepresentation, TFIDFRepresentation
 from representation.document_embedding import DocumentEmbedding
 from representation.existing_vectors import ExistingVectors
 from representation.ngg import NGG

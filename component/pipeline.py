@@ -1,4 +1,4 @@
-from bundle.bundle import Bundle
+from bundle.bundle import DataPool
 from utils import debug, error, info, warning
 
 
@@ -9,6 +9,7 @@ class Pipeline:
     def __init__(self):
         """Constructor"""
         self.chains = {}
+        self.data_pool = DataPool()
 
     def visualize(self):
         """Visualization function"""
@@ -33,7 +34,7 @@ class Pipeline:
             names = " -> ".join(names)
             info(header.format(str(idx + 1), chain_name, required_inputs, names))
 
-    def get_next_configurable_chain(self, run_pool, chain_outputs):
+    def get_next_configurable_chain(self, run_pool, completed_chain_names):
         """Get the next runnable chain wrt the current run pool and the available completed chain outputs"""
         chain = self.chains[run_pool.pop(0)]
         required_input_chains = chain.get_required_finished_chains()
@@ -42,7 +43,6 @@ class Pipeline:
             undefined_inputs = [x for x in required_input_chains if x not in self.chains]
             if undefined_inputs:
                 error(f"Chain {chain.get_name()} requires an input from the non-existing chain(s): {undefined_inputs}")
-            completed_chain_names = chain_outputs.get_chain_name(full_search=True)
             if not chain.ready(completed_chain_names):
                 run_pool.append(chain.get_name())
                 debug("Postponing chain {}".format(chain.get_name()))
@@ -54,49 +54,53 @@ class Pipeline:
         and initialize input / output bundles
         """
         info("Configuring pipeline.")
-        completed_chain_outputs = None
+        # presistent output data pool
         run_pool = list(self.chains.keys())
+        completed_chains = []
+
+        input_identifier = ""
         while run_pool:
-            chain, required_input_chains = self.get_next_configurable_chain(run_pool, completed_chain_outputs)
+            chain, required_input_chains = self.get_next_configurable_chain(run_pool, completed_chains)
             if chain is None:
                 continue
-
-            data_bundle = None
             # make all finished chains available as potential inputs
-            chain.load_inputs(completed_chain_outputs)
+            chain.assign_data_pool(self.data_pool)
+            self.data_pool.on_chain_start(chain.get_name())
             if required_input_chains:
-                # the first component requires an input from another chain -- check if it's loaded
-                error("Chain [{}] requires input(s), but none are available.".format(chain.get_name()), chain.inputs is None)
-                data_bundle = chain.inputs.make_request_bundlelist_by_chain_names(chain_names=required_input_chains, client_name=chain.get_name())
+                # log the chain-level data demand
+                # data_pool.log_data_request(chain.get_name(), required_input_chains)
+                input_identifier = self.data_pool.get_input_identifier(chain.components[0].get_consumption(chain.get_name()), required_input_chains)
+            debug(f"Configuring chain [{chain.get_name()}]")
+            # run chain components
             for c, component in enumerate(chain.components):
                 # # get appropriate head bundle
-                component.load_inputs(data_bundle)
+                component.assign_data_pool(self.data_pool)
                 # configure names
+                component.source_name = input_identifier
                 component.configure_name()
-                # configure output dependencies
-                if c > 0:
-                    chain.components[c - 1].add_output_demand(chain.name, component.get_name())
-                data_bundle = component.get_outputs()
-                chain.outputs = data_bundle
+                self.data_pool.log_data_consumption(component.get_consumption(chain.name))
+                self.data_pool.log_data_production(component.get_production(chain.name))
+                previous_component_name = component.get_name()
+            completed_chains.append(chain.get_name())
 
-            # inform chains feeding into the current one that their output is demanded
-            if required_input_chains:
-                first_component = chain.components[0].get_name()
-                first_component_consumption = chain.components[0].consumes
-                for ch in required_input_chains:
-                    self.chains[ch].backtrack_output_demand(chain.get_name(), first_component, first_component_consumption)
+            # for component in reversed(chain.components):
+            #     # log data needs for the component
+            #     chain_consumption.append(component.get_consumption())
+            #     data_pool.log_data_request(component.get_consumption())
+            #     # configure output dependencies for preceeding components
+            #     if c > 0:
+            #         previous_comp = chain.components[c - 1]
+            #         # log the component-level data demand
+            #         data_pool.log_data_request(previous_comp.get_name(), chain.get_name(), component.get_name())
 
-            # update the current completed chain outputs
-            output_bundle = chain.get_outputs()
-            output_bundle.chain_name = chain.get_name()
-            if completed_chain_outputs is None:
-                completed_chain_outputs = output_bundle
-            else:
-                completed_chain_outputs.add_bundle(output_bundle)
+            # # inform chains feeding into the current one that their output is demanded
+            # if required_input_chains:
+            #     first_component = chain.components[0].get_name()
+            #     first_component_consumption = chain.components[0].consumes
+            #     for ch in required_input_chains:
+            #         self.chains[ch].backtrack_output_demand(chain.get_name(), first_component, first_component_consumption, data_pool)
+
         info("Pipeline configuration complete!")
-        Bundle.print_linkages(completed_chain_outputs)
-        for chain_name in self.chains:
-            Bundle.print_linkages(completed_chain_outputs, linkage_name=chain_name)
 
 
     def run(self):
@@ -118,15 +122,19 @@ class Pipeline:
                 debug("Delaying execution of chain {} since the required chain output {} is not available in the current ones: {}".format(chain.get_name(), str(chain.get_required_finished_chains()), completed_chain_names))
                 run_pool.append(chain.get_name())
                 continue
+
+            # set input chains as the feeders
+            self.data_pool.clear_feeders()
+            self.data_pool.add_feeders(chain.get_required_finished_chains(), None)
+            
             # pass the entire finished chain output -- required content will be filtered at the chain start
-            # chain.load_inputs(completed_chain_outputs)
-            chain.run()
+            chain.run(self.data_pool)
 
             # assign outputs
-            if completed_chain_outputs is None:
-                # we only need to assign the first output bundle
-                # the rest is handled via the linkage mechanism
-                completed_chain_outputs = chain.get_outputs()
+            # if completed_chain_outputs is None:
+            #     # we only need to assign the first output bundle
+            #     # the rest is handled via the linkage mechanism
+            #     completed_chain_outputs = chain.get_outputs()
             completed_chain_names.append(chain.get_name())
 
             # info(f"Default linkage after completion of chain {chain.get_name()}")

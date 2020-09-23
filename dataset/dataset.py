@@ -10,7 +10,8 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-from bundle.datatypes import Indices, Labels, Text
+from bundle.datatypes import *
+from bundle.datausages import *
 from component.component import Component
 from dataset.sampling import Sampler
 from semantic.wordnet import Wordnet
@@ -32,7 +33,9 @@ class Dataset(Serializable):
     train, test = None, None
     data_names = ["train-data", "test-data", "traintest-roles"]
     label_data_names = ["train-labels", "label-names", "test-labels", "labelset"]
+    target_data_names = ["train-target", "test-target"]
     train_labels, test_labels = None, None
+    train_targets, test_targets = None, None
     num_labels = None
     labelset = None
     multilabel = False
@@ -40,6 +43,8 @@ class Dataset(Serializable):
     roles = None
     filter_stopwords = True
     stopwords = None
+
+    produces = Text.name
 
     @staticmethod
     def generate_name(config):
@@ -54,6 +59,8 @@ class Dataset(Serializable):
         name = basename(config.name)
         if config.prepro is not None:
             name += "_" + config.prepro
+        if config.extract_pos:
+            name += "_pos"
         return name
 
     def nltk_dataset_resource_exists(self, name):
@@ -78,7 +85,6 @@ class Dataset(Serializable):
         Arguments:
             skip_init {bool} -- Wether to initialize the serializable superclass mechanism
         """
-        Component.__init__(self, produces=[Text.name])
         random.seed(self.config.misc.seed)
         if skip_init or self.config is None:
             return
@@ -110,10 +116,11 @@ class Dataset(Serializable):
             error("Failed to load dataset", not self.loaded())
             self.loaded_index = self.load_flags.index(True)
             # reapply the limit
-            data, labels, self.labelset, self.label_names = self.sampler.subsample(
-                self.get_data(), self.get_labels(), self.labelset, self.label_names, self.multilabel)
+            data, labels, self.labelset, self.label_names, targets = self.sampler.subsample(
+                self.get_data(), self.get_labels(), self.labelset, self.label_names, self.multilabel, self.get_targets())
             self.train, self.test = data
             self.train_labels, self.test_labels = labels
+            self.train_targets, self.test_targets = targets
             self.name = self.sampler.get_limited_name(self.name)
             self.set_serialization_params()
             write_pickled(self.serialization_path, self.get_all_raw())
@@ -151,9 +158,17 @@ class Dataset(Serializable):
         """Multilabel status getter"""
         return self.multilabel
 
+    def get_targets(self):
+        """Targets getter"""
+        return self.train_targets, self.test_targets
+
     def get_labels(self):
         """Labels getter"""
         return self.train_labels, self.test_labels
+
+    def is_labelled(self):
+        """Boolean for labelling"""
+        return self.train_labels is not None and self.train_labels[0] is not None
 
     def get_num_labels(self):
         """Number of labels getter"""
@@ -161,7 +176,7 @@ class Dataset(Serializable):
 
     def get_info(self):
         """Current data information getter"""
-        return f"{self.name} data: {len(self.train)} train, {len(self.test)} test, {self.num_labels} labels"
+        return f"{self.name} data: {len(self.train)} train, {len(self.test)} test, {self.num_labels} labels, {len(self.train_targets) if self.train_targets is not None else None} targets"
 
     def get_raw_path(self):
         error("Need to override raw path datasea getter for {}".format(self.name))
@@ -182,10 +197,16 @@ class Dataset(Serializable):
             pass
         return False
 
+    @staticmethod
+    def get_text(data):
+        """Get text from the dataset outputs"""
+        return " ".join([item["words"] for item in data])
+
     def handle_raw_serialized(self, deserialized_data):
         self.train, self.test, self.roles = [deserialized_data[n] for n in self.data_names]
         self.loaded_raw_serialized = True
         self.train_labels, self.label_names, self.test_labels, self.labelset = [deserialized_data[n] for n in self.label_data_names]
+        self.train_targets, self.test_targets = [deserialized_data[n] for n in self.target_data_names]
         if self.train_labels is not None:
             self.num_labels = len(set(self.label_names))
             self.multilabel = self.contains_multilabel(self.train_labels)
@@ -208,18 +229,21 @@ class Dataset(Serializable):
         except LookupError:
             nltk_download(self.config, "punkt")
 
-        # setup word prepro
+        # setup word preprocessing
+        self.word_prepro_func = lambda x: x
         while True:
             try:
                 if self.config.prepro == "stem":
+                    error("Specified stemming without POS extraction.", not self.config.extract_pos)
                     self.stemmer = PorterStemmer()
-                    self.word_prepro = lambda w_pos: (self.stemmer.stem(w_pos[0]), w_pos[1])
+                    self.word_prepro_func = lambda w_pos: (self.stemmer.stem(w_pos[0]), w_pos[1])
                 elif self.config.prepro == "lemma":
+                    error("Specified lemmatization without POS extraction.", not self.config.extract_pos)
                     self.lemmatizer = WordNetLemmatizer()
-                    self.word_prepro = self.apply_lemmatizer
+                    self.word_prepro_func = self.apply_lemmatizer
                 else:
-                    self.word_prepro = lambda x: x
-                break
+                    error(f"Undefined preprocessing opt: {self.config.prepro}", self.config.prepro is not None)
+                    break
             except LookupError as err:
                 error(err)
         # punctuation
@@ -233,9 +257,9 @@ class Dataset(Serializable):
         else:
             return self.lemmatizer.lemmatize(w_pos[0], wordnet_pos), w_pos[1]
 
-    # map text string into list of stopword-filtered words and POS tags
-    def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro, stopwords):
+    def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro_func, stopwords):
         """Apply processing for a single text element"""
+        data = {}
         sents = sent_tokenize(text.lower())
         words = []
         for sent in sents:
@@ -250,14 +274,20 @@ class Dataset(Serializable):
         words = [w for w in [w.translate(digit_remover) for w in words] if w]
         if self.filter_stopwords:
             words = [w for w in words if w not in stopwords]
-        # pos tagging
-        words_with_pos = nltk.pos_tag(words)
+        data["words"] = words
+        if self.config.extract_pos:
+            # pos tagging
+            data["pos"] = nltk.pos_tag(words)
         # stemming / lemmatization
-        words_with_pos = [word_prepro(wp) for wp in words_with_pos]
-        if not words_with_pos:
-            # warning("Text preprocessed to an empty list:\n{}".format(text))
-            return None
-        return words_with_pos
+        if self.config.prepro is not None:
+            data["words"] = [word_prepro_func((w, p)) for (w, p) in zip(words, data["pos"])]
+        # if not data["words"]:
+        #     # warning("Text preprocessed to an empty list:\n{}".format(text))
+        #     return None
+        return data
+
+    def has_text_targets(self):
+        return self.train_targets is not None and type(self.train_targets[0]) == str
 
     # preprocess single
     def preprocess_text_collection(self, document_list, track_vocabulary=False):
@@ -272,19 +302,19 @@ class Dataset(Serializable):
             for i in range(len(document_list)):
                 pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
                 pbar.update()
-                # text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
-                text_words_pos = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
-                                                          word_prepro=self.word_prepro, stopwords=self.stopwords)
-                if text_words_pos is None:
+                data = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
+                                                          word_prepro_func=self.word_prepro_func, stopwords=self.stopwords)
+                word_data = data["words"]
+                if not word_data:
                     # warning("Text {}/{} preprocessed to an empty list:\n{}".format(i + 1, len(document_list), document_list[i]))
                     discarded_indexes.append(i)
                     # continue
-                    text_words_pos = []
+                    data["words"] = []
 
-                ret_words_pos.append(text_words_pos)
+                ret_words_pos.append(data)
                 if track_vocabulary:
-                    ret_voc.update([wp[0] for wp in text_words_pos])
-                num_words.append(len(text_words_pos))
+                    ret_voc.update(word_data)
+                num_words.append(len(word_data))
         stats = [x(num_words) for x in [np.mean, np.var, np.std]]
         info("Words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
         return ret_words_pos, ret_voc, discarded_indexes
@@ -298,6 +328,11 @@ class Dataset(Serializable):
         with tictoc("Preprocessing {}".format(self.name)):
             info("Mapping training set to word collections.")
             self.train, self.vocabulary, discarded_indexes = self.preprocess_text_collection(self.train, track_vocabulary=True)
+
+            if self.has_text_targets():
+                self.train_targets, voc, _ = self.preprocess_text_collection(self.train_targets, track_vocabulary=True)
+                self.vocabulary.update(voc)
+
             # if discarded_indexes:
             #     warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
             #     if self.train_labels is not None:
@@ -305,6 +340,9 @@ class Dataset(Serializable):
 
             info("Mapping test set to word collections.")
             self.test, _, discarded_indexes = self.preprocess_text_collection(self.test)
+            if self.has_text_targets():
+                self.test_targets, _, _ = self.preprocess_text_collection(self.test_targets)
+
             # if discarded_indexes:
             #     warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
             #     if self.test_labels is not None:
@@ -323,6 +361,8 @@ class Dataset(Serializable):
         data = {lbl: data for (lbl, data) in zip(self.data_names, (self.train, self.test, self.roles))}
         for key, value in zip(self.label_data_names, self.get_labelled_data()):
             data[key] = value
+        for key, value in zip(self.target_data_names, self.get_targets()):
+            data[key] = value
         return data
 
     def get_labelled_data(self):
@@ -338,15 +378,6 @@ class Dataset(Serializable):
     def get_name(self):
         return self.name
 
-    def get_word_lists(self):
-        """Get word-only data"""
-        res = [], []
-        for doc in self.train:
-            res[0].append([wp[0] for wp in doc])
-        for doc in self.test:
-            res[1].append([wp[0] for wp in doc])
-        return res
-
     def __str__(self):
         try:
             return self.get_info()
@@ -357,15 +388,28 @@ class Dataset(Serializable):
 
     def set_outputs(self):
         """Set text data to the output bundle"""
-        self.outputs.set_text(Text((self.train, self.test), self.vocabulary, roles=self.roles))
-        self.outputs.set_labels(Labels((self.train_labels, self.test_labels), self.labelset, self.multilabel, roles=self.roles))
-        indices = (np.arange(len(self.train)), np.arange(len(self.test)))
-        epi = [set_constant_epi(ind) for ind in indices]
-        idxs = Indices(indices=indices, epi=epi, roles=self.roles)
-        self.outputs.set_indices(idxs)
+        outputs = []
+        indices = [np.arange(len(x)) for x in self.get_data()]
+        indices = Indices(instances=indices, roles=self.roles)
 
-    def load_inputs(self, inputs):
-        error("Attempted to load inputs into a {} component.".format(self.base_name), inputs is not None)
+        text = Text(self.get_data(), self.vocabulary)
+        outputs.append(DataPack(text, usage=indices))
+
+        if self.is_labelled():
+            labels_data = Numeric(self.get_labels())
+            labels_usage = Labels(self.labelset, self.multilabel)
+            dp = DataPack(labels_data, labels_usage)
+            dp.add_usage(indices)
+            outputs.append(dp)
+        if self.train_targets is not None:
+            # tar = self.train_targets + self.test_targets
+            # dp = DataPack.make(tar, GroundTruth)
+            dp = DataPack.make(self.get_targets(), GroundTruth)
+            dp.add_usage(indices)
+            outputs.append(dp)
+
+        self.data_pool.add_data_packs(outputs, self.name)
+
 
     def configure_name(self):
         self.name = Dataset.generate_name(self.config)

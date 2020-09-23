@@ -1,6 +1,6 @@
 """Vector manipulation"""
-from bundle.bundle import Bundle
-from bundle.datatypes import Vectors
+from bundle.bundle import DataPool
+from bundle.datatypes import Numeric
 from component.component import Component
 from utils import error
 import numpy as np
@@ -8,8 +8,11 @@ import numpy as np
 
 class Manipulation(Component):
     component_name = "manipulation"
+
+    produces=Numeric
+    consumes=Numeric
     def __init__(self):
-        Component.__init__(self, produces=Vectors, consumes=Vectors)
+        pass
 
     def configure_name(self):
         self.source_name = self.inputs.get_source_name()

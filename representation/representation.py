@@ -1,7 +1,8 @@
 import numpy as np
 
 import defs
-from bundle.datatypes import Indices, Text, Vectors
+from bundle.datatypes import *
+from bundle.datausages import *
 from component.component import Component
 from serializable import Serializable
 from utils import debug, error, info, shapes_list, set_constant_epi
@@ -16,6 +17,8 @@ class Representation(Serializable):
     vector_indices = None
 
     data_names = ["vector_indices", "elements_per_instance", "embeddings"]
+    consumes = Text.name
+    produces = Numeric.name
 
     @staticmethod
     def get_available():
@@ -23,7 +26,7 @@ class Representation(Serializable):
 
     def __init__(self):
         """Constructor"""
-        Component.__init__(self, consumes=Text.name, produces=Vectors.name)
+        pass
 
     def populate(self):
         Serializable.__init__(self, self.dir_name)
@@ -104,7 +107,6 @@ class Representation(Serializable):
         self.dataset_name = self.source_name
 
         self.sequence_length = self.config.sequence_length
-        self.do_train_vectors = self.config.train
 
     def check_params(self):
         if self.aggregation not in self.compatible_aggregations:
@@ -143,7 +145,6 @@ class Representation(Serializable):
     # region  # chain methods
 
     def configure_name(self):
-        self.source_name = self.inputs.get_source_name()
         self.set_params()
         self.set_name()
         self.check_params()
@@ -153,11 +154,16 @@ class Representation(Serializable):
         self.populate()
         self.process_component_inputs()
         self.map_text()
-        self.outputs.set_vectors(Vectors(vecs=self.embeddings))
-        self.outputs.set_indices(Indices(indices=self.vector_indices, epi=self.elements_per_instance, roles=self.inputs.get_indices().roles))
+
+        # set outputs
+        vectors = Numeric(self.embeddings)
+        dp = DataPack(vectors, self.indices, self.name)
+        self.data_pool.add_data(dp)
 
     def process_component_inputs(self):
-        if self.loaded_aggregated or self.loaded_preprocessed:
-            return
-        error("{} requires a text input.".format(self.name), not self.inputs.has_text())
-        self.text, self.vocabulary = self.inputs.get_text().instances, self.inputs.get_text().vocabulary
+        # if self.loaded_aggregated or self.loaded_preprocessed:
+        #     return
+        error("{} requires a text input.".format(self.name), not self.data_pool.has_text())
+        text = self.data_pool.request_data(Text.name, Indices.name, self.name)
+        self.text, self.vocabulary = text.data.instances, text.data.vocabulary
+        self.indices = text.get_usage(Indices.name)

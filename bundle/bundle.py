@@ -1,19 +1,31 @@
 """Module defining bundle and bundle-list objects
 """
-from bundle.datatypes import Labels, Text, Vectors
+from bundle.datatypes import *
+from bundle.datausages import *
+from collections import defaultdict
 from defs import datatypes
-from utils import data_summary, debug, error, info, warning
+from utils import data_summary, debug, error, info, warning, equal_lengths, as_list
+
+class ResourceIO:
+    def __init__(self, dtype, usage, name, chain_name):
+        self.dtype = dtype
+        self.usage = usage
+        self.component_name = name
+        self.chain_name = chain_name
+    def is_compatible(self, other):
+        return other.dtype == self.dtype and other.usage == self.usage
 
 
-class Bundle:
+class Produces(ResourceIO):
+    def __init__(self, dtype, usage, name, chain_name):
+        super().__init__(dtype, usage, name, chain_name)
+class Consumes(ResourceIO):
+    def __init__(self, dtype, usage, name, chain_name):
+        super().__init__(dtype, usage, name, chain_name)
+
+class DataPool:
     """Container class to pass data around
     """
-    # data types
-    vectors = None
-    labels = None
-    text = None
-    vocabulary = None
-    indices = None
 
     source_name = None
     chain_name = None
@@ -26,95 +38,158 @@ class Bundle:
     default_linkage = "overall_output"
     active_linkage = None
 
-    def set_active_linkage(self, linkage_name):
-        """Set the current linkage"""
-        self.active_linkage = linkage_name
 
-    def get_fallback_linkage(self):
-        return self.active_linkage
+    data_per_type = defaultdict(list)
+    data_per_usage = defaultdict(list)
+    data_per_chain = defaultdict(list)
 
-    def get_linkage_bundles(self, linkage_name):
-        return self.get_via_condition(lambda x: linkage_name in x.linkage, linkage_name=Bundle.default_linkage)
+    requests = defaultdict(list)
+    supply = defaultdict(list)
 
-    def find_linkage_list_head(self, linkage_name):
-        all_bundles = self.get_linkage_bundles(linkage_name)
-        error(f"No bundles of linkage {linkage_name} found!", not all_bundles)
-        candidate_heads = [x for x in all_bundles]
-        for b in all_bundles:
-            other_bundle = b.linkage[linkage_name]
-            if other_bundle is not None:
-                candidate_heads.remove(other_bundle)
-        error(f"No single head for linkage {linkage_name} found.", len(candidate_heads) != 1)
-        return candidate_heads[0]
+    production = []
+    consumption = []
+    data = []
 
-    @staticmethod
-    def print_linkages(bundle, linkage_name=None, visited_bundles=None, print_indent=""):
-        if linkage_name is None:
-            linkage_name = bundle.get_fallback_linkage()
+    completed_chains = set()
 
-        all_bundles = bundle.get_bundle_list(linkage_name=Bundle.default_linkage)
-        edge_landing_bundles = []
-        relevant_bundles = []
-        for b in all_bundles:
-            if linkage_name in b.linkage:
-                relevant_bundles.append(b)
-                # track leafs
-                if b.linkage[linkage_name] is not None:
-                    edge_landing_bundles.append(b.linkage[linkage_name])
-                # if not b.has_next(linkage_name) or b.linkage[linkage_name] is None:
-                #     candidate_heads.append(b)
-        
-        if not relevant_bundles:
-            info(f"(no linkage bundles for {linkage_name})")
-            return
-        candidate_heads = [x for x in relevant_bundles if x not in edge_landing_bundles]
-        if len(candidate_heads) > 1:
-            error(f"Found multiple roots for linkage {linkage_name}: {candidate_heads}")
+    # chain / component names currently feeding data
+    feeder_chains = []
+    feeder_components = []
 
-        candidate_heads[0].print_linkage_sequence(linkage_name)
+    current_running_chain = None
 
-    def print_linkage_sequence(self, linkage_name=None):
-        if linkage_name not in self.linkage:
-            warning(f"No linkage: {linkage_name}")
-            return
-        info(f"Linkage wrt: {linkage_name}:")
-        if linkage_name is None:
-            linkage_name = self.get_fallback_linkage()
-        curr = self
-        info(curr)
-        while curr.has_next(linkage_name):
-            curr = curr.next(linkage_name)
-            if curr is None:
-                break
-            info(curr)
-        
-    def __len__(self, linkage_name=None):
-        ln = 1
-        if linkage_name is None:
-            linkage_name = self.get_fallback_linkage()
-        x = self
-        while True:
-            if x is None:
-                break
-            x = x.next(linkage_name)
-            ln += 1
-        return ln
-    
-    def has_next(self, active_linkage=None):
-        if active_linkage is None:
-            active_linkage = self.get_fallback_linkage()
-        return active_linkage in self.linkage
+    def add_data_packs(self, datapack_list, source_name):
+        for dp in datapack_list:
+            dp.chain = self.current_running_chain
+            dp.source = source_name
+            dp.id = self.make_datapack_id(self.current_running_chain, source_name)
+            self.add_data(dp)
 
-    def next(self, active_linkage=None):
-        if active_linkage is None:
-            active_linkage = self.get_fallback_linkage()
-        return self.linkage[active_linkage]
+    def make_datapack_id(self, chain, source):
+        return chain
 
-    def clear_data(self, chain_name, component_name):
+    def add_data(self, data):
+        """Add a data pack to the pool"""
+        # organize data by type
+        data.chain = self.current_running_chain
+        self.data_per_type[data.type()].append(data)
+        self.data_per_usage[data.usage()].append(data)
+        self.data_per_chain[data.chain].append(data)
+        self.log_data_supply(data)
+        self.data.append(data)
+
+    def log_data_supply(self, data):
+        """Log chain data dependencies"""
+        self.supply[(data.type(), data.usage(), data.source, data.chain)].append(data)
+
+    def match_usage(self, candidate_usage, usage_requested, usage_matching, usage_exclude=None):
+        candidate_usage = as_list(candidate_usage)
+        usage_requested = as_list(usage_requested)
+        usage_exclude = as_list(usage_exclude)
+        if any(x in candidate_usage for x in usage_exclude):
+            return False
+        if usage_matching == "exact":
+            if not equal_lengths(candidate_usage, usage_requested):
+                return False
+            return set(candidate_usage) == set(usage_requested)
+        elif usage_matching == "subset":
+            return all(x in candidate_usage for x in usage_requested)
+        else:
+            error(f"Specified undefined usage: {usage_requested}")
+
+    def request_data(self, data_type, usage, client, usage_matching="exact", usage_exclude=None, must_be_single=True, on_error_message="Data request failed:"):
+        """Get data from the data pool
+
+        Args:
+            data_type (str): Name of datatype
+            usage (str): Name or class of usage
+            usage_matching (str): How to match the usage, candidates are "exact", "anyof", "subset". Defaults to "exact"
+            client ([type]): [description]
+            must_be_single (bool, optional): [description]. Defaults to True.
+            on_error_message (str, optional): [description]. Defaults to "Data request failed:".
+
+        Returns:
+            [type]: [description]
+        """
+        # get the data available to the client
+        curr_inputs = self.get_current_inputs()
+        res = []
+        # all to string
+        data_type = data_type.name if type(data_type) is not str and issubclass(data_type, Datatype) else data_type
+        usage = as_list(usage)
+        usage = [x.name if type(x) is not str and issubclass(x, DataUsage) else x for x in usage]
+        if usage_exclude is not None:
+            usage_exclude = as_list(usage_exclude)
+            usage_exclude = [x.name if type(x) is not str and issubclass(x, DataUsage) else x for x in usage_exclude]
+        for data in curr_inputs:
+            matches_usage = self.match_usage(data.get_usage_names(), usage, usage_matching, usage_exclude)
+            if matches_usage and data.type() == data_type:
+                res.append(data)
+        if must_be_single:
+            error(on_error_message + f" Available: {data_type}{usage}{client}, matches: {len(res)} candidates but requested a singleton.", len(res) != 1)
+            res = res[0]
+        return res
+            
+    def get_current_inputs(self):
+        """Fetch datapacks currently available from supplying chains / components"""
+        res = []
+        for dat in self.data:
+            if dat.chain in self.feeder_chains:
+                if not self.feeder_components or dat.source in self.feeder_components:
+                    res.append(dat)
+        return res
+
+    def log_data_production(self, productions):
+        """Log chain data dependencies"""
+        # for prod in productions:
+        #     self.production[(data_type, usage)].append((production_name, chain_name))
+        self.production.extend(productions)
+
+    def get_input_identifier(self, consumption, source_chains):
+        """Figure out the name of the inputs of the requester"""
+        matches = []
+        incoming_production = [p for p in self.production if p.chain_name in source_chains]
+        for c in consumption:
+            x = list(filter(lambda x: x.is_compatible(c), incoming_production))
+            matches.extend(x)
+        aggr_name = "_".join(m.component_name for m in matches)
+        return aggr_name
+
+    def log_data_consumption(self, consumptions):
+        """Log chain data dependencies"""
+        # for con in consumptions:
+        #     self.consumption.extend([(con.dtype, con.usage)].append((production_name, chain_name))
+        self.consumption.extend(consumptions)
+
+    def on_component_completion(self, chain_name, component_name):
+        # remove requirements from the component
+        return
         self.remove_fulfilled_demand(chain_name, component_name)
-        # should not propagate
-        # if self.has_next():
-        #     self.next().remove_fulfilled_demand(chain_name, component_name)
+
+    def on_chain_start(self, chain_name):
+        self.current_running_chain = chain_name
+
+
+    def clear_feeders(self):
+        self.feeder_chains.clear()
+        self.feeder_components.clear()
+
+    def add_feeders(self, chain_names, component_names):
+        """Add feeders"""
+        if chain_names is not None:
+            for chain_name in chain_names:
+                self.feeder_chains.append(chain_name)
+        if component_names is not None:
+            for component_name in component_names:
+                self.feeder_components.append(component_name)
+
+    def on_chain_completion(self, chain_name):
+        self.completed_chains.add(chain_name)
+
+    def get_completed_chains(self):
+        return self.completed_chains
+
+# -------------------------
 
     def __str__(self):
         """Generate bundle name
@@ -122,34 +197,13 @@ class Bundle:
         Returns:
             The generated bundle name
         """
-        parts = [self.source_name]
-        if self.chain_name is not None:
-            parts.append(self.chain_name)
-        if self.vectors is not None:
-            parts.append(Vectors.name)
-        if self.labels is not None:
-            parts.append(Labels.name)
-        if self.text is not None:
-            parts.append(Text.name)
-        return "_".join(parts)
+        return "bundle"
 
     def __repr__(self):
         return self.__str__()
 
-    def __init__(self, source_name=None, vectors=None, labels=None, text=None, indices=None):
-        self.source_name = source_name
-        self.content_dict = {}
+    def __init__(self):
         self.demand = {}
-        self.active_linkage = self.default_linkage
-        self.linkage = {}
-        if vectors is not None:
-            self.set_vectors(vectors)
-        if labels is not None:
-            self.set_labels(labels)
-        if text is not None:
-            self.set_text(text)
-        if indices is not None:
-            self.set_indices(indices)
 
     def remove_fulfilled_demand(self, chain, component):
         """Delete unneeded data
@@ -219,220 +273,37 @@ class Bundle:
 
     # region: getters
 
-    def get_bundle_list(x, linkage_name=None):
-        """Make list out of the current linked list bundles"""
-        if linkage_name is None:
-            linkage_name = x.get_fallback_linkage()
-        res = [x]
-        while x.has_next(linkage_name):
-            x = x.next(linkage_name)
-            res.append(x)
-        return res
+    # @staticmethod
+    # def append_request_bundle(bundle, client_name, tail_bundle):
+    #     """Append a bundle to a client request linked list"""
+    #     current_bundle = bundle
+    #     while client_name in current_bundle.linkage and current_bundle.linkage[client_name] is not None:
+    #         current_bundle = current_bundle.linkage[client_name]
+    #     current_bundle.linkage[client_name] = tail_bundle
+    #     # add dummy linkage on the tail bundle
+    #     Bundle.add_dummy_client_linkage(tail_bundle, client_name)
+    #     return bundle
 
-    @staticmethod
-    def append_request_bundle(bundle, client_name, tail_bundle):
-        """Append a bundle to a client request linked list"""
-        current_bundle = bundle
-        while client_name in current_bundle.linkage and current_bundle.linkage[client_name] is not None:
-            current_bundle = current_bundle.linkage[client_name]
-        current_bundle.linkage[client_name] = tail_bundle
-        # add dummy linkage on the tail bundle
-        Bundle.add_dummy_client_linkage(tail_bundle, client_name)
-        return bundle
-
-    @staticmethod
-    def add_dummy_client_linkage(bundle, client_name):
-        """Make a dangling linkage to mark request from a client"""
-        if client_name in bundle.linkage:
-            error("Attempted to make a dummy linkage on a existing linkage with targets: {self.linkage[client_name]}")
-        bundle.linkage[client_name] = None
-
-    def make_request_bundlelist_by_chain_names(self, chain_names, client_name):
-        """Get bundles that belong to the input chain names and form them in a request linked list"""
-        if type(chain_names) is str:
-            chain_names = [chain_names]
-        res = None
-        for bundle in self.get_bundle_list():
-            if bundle.get_chain_name() in chain_names:
-                if res is None:
-                    res = bundle
-                    # add a dummy linkage from the client, with no sibling
-                    Bundle.add_dummy_client_linkage(bundle, client_name)
-                else:
-                    res = Bundle.append_request_bundle(res, client_name, bundle)
-        return res
-
-    def get_request_bundlelist(self, client_name):
-        """Get bundles that belong to the input chain names and form them in a request linked list"""
-        # find head of request list 
-        candidate_heads = self.get_via_condition(lambda x: client_name in x.linkage)
-        if not candidate_heads:
-            error(f"Could not find requested bundles from client {client_name}")
-        edge_tails = [x.linkage[client_name] for x in candidate_heads]
-        # candidate heads cannot have an incoming link
-        candidate_heads = [x for x in candidate_heads if x not in edge_tails]
-        if len(candidate_heads) > 1:
-            error(f"Found multiple heads for request bundle list from {client_name}: {candidate_heads}")
-        return candidate_heads[0]
-
-    def get(self, index):
-        """Get the index-th bundle in the bundle list."""
-        try:
-            return self.get_bundle_list()[index]
-        except IndexError:
-            error(f"Failed to retrieve the non-existing {index}-th bundle.")
-
-    def get_available(self):
-        return list(self.content_dict.keys())
-
-    def get_element(self, element, full_search=False, enforce_single=False, role=None):
-        """
-        Retrieve a bundle member element based on input restrictions
-        """
-        res = None
-        error(f"Specified both full-search fetching and specified input role(s): {role}", role is not None and full_search)
-        if element == datatypes.vectors:
-            if full_search:
-                res = self.get_via_condition(lambda x: x.vectors is not None)
-            else:
-                res = self.vectors
-        elif element == datatypes.labels:
-            if full_search:
-                res = self.get_via_condition(lambda x: x.labels is not None)
-            else:
-                res = self.labels
-        elif element == datatypes.text:
-            if full_search:
-                res = self.get_via_condition(lambda x: x.text is not None)
-            else:
-                res = self.text
-        elif element == datatypes.indices:
-            if full_search:
-                res = self.get_via_condition(lambda x: x.indices is not None)
-            else:
-                res = self.indices
-        elif element == "source_name":
-            if full_search:
-                res = [x.source_name for x in self.get_bundle_list()]
-            else:
-                res = self.source_name
-        elif element == "chain_name":
-            if full_search:
-                res = [x.chain_name for x in self.get_bundle_list()]
-            else:
-                res = self.chain_name
-        else:
-            error(f"Undefined element {element} to get from bundle.")
-
-        if res is None:
-            return res
-        # filter with respect to role
-        if role is not None:
-            res = self.filter_to_role_instances(res, role, enforce_single)
-        if full_search and enforce_single:
-            res = self.do_enforce_single(res)
-        return res
-
-    def do_enforce_single(self, data):
-        if type(data) is list:
-            if len(data) != 1:
-                data.summarize_content()
-                error(f"Enforced single but got {len(data)} data.")
-            return data[0]
-
-    @staticmethod
-    def filter_to_role_instances(datum, role, enforce_single=False):
-        """Limit bundle instances to those of a specified role"""
-        res = []
-        if datum.has_role(role):
-            role_index = datum.roles.index(role)
-            res.append(datum.instances[role_index])
-        if enforce_single:
-            error(f"Enforced single acquisition of role {role} but found {len(res)} matching instances!", len(res) != 1)
-            res = res[0]
-        return res
-
-    def get_indices(self, full_search=False, enforce_single=False, role=None):
-        return self.get_element(datatypes.indices, full_search, enforce_single, role)
-    def get_vectors(self, full_search=False, enforce_single=False, role=None):
-        return self.get_element(datatypes.vectors, full_search, enforce_single, role)
-    def get_text(self, full_search=False, enforce_single=False, role=None):
-        return self.get_element(datatypes.text, full_search, enforce_single, role)
-    def get_labels(self, full_search=False, enforce_single=False, role=None):
-        return self.get_element(datatypes.labels, full_search, enforce_single, role)
-    def get_source_name(self, full_search=False, enforce_single=False, role=None):
-        return self.get_element("source_name", full_search, enforce_single, role)
-    def get_chain_name(self, full_search=False, enforce_single=False, role=None):
-        return self.get_element("chain_name", full_search, enforce_single, role)
-
-    def get_via_condition(self, cond, linkage_name=None, enforce_single=False):
-        """Return bundles matching an input condition"""
-        if linkage_name is None:
-            linkage_name = self.get_fallback_linkage()
-        res = []
-        # start from the base node
-        x = self
-        while True:
-            if cond(x):
-                res.append(x)
-            if not x.has_next(linkage_name):
-                break
-            x = x.next(linkage_name)
-            if x is None:
-                break
-        if enforce_single:
-            error(f"Enforced single acquisition of condition {cond} but found {len(res)} matching instances!", len(res) != 1)
-            res = res[0]
-        return res
     # endregion
 
     # region: has-ers
     def has_labels(self):
-        return self.has_condition(lambda x: x.labels is not None)
-
-    def has_source_name(self):
-        return self.has_condition(lambda x: x.source_name is not None)
-
-    def has_vectors(self):
-        return self.has_condition(lambda x: x.vectors is not None)
+        return Labels.name in self.data_per_usage
 
     def has_text(self):
-        return self.has_condition(lambda x: x.text is not None)
+        return Text.name in self.data_per_type
 
-    def has_condition(self, cond):
-        x = self.get_via_condition(cond)
-        return x is not None and len(x) > 0
+    def has_numerics(self):
+        return Numeric.name in self.data_per_type
 
     def has_indices(self):
-        return self.has_condition(lambda x: x.indices is not None)
+        return Indices.name in self.data_per_usage
     # endregion
 
     # region: setters
-    def set_text(self, text):
-        self.text = text
-        self.content_dict["text"] = text
-
-    def set_vectors(self, vectors):
-        self.content_dict["vectors"] = vectors
-        self.vectors = vectors
-
-    def set_labels(self, labels):
-        self.labels = labels
-        self.content_dict["labels"] = labels
-
-    def set_indices(self, indices):
-        self.indices = indices
-        self.content_dict["indices"] = indices
-
     def set_source_name(self, name):
         self.source_name = name
 
     def set_chain_name(self, name):
         self.chain_name = name
-
-    def set_train(self, idx):
-        self.train_idx = idx
-
-    def set_test(self, idx):
-        self.test_idx = idx
     # endregion
