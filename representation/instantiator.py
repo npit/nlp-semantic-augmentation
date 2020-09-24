@@ -1,7 +1,7 @@
 from representation.bag_representation import BagRepresentation, TFIDFRepresentation
 from representation.document_embedding import DocumentEmbedding
 from representation.existing_vectors import ExistingVectors
-from representation.ngg import NGG
+# from representation.ngg import NGG
 from representation.word_embedding import WordEmbedding
 
 
@@ -16,8 +16,8 @@ class Instantiator:
             return TFIDFRepresentation(config)
         if name == DocumentEmbedding.name:
             return DocumentEmbedding(config)
-        if name == NGG.name:
-            return NGG(config)
+        # if name == NGG.name:
+        #     return NGG(config)
         if name == ExistingVectors.name:
             return ExistingVectors(config)
 

@@ -118,6 +118,8 @@ class learner_conf(Configuration):
     num_layers = None
     sequence_length = None
 
+    use_gpu = True
+
     # training configuration
     class train:
         epochs = None
@@ -146,6 +148,7 @@ class learner_conf(Configuration):
             self.sequence_length = 1
         if "num_clusters" in config:
             self.num_clusters = self.get_value("num_clusters", default=None, base=config)
+        self.use_gpu = self.get_value("use_gpu", default=True, base=config)
         # training parameters
         self.train = learner_conf.train()
         config = config["train"]

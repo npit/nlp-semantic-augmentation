@@ -32,9 +32,9 @@ class BaseModel(ptl.LightningModule):
         super(BaseModel, self).__init__()
 
         if torch.cuda.is_available() and self.config.use_gpu:
-            self.device = "cuda"
+            self.device_name = "cuda"
         else:
-            self.device = "cpu"
+            self.device_name = "cpu"
 
     class SmaugProgressBar(ProgressBar):
         def on_epoch_start(trainer, pl_module):
@@ -63,7 +63,7 @@ class BaseModel(ptl.LightningModule):
 
     def make_predictions(self, inputs):
         # regular forward
-        return self(inputs.to(self.device))
+        return self(inputs.to(self.device_name))
 
 
     def configure_embedding(self):
@@ -76,11 +76,10 @@ class BaseModel(ptl.LightningModule):
         """Training and validation function"""
         # also check https://pytorch-lightning.readthedocs.io/en/latest/fast_training.html
         # logger = ptl.loggers.TensorBoardLogger(self.working_folder, name=self.model_name)
-        self.model.to(self.device)
+        self.model.to(self.device_name)
 
 
         model_savepath = join(self.working_folder, 'models')
-        import ipdb; ipdb.set_trace()
         if self.val_index is not None:
             checkpoint_callback = ModelCheckpoint(
                 filepath= model_savepath,

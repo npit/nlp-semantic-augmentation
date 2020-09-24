@@ -16,6 +16,6 @@ numpy
 tqdm
 # ngg
 networkx
-pygraphviz
+# pygraphviz
 statsmodels
 py-rouge

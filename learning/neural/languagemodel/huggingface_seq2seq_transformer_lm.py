@@ -41,8 +41,8 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
         # fetch the gt textual gt token embeddings
         return self.target_embeddings, self.target_masks
 
-    def process_predictions(self, preds):
-        return preds
+    # def process_predictions(self, preds):
+    #     return preds
         # import ipdb; ipdb.set_trace()
         # preds = one_hot(preds, len(self.tokenizer.get_vocab()), is_multilabel=True)
         # return preds

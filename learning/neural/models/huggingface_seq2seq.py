@@ -21,8 +21,8 @@ class HuggingfaceSeq2seq(BaseModel):
 
     def make_predictions(self, inputs):
         # generate
-        input_tokens = torch.LongTensor(self.embeddings[inputs]).to(self.device)
-        att_mask = torch.LongTensor(self.masks[inputs]).to(self.device)
+        input_tokens = torch.LongTensor(self.embeddings[inputs]).to(self.device_name)
+        att_mask = torch.LongTensor(self.masks[inputs]).to(self.device_name)
         preds =  self.model.generate(input_tokens, decoder_start_token_id=self.model.config.decoder.pad_token_id, sequence_length=self.sequence_length, attention_mask=att_mask)
         return preds
 
@@ -46,9 +46,9 @@ class HuggingfaceSeq2seq(BaseModel):
             x[:len(inputs)] = inputs
             inputs = x
             # print("Padded:", inputs)
-        input_tokens = torch.LongTensor(self.embeddings[inputs, :]).to(self.device)
-        input_mask = torch.LongTensor(self.masks[inputs, :]).to(self.device)
-        input_labels = torch.LongTensor(self.ground_truth[inputs, :]).to(self.device)
+        input_tokens = torch.LongTensor(self.embeddings[inputs, :]).to(self.device_name)
+        input_mask = torch.LongTensor(self.masks[inputs, :]).to(self.device_name)
+        input_labels = torch.LongTensor(self.ground_truth[inputs, :]).to(self.device_name)
         outputs = self.model(input_ids=input_tokens, decoder_input_ids=input_tokens, labels=input_labels, attention_mask=input_mask)
         self.current_loss = outputs[0]
         logits = outputs[1]

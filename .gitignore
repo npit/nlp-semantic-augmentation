@@ -17,6 +17,5 @@ test_runs
 *.yml
 venv/
 !example.config.yml
-\*DAP*
 .dir-locals.el
 .vscode

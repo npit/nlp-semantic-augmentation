@@ -48,8 +48,10 @@ class DNN:
                 batch_predictions = batch_predictions[:len(input_batch)]
                 predictions.append(batch_predictions)
         return np.concatenate(predictions, axis=0)
+
     def process_predictions(self, preds):
-        return preds
+        return preds.cpu()
+
     def build_model(self):
         """Build the model"""
         self.neural_model = self.neural_model_class(self.config, self.embeddings, output_dim=self.get_output_dim(), working_folder=self.config.folders.results, model_name=self.get_model_instance_name())
