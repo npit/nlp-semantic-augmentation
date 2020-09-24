@@ -11,17 +11,19 @@ class HuggingfaceSeq2seq(BaseModel):
     # specify the wrapper class name for huggingface models
     wrapper_name = "huggingface_seq2seq_transformer_lm"
 
-    def __init__(self, config):
+    def __init__(self, config, sequence_length):
         """
         Keyword Arguments:
         config -- Configuration object
         """
+        self.sequence_length = sequence_length
         super().__init__(config, self.wrapper_name, config.folders.run, self.name)
 
     def make_predictions(self, inputs):
         # generate
-        inputs = torch.LongTensor(self.embeddings[inputs])
-        preds =  self.model.generate(inputs, decoder_start_token_id=self.model.config.decoder.pad_token_id)
+        input_tokens = torch.LongTensor(self.embeddings[inputs]).to(self.device)
+        att_mask = torch.LongTensor(self.masks[inputs]).to(self.device)
+        preds =  self.model.generate(input_tokens, decoder_start_token_id=self.model.config.decoder.pad_token_id, sequence_length=self.sequence_length, attention_mask=att_mask)
         return preds
 
     def assign_ground_truth(self, gt):
@@ -43,13 +45,14 @@ class HuggingfaceSeq2seq(BaseModel):
             x = torch.zeros(self.config.train.batch_size, dtype=torch.long, requires_grad=False)
             x[:len(inputs)] = inputs
             inputs = x
-            print("Padded:", inputs)
-        input_tokens = torch.LongTensor(self.embeddings[inputs, :])
-        input_mask = torch.LongTensor(self.masks[inputs, :])
-        input_labels = torch.LongTensor(self.ground_truth[inputs, :])
-        output = self.model(input_ids=input_tokens, decoder_input_ids=input_tokens, labels=input_labels, return_dict=True)
-        self.current_loss = output.loss
-        return output.logits
+            # print("Padded:", inputs)
+        input_tokens = torch.LongTensor(self.embeddings[inputs, :]).to(self.device)
+        input_mask = torch.LongTensor(self.masks[inputs, :]).to(self.device)
+        input_labels = torch.LongTensor(self.ground_truth[inputs, :]).to(self.device)
+        outputs = self.model(input_ids=input_tokens, decoder_input_ids=input_tokens, labels=input_labels, attention_mask=input_mask)
+        self.current_loss = outputs[0]
+        logits = outputs[1]
+        return logits
 
     def get_data(self, index):
         """Fetch embedding index """

@@ -161,6 +161,7 @@ class learner_conf(Configuration):
         self.train.sampling_method = self.get_value("sampling_method", default=None, base=config)
         self.train.sampling_ratios = self.get_value("sampling_ratios", default=None, base=config, expected_type=list)
         self.allow_prediction_loading = self.get_value("allow_prediction_loading", default=False, base=config)
+        self.save_interval =  self.get_value("save_interval", default=1, base=config)
 
 
 class link_conf(Configuration):

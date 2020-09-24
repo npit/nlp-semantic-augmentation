@@ -26,6 +26,9 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
         HuggingfaceTransformerLanguageModel.__init__(self, config)
 
 
+    def get_model(self):
+        return self.neural_model_class(self.config, sequence_length=self.config.sequence_length, use_pretrained=True)
+
     # def fetch_language_model_inputs(self):
     #     # obtain regular texts
     #     super().fetch_language_model_inputs()
@@ -38,6 +41,16 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
         # fetch the gt textual gt token embeddings
         return self.target_embeddings, self.target_masks
 
+    def process_predictions(self, preds):
+        return preds
+        # import ipdb; ipdb.set_trace()
+        # preds = one_hot(preds, len(self.tokenizer.get_vocab()), is_multilabel=True)
+        # return preds
+
+
+    def get_train_test_targets(self):
+        test = self.target_embeddings[self.target_test_embedding_index] if self.target_test_embedding_index else None
+        return (self.target_embeddings[self.target_train_embedding_index], test)
     def map_text(self):
         """Process input text into tokenized elements"""
         # map regular inputs

@@ -18,7 +18,7 @@ class SupervisedLearner(Learner):
         # update indexes to label of the evaluator: the trainval indexes
         train_idx, val_idx = trainval
         test_label_index = np.arange(len(self.test_targets)) if not self.validation.use_for_testing else val_idx
-        self.evaluator.update_reference_labels(train_idx, test_label_index)
+        self.evaluator.update_reference_targets(train_idx, test_label_index)
 
     def process_component_inputs(self):
         """Component processing for ground truth data"""
@@ -37,3 +37,12 @@ class SupervisedLearner(Learner):
         targets = self.data_pool.request_data(Text, GroundTruth, usage_matching="subset", client=self.name)
         self.targets = targets.data
         self.target_indices = targets.get_usage(Indices.name)
+
+    def attach_evaluator(self):
+        super().attach_evaluator()
+        train_target, test_target = self.get_train_test_targets()
+        self.evaluator.set_targets(train_target, test_target)
+        # self.evaluator.set_labelling(train_target, self.tokenizer.get_vocab().values(), do_multilabel=True)
+
+    def get_train_test_targets():
+        error("Attempted to access target getter from base class")

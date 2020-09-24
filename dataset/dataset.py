@@ -326,10 +326,11 @@ class Dataset(Serializable):
             return
         self.setup_nltk_resources()
         with tictoc("Preprocessing {}".format(self.name)):
-            info("Mapping training set to word collections.")
+            info("Mapping text training data to word collections.")
             self.train, self.vocabulary, discarded_indexes = self.preprocess_text_collection(self.train, track_vocabulary=True)
 
             if self.has_text_targets():
+                info("Mapping text training targets to word collections.")
                 self.train_targets, voc, _ = self.preprocess_text_collection(self.train_targets, track_vocabulary=True)
                 self.vocabulary.update(voc)
 
@@ -338,9 +339,10 @@ class Dataset(Serializable):
             #     if self.train_labels is not None:
             #         self.train_labels = [self.train_labels[i] for i in range(len(self.train_labels)) if i not in discarded_indexes]
 
-            info("Mapping test set to word collections.")
+            info("Mapping text test data to word collections.")
             self.test, _, discarded_indexes = self.preprocess_text_collection(self.test)
             if self.has_text_targets():
+                info("Mapping text test targets to word collections.")
                 self.test_targets, _, _ = self.preprocess_text_collection(self.test_targets)
 
             # if discarded_indexes:

@@ -62,6 +62,7 @@ class NeuralLanguageModel(SupervisedDNN):
         train_index, test_index = [], []
         tokens, masks = [], []
         for i in range(len(texts.instances)):
+            offset = len(tokens)
             texts_instance = texts.instances[i]
             role = indices.roles[i]
             for doc_data in texts_instance:
@@ -73,9 +74,9 @@ class NeuralLanguageModel(SupervisedDNN):
 
             idxs = list(range(len(texts_instance)))
             if role == defs.roles.train:
-                train_index.extend([x + len(tokens) for x in idxs])
+                train_index.extend([x + offset for x in idxs])
             elif role == defs.roles.test:
-                test_index.extend([x + len(tokens) for x in idxs])
+                test_index.extend([x + offset for x in idxs])
 
         tokens = np.concatenate(tokens)
         masks = np.concatenate(masks)

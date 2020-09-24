@@ -10,11 +10,13 @@ class BertSeq2Seq(HuggingfaceSeq2seq):
     name = "bert_seq2seq"
     huggingface_model_class = BertForNextSentencePrediction
 
-    def __init__(self, config, use_pretrained=True):
+    def __init__(self, config, sequence_length, use_pretrained=True):
         """Constructor"""
         self.use_pretrained = use_pretrained
         self.pretrained_id = "bert-base-uncased"
-        super().__init__(config)
+        # greek
+        self.pretrained_id = "nlpaueb/bert-base-greek-uncased-v1"
+        super().__init__(config, sequence_length)
         # suspend logging
         lvl = logging.getLogger().level
         logging.getLogger().setLevel(logging.WARN)

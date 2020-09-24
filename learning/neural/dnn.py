@@ -42,12 +42,14 @@ class DNN:
             # defer to model's forward function
             for input_batch in model_instance.test_dataloader():
                 batch_predictions = model_instance.make_predictions(input_batch)
+                batch_predictions = self.process_predictions(batch_predictions)
                 # batch_predictions = model_instance(input_batch)
                 # account for possible batch padding TODO fix
                 batch_predictions = batch_predictions[:len(input_batch)]
                 predictions.append(batch_predictions)
         return np.concatenate(predictions, axis=0)
-
+    def process_predictions(self, preds):
+        return preds
     def build_model(self):
         """Build the model"""
         self.neural_model = self.neural_model_class(self.config, self.embeddings, output_dim=self.get_output_dim(), working_folder=self.config.folders.results, model_name=self.get_model_instance_name())

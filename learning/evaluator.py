@@ -76,6 +76,9 @@ class Evaluator:
         """Getter for supervised status"""
         return self.train_labels is not None or self.has_test_labels()
 
+    def is_labelled(self):
+        return self.labelled
+
     # constructor
     def __init__(self, config, embeddings, train_index, test_via_validation):
         """Evaluator constructor method
@@ -130,6 +133,23 @@ class Evaluator:
             else:
                 self.show_label_distribution(self.test_labels, message="Test label distribution")
 
+    def update_reference_targets(self, train_index, test_index):
+        self.train_label_index = train_index
+        self.test_label_index = test_index
+
+
+    def set_targets(self, train_target, test_target=None):
+        self.train_labels = train_target
+        self.test_labels = test_target
+
+        if self.test_via_validation:
+            self.reference_labels = self.train_labels
+            # the train/test index will be updated via the update_reference_labels function
+        else:
+            self.reference_labels = self.test_labels
+        self.labelled = False
+
+
     def set_labelling(self, train_labels, labelset, do_multilabel=False, test_labels=None):
         """Assign labelling information to the evaluator
 
@@ -161,6 +181,8 @@ class Evaluator:
             # the train/test index will be updated via the update_reference_labels function
         else:
             self.reference_labels = self.test_labels
+
+        self.labelled = True
 
     def check_setting(self, setting, available, what="configuration", adj="Erroneous", fatal=False):
         """Check user setting against list of available choices

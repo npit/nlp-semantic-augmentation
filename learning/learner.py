@@ -79,6 +79,7 @@ class Learner(Serializable):
 
         self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
         self.do_sampling = self.sampling_method is not None
+        self.save_interval = self.config.save_interval
 
     def check_sanity(self):
         """Sanity checks"""
@@ -257,6 +258,7 @@ class Learner(Serializable):
             predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pkl"
             write_pickled(predictions_file, [predictions, self.test_instance_indexes])
         # get test performances
+        import ipdb; ipdb.set_trace()
         self.evaluator.evaluate_learning_run(predictions, self.test_instance_indexes)
         if self.do_folds and self.config.print.folds:
             self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)

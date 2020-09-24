@@ -7,6 +7,9 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks.progress import ProgressBar
 from torch.utils.data import DataLoader, RandomSampler
 
+from pytorch_lightning.callbacks import ModelCheckpoint
+from os.path import join
+
 class BaseModel(ptl.LightningModule):
     """Base class for pytorch models, organized as a pytorch-lightning module
 
@@ -25,7 +28,13 @@ class BaseModel(ptl.LightningModule):
         self.working_folder = working_folder
         self.model_name = model_name
         self.callbacks = []
+        self.save_interval = self.config.save_interval
         super(BaseModel, self).__init__()
+
+        if torch.cuda.is_available() and self.config.use_gpu:
+            self.device = "cuda"
+        else:
+            self.device = "cpu"
 
     class SmaugProgressBar(ProgressBar):
         def on_epoch_start(trainer, pl_module):
@@ -54,7 +63,7 @@ class BaseModel(ptl.LightningModule):
 
     def make_predictions(self, inputs):
         # regular forward
-        return self(inputs)
+        return self(inputs.to(self.device))
 
 
     def configure_embedding(self):
@@ -66,12 +75,39 @@ class BaseModel(ptl.LightningModule):
     def train_model(self):
         """Training and validation function"""
         # also check https://pytorch-lightning.readthedocs.io/en/latest/fast_training.html
-        logger = ptl.loggers.TensorBoardLogger(self.working_folder, name=self.model_name)
+        # logger = ptl.loggers.TensorBoardLogger(self.working_folder, name=self.model_name)
+        self.model.to(self.device)
+
+
+        model_savepath = join(self.working_folder, 'models')
+        import ipdb; ipdb.set_trace()
+        if self.val_index is not None:
+            checkpoint_callback = ModelCheckpoint(
+                filepath= model_savepath,
+                verbose=True,
+                monitor='val_loss',
+                period=self.save_interval,
+                mode='min'
+            )
+        else:
+            checkpoint_callback = ModelCheckpoint(
+                filepath=model_savepath,
+                verbose=True,
+                period=self.save_interval
+            )
+
+
+        self.callbacks.append(checkpoint_callback)
+
+
+
+
+
 
         # trainer = Trainer(val_check_interval=100)
         # self.callbacks.append(BaseModel.SmaugProgressBar())
         # trainer = Trainer(logger=logger, min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks)
-        trainer = Trainer(logger=logger, min_epochs=1, max_epochs=self.config.train.epochs)
+        trainer = Trainer(min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks)
         trainer.fit(self)
 
     def test_model(self):
