@@ -14,9 +14,8 @@ class Representation(Serializable):
     compatible_aggregations = []
     compatible_sequence_lengths = []
     sequence_length = 1
-    vector_indices = None
 
-    data_names = ["vector_indices", "elements_per_instance", "embeddings"]
+    data_names = ["vector_indices", "elements_per_instance", "embeddings", "roles"]
     consumes = Text.name
     produces = Numeric.name
 
@@ -28,14 +27,14 @@ class Representation(Serializable):
         """Constructor"""
         pass
 
-    def populate(self):
+    def load_outputs_from_disk(self):
         Serializable.__init__(self, self.dir_name)
         # check for serialized mapped data
         self.set_serialization_params()
         # set required resources
         self.set_resources()
         # fetch the required data
-        self.acquire_data()
+        ret = self.acquire_data()
         # restore name, maybe
         if self.multiple_config_names:
             self.configure_name()
@@ -45,13 +44,15 @@ class Representation(Serializable):
             # Component.configure_name(self)
             # self.check_params()
             info("Restored representation name to {}".format(self.name))
+        return ret
 
     # region # serializable overrides
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.vector_indices, self.elements_per_instance, self.embeddings = [preprocessed[n] for n in Representation.data_names]
-        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.vector_indices)))
+        self.indices, self.elements_per_instance, self.embeddings, self.roles = [preprocessed[n] for n in Representation.data_names]
+        self.indices = Indices(self.indices, self.elements_per_instance, self.roles)
+        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.indices.instances)))
 
     # add exra representations-specific serialization paths
     def set_additional_serialization_sources(self):
@@ -63,7 +64,7 @@ class Representation(Serializable):
     def handle_aggregated(self, data):
         self.handle_preprocessed(data)
         self.loaded_aggregated = True
-        debug("Read aggregated embeddings shapes: {}, {}".format(*shapes_list(self.vector_indices)))
+        debug("Read aggregated embeddings shapes: {}, {}".format(*shapes_list(self.indices.instances)))
 
     def handle_raw(self, raw_data):
         pass
@@ -81,17 +82,11 @@ class Representation(Serializable):
     def get_zero_pad_element(self):
         return np.zeros((1, self.dimension), np.float32)
 
-    def get_data(self):
-        return self.vector_indices
-
     def get_name(self):
         return self.name
 
     def get_dimension(self):
         return self.dimension
-
-    def get_vectors(self):
-        return self.vector_indices
 
     def get_elements_per_instance(self):
         return self.elements_per_instance
@@ -126,13 +121,7 @@ class Representation(Serializable):
 
     def set_constant_elements_per_instance(self, num=1):
         """Function to assign single-element (default) instances"""
-        if not self.vector_indices:
-            error("Attempted to set constant epi before computing dataset vectors.")
-        self.elements_per_instance = [set_constant_epi(ds) for ds in self.vector_indices]
-
-    def set_identity_indexes(self, data):
-        """Function to assign unique indexes to data"""
-        self.vector_indices = [np.arange(len(d)) for d in data]
+        self.elements_per_instance = [set_constant_epi(ds) for ds in self.indices.instances]
 
     # data getter for semantic processing
     def process_data_for_semantic_processing(self, train, test):
@@ -150,20 +139,18 @@ class Representation(Serializable):
         self.check_params()
         Component.configure_name(self, self.name)
 
-    def run(self):
-        self.populate()
-        self.process_component_inputs()
-        self.map_text()
-
+    def set_component_outputs(self):
+        """Set representation outputs"""
         # set outputs
         vectors = Numeric(self.embeddings)
         dp = DataPack(vectors, self.indices, self.name)
         self.data_pool.add_data(dp)
 
-    def process_component_inputs(self):
+    def get_component_inputs(self):
         # if self.loaded_aggregated or self.loaded_preprocessed:
         #     return
         error("{} requires a text input.".format(self.name), not self.data_pool.has_text())
-        text = self.data_pool.request_data(Text.name, Indices.name, self.name)
-        self.text, self.vocabulary = text.data.instances, text.data.vocabulary
-        self.indices = text.get_usage(Indices.name)
+        self.text = self.data_pool.request_data(Text.name, Indices.name, self.name)
+        self.vocabulary = self.text.data.vocabulary
+        self.indices = self.text.get_usage(Indices.name)
+        self.roles = self.indices.roles

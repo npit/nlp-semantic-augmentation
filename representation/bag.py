@@ -51,7 +51,10 @@ class Bag:
         vectors = vectors.toarray()
         if self.threshold is not None:
             vectors = self.apply_thresholds(vectors)
-        if self.weighting == "tfidf":
-            tft = TfidfTransformer()
-            vectors = tft.fit_transform(vectors)
+        if len(vectors) == 0:
+            vectors = np.zeros((0, len(self.vocabulary)), dtype=np.int32)
+        else:
+            if self.weighting == "tfidf" and len(vectors) > 0:
+                tft = TfidfTransformer()
+                vectors = tft.fit_transform(vectors).toarray()
         return vectors

@@ -13,7 +13,7 @@ from component.component import Component
 from defs import datatypes, roles
 from learning.evaluator import Evaluator
 from learning.sampling import Sampler
-from learning.validation import ValidationSetting
+from learning.validation.validation import ValidationSetting
 from utils import error, info, read_pickled, tictoc, write_pickled
 
 
@@ -41,6 +41,11 @@ class Learner(Serializable):
     allow_prediction_loading = None
 
     train_embedding = None
+
+    # store information pertaining to the learning run(s) executed
+    predictions = []
+    prediction_indexes = []
+    models = []
 
 
     def __init__(self, consumes=None):
@@ -80,6 +85,7 @@ class Learner(Serializable):
         self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
         self.do_sampling = self.sampling_method is not None
         self.save_interval = self.config.save_interval
+        self.do_test = self.config.do_test and (self.test_data_available() or self.validation_exists)
 
     def check_sanity(self):
         """Sanity checks"""
@@ -92,7 +98,7 @@ class Learner(Serializable):
                 self.folds, self.validation_portion))
         if not (self.validation_exists or self.test_data_available()):
             error("No test data or cross/portion-validation setting specified.")
-        self.evaluator.check_sanity()
+        # self.evaluator.check_sanity()
 
     def configure_validation_setting(self):
         """Initialize validation setting"""
@@ -103,6 +109,8 @@ class Learner(Serializable):
         """No label-agnostic sampling"""
         # No label-agnostic sampling available
         pass
+    def get_all_preprocessed(self):
+        return self.predictions
 
     def attach_evaluator(self):
         """Evaluator instantiation"""
@@ -220,32 +228,35 @@ class Learner(Serializable):
             # iterate over required runs as per the validation setting
             for iteration_index, trainval in enumerate(train_val_idxs):
                 self.assign_current_run_data(iteration_index, trainval)
+                self.prediction_indexes.append(self.validation.get_prediction_indexes())
 
                 # for evaluation, pass all information of the current (maybe cross-validated) run testing
-                self.evaluator.update_reference_data(train_index=self.train_index, test_index=self.test_index)
+                # self.evaluator.update_reference_data(train_index=self.train_index, test_index=self.test_index)
 
                 # check if the run is completed already and load existing results, if allowed
                 model, loaded_predictions = None, None
-                if self.allow_prediction_loading:
+                if self.do_test and self.allow_prediction_loading:
                     loaded_predictions, test_instance_indexes = self.load_existing_predictions()
 
                 # train the model
                 if loaded_predictions is None:
                     model = self.acquire_trained_model()
+                    self.models.append(model)
                 else:
                     info("Skipping training due to existing predictions successfully loaded.")
 
-                # test and evaluate the model
-                with tictoc("Testing run [{}] on {} test data.".format(self.validation.descr, self.num_test)):
-                    self.do_test_evaluate(model, loaded_predictions)
-                    model_paths.append(self.get_current_model_path())
+                if self.do_test:
+                    # test and evaluate the model
+                    with tictoc("Testing run [{}] on {} test data.".format(self.validation.descr, self.num_test)):
+                        self.do_test_evaluate(model, loaded_predictions)
+                        model_paths.append(self.get_current_model_path())
 
                 self.conclude_validation_iteration()
 
             # end of entire train-test loop
             self.conclude_traintest()
             # report results across entire training
-            self.evaluator.report_overall_results(self.validation.descr, self.results_folder)
+            # self.evaluator.report_overall_results(self.validation.descr, self.results_folder)
 
     # evaluate a model on the test set
     def do_test_evaluate(self, model, predictions=None):
@@ -257,10 +268,11 @@ class Learner(Serializable):
             # write the predictions and relevant idxs (i.e. if testing on validation)
             predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pkl"
             write_pickled(predictions_file, [predictions, self.test_instance_indexes])
+            self.predictions.append(predictions)
         # get test performances
-        self.evaluator.evaluate_learning_run(predictions, self.test_instance_indexes)
-        if self.do_folds and self.config.print.folds:
-            self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)
+        # self.evaluator.evaluate_learning_run(predictions, self.test_instance_indexes)
+        # if self.do_folds and self.config.print.folds:
+        #     self.evaluator.print_run_performance(self.validation.descr, self.validation.current_fold)
 
     def conclude_traintest(self):
         """Perform concuding actions for the entire traintest loop"""
@@ -330,18 +342,17 @@ class Learner(Serializable):
     #     return read_pickled(self.get_current_model_path())
 
     # region: component functions
-    def run(self):
-        self.process_component_inputs()
+    def build_model_from_inputs(self):
+
         self.make()
         self.configure_validation_setting()
-        self.attach_evaluator()
+        # self.attach_evaluator()
         self.configure_sampling()
         self.check_sanity()
+        self.serialization_path_preprocessed = join(self.results_folder, "data")
+
+    def produce_outputs(self):
         self.do_traintest()
-        # outputs
-        output = Numeric(self.evaluator.predictions["run"])
-        output = DataPack(output, self.indices, self.name)
-        self.data_pool.add_data(output)
 
     def acquire_embedding_information(self):
         """Get embedding and embedding information"""
@@ -353,7 +364,7 @@ class Learner(Serializable):
         if self.indices.has_role(roles.test):
             self.test_embedding_index = self.indices.get_role_instances(roles.test)
         else:
-            self.test_embedding_index = np.ndarray((), np.float32)
+            self.test_embedding_index = np.ndarray((0,), np.float32)
 
 
         # self.embeddings = vectors_bundle.get_vectors().instances
@@ -365,7 +376,7 @@ class Learner(Serializable):
         # else:
         #     self.test_embedding_index = np.ndarray((), np.float32)
 
-    def process_component_inputs(self):
+    def get_component_inputs(self):
         """Component processing for input indexes and vectors"""
         self.acquire_embedding_information()
         # initialize current meta-indexes to data
@@ -389,3 +400,6 @@ class Learner(Serializable):
                 # if we have multi-element index, there has to be an aggregation method defined for the learner.
                 error("Learner [{}] has no defined aggregation and is not sequence-capable, but the input index has shape {}".format(self.name, index.shape))
         return embeddings[index] if len(index) > 0 else None
+
+    def set_component_outputs(self):
+        pass

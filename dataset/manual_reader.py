@@ -1,23 +1,24 @@
 """Module for reading custom serialized datasets"""
 import json
 import numbers
-
+import defs
 import numpy as np
 
-from utils import error
+from utils import error, update_cumulative_index
 
 
 class ManualDatasetReader:
-    train_labels, test_labels = None, None
-    train_targets, test_targets = None, None
-    train, test  = None, None
     labelset, label_names = None, None
+    data, roles = None, None
+    max_num_instance_labels = -1
 
     def handle_instance_labels(self, lbls, current_labelset, current_label_names):
         """Ensure iterable of numeric labels"""
         # iterable check
         try:
             lbls[0]
+        except IndexError:
+            lbls = []
         except TypeError:
             lbls = [lbls]
 
@@ -110,52 +111,67 @@ class ManualDatasetReader:
         else:
             json_data = data
 
-        data = json_data["data"]
-        # read training data
-        self.train, train_labels, train_labelset, train_label_names, self.train_is_labelled, self.train_fully_labelled, self.max_num_instance_labels,  self.train_targets = \
-            self.read_instances(data["train"])
 
-        try:
-            self.test, test_labels, test_labelset, test_label_names, self.test_is_labelled, self.test_fully_labelled, _, self.test_targets = \
-                self.read_instances(data["test"])
-        except KeyError:
-            pass
-
-        self.roles = ("train", "test")
         # read metadata
         try:
             self.language = json_data["language"]
         except KeyError:
             # default to english
             self.language = "english"
+
+
+
+        # read training data
+        self.data, self.labels, self.targets, self.roles = [], [], [], []
+        self.labelset = set()
+        self.is_labelled = False
+        self.indices = []
+
+        for role in [defs.roles.train, defs.roles.test]:
+            data, labels, labelset, label_names, is_labelled, fully_labelled, max_num_instance_labels, targets = \
+                self.read_instances(json_data['data'][role])
+
+            offset = len(self.data)
+            idx = np.arange(offset, len(data) + offset)
+            self.indices.append(idx)
+            self.data.extend(data)
+            self.labels.append([np.asarray(x) for x in labels])
+            if targets:
+                self.targets.extend(targets)
+            self.roles.append(role)
+            self.labelset.update(labelset)
+            self.is_labelled = self.is_labelled or is_labelled
+            self.max_num_instance_labels = max_num_instance_labels if self.max_num_instance_labels < max_num_instance_labels else self.max_num_instance_labels
+
+            if role == defs.roles.train:
+                self.label_names = label_names
+
         # process labelling
-        if train_labelset:
-            # labelsets
-            # ensure training labelset is at least as large as the test one
-            if self.test_is_labelled:
-                ntrain, ntest = [len(x) for x in (train_labelset, test_labelset)]
-                if ntrain < ntest:
-                    error("Read manual dataset with {ntrain} unique labels in the training set, but {ntest} in the test set.")
-            # collapse to single
-            self.labelset = train_labelset
-            # label names
-            if "label_names" in json_data:
-                # read manual label names
-                self.label_names = json_data["label_names"]
-                if type(self.label_names) is not list:
-                    error(f"Expected list of strings for labelnames, got {type(self.label_names)} : {self.label_names}")
-                if train_label_names and train_label_names != self.label_names:
-                    error(f"Train non-numeric label names differ than the global labelnames provided.")
+        # if self.labelset:
+        #     # labelsets
+        #     # ensure training labelset is at least as large as the test one
+        #     if self.test_is_labelled:
+        #         ntrain, ntest = [len(x) for x in (train_labelset, test_labelset)]
+        #         if ntrain < ntest:
+        #             error("Read manual dataset with {ntrain} unique labels in the training set, but {ntest} in the test set.")
 
-            elif train_label_names:
-                self.label_names = train_label_names
-            else:
-                # assign numeric indexes as label names
-                self.label_names = [str(x) for x in self.labelset]
+        if self.is_labelled:
+            self.configure_labelnames(json_data, self.labelset)
 
-            # always set labels to ndarray lists, for compatibility for multilabel data
-            self.train_labels = [np.asarray(x) for x in train_labels]
-            self.test_labels = [np.asarray(x) for x in test_labels]
+
+    def configure_labelnames(self, json_data, instances_labelset):
+        # configure label names
+        # label names
+        if "label_names" in json_data:
+            # read manual label names
+            self.label_names = json_data["label_names"]
+            if type(self.label_names) is not list:
+                error(f"Expected list of strings for labelnames, got {type(self.label_names)} : {self.label_names}")
+            if instances_labelset != self.label_names:
+                error(f"Train non-numeric label names differ than the global labelnames provided.")
+        else:
+            # assign numeric indexes as label names
+            self.label_names = [str(x) for x in self.labelset]
 
 
     def read_dataset(self, raw_data, format="json"):
@@ -165,3 +181,15 @@ class ManualDatasetReader:
             self.read_json_dataset(data=raw_data)
             return
         error(f"Undefined custom dataset format: {format}")
+
+
+    @staticmethod
+    def instances_to_json_dataset(instances, language="english", label_names=None):
+        if type(instances) is str:
+            instances = json.loads(instances)
+        if type(instances) is list and type(instances[0]) is str:
+            instances = [{"text": inst, "labels": []} for inst in instances]
+        dset = {"data":{"test": instances}, "language": language}
+        if label_names is not None:
+            dset["label_names"] = label_names
+        return dset

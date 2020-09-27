@@ -10,7 +10,7 @@ from bundle.datausages import *
 from defs import roles
 from learning.supervised_learner import SupervisedLearner
 from learning.sampling import Sampler
-from learning.validation import ValidationSetting
+from learning.validation.validation import ValidationSetting
 from utils import (count_label_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot)
 
 

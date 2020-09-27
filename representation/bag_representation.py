@@ -90,8 +90,8 @@ class BagRepresentation(Representation):
         return None
 
     def get_all_preprocessed(self):
-        return {"vector_indices": self.vector_indices, "elements_per_instance": self.elements_per_instance,
-                "term_list": self.term_list, "embeddings": self.embeddings}
+        return {"vector_indices": self.indices.instances, "elements_per_instance": self.indices.elements_per_instance,
+                "term_list": self.term_list, "embeddings": self.embeddings, "roles": self.indices.roles}
 
     # sparse to dense
 
@@ -107,16 +107,20 @@ class BagRepresentation(Representation):
         self.handle_preprocessed()
         self.loaded_aggregated = True
         # peek vector dimension
-        data_dim = len(self.vector_indices[0][0])
+        data_dim = len(self.embeddings)
         if self.dimension is not None:
             if self.dimension != data_dim:
                 error("Configuration for {} set to dimension {} but read {} from data.".format(self.name, self.dimension, data_dim))
         self.dimension = data_dim
 
-    def get_model(self):
-        return self.term_list
+    def load_model_from_disk(self):
+        """Load bag model from disk"""
+        if super().load_model():
+            self.term_list = self.model
+            return True
+        return False
 
-    def map_text(self):
+    def produce_outputs(self):
         """Map text to bag representations"""
         if self.loaded_aggregated:
             debug("Skippping {} mapping due to preloading".format(self.base_name))
@@ -139,30 +143,28 @@ class BagRepresentation(Representation):
             debug("Skippping {} mapping due to preloading".format(self.base_name))
             return
 
-        train, test = self.text
-        # train
         bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range)
         if self.do_limit:
             bagger.set_thresholds(self.limit_type, self.limit_number)
 
-        vec_train = bagger.map_collection(Text.get_strings(train))
-        vec_test = bagger.map_collection(Text.get_strings(test))
+        do_fit = self.term_list is None
+        train_idx, test_idx = self.indices.get_train_test()
+
+        texts = Text.get_strings(self.text.data.get_instance(train_idx))
+        vec_train = bagger.map_collection(texts, fit=do_fit)
+        del texts
+
+        texts = Text.get_strings(self.text.data.get_instance(test_idx))
+        vec_test = bagger.map_collection(texts, fit=do_fit)
+        del texts
 
         self.embeddings = np.vstack((vec_train, vec_test))
 
-        self.vector_indices = (np.arange(len(train)), np.arange(len(test)))
+        # self.embeddings = np.append(vec_train, vec_test)
+        # self.vector_indices = (np.arange(len(train)), np.arange(len(test)))
 
         # set misc required variables
         self.set_constant_elements_per_instance()
-
-
-        # write mapped data
-        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
-
-        # if the representation length is not preset, write a small file with the dimension
-        if self.config.term_list is not None:
-            with open(self.serialization_path_preprocessed + ".meta", "w") as f:
-                f.write(str(self.dimension))
 
 class TFIDFRepresentation(BagRepresentation):
     name = "tfidf"

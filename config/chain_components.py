@@ -131,6 +131,7 @@ class learner_conf(Configuration):
         sampling_ratios = None
         optimizer = None
         lr_scheduler = None
+        do_test = True
 
     def __init__(self, config):
         """Constructor for the learner configuration"""
@@ -149,6 +150,8 @@ class learner_conf(Configuration):
         if "num_clusters" in config:
             self.num_clusters = self.get_value("num_clusters", default=None, base=config)
         self.use_gpu = self.get_value("use_gpu", default=True, base=config)
+        self.do_test = self.get_value("do_test", default=True, base=config)
+
         # training parameters
         self.train = learner_conf.train()
         config = config["train"]
@@ -181,5 +184,20 @@ class link_conf(Configuration):
     def get_links(self):
         return self.links
 
+class evaluator_conf(Configuration):
+    """Component for evaluating"""
+    conf_key_name = "evaluator"
 
-chain_component_classes = [manip_conf, dataset_conf, representation_conf, transform_conf, semantic_conf, learner_conf, link_conf]
+    def __init__(self, config):
+        super().__init__(config)
+        if config is None:
+            return
+        self.baselines = self.get_value("baselines", base=config)
+        self.averages = self.get_value("averages", base=config, default=True)
+        self.top_k = self.get_value("top_k", base=config, default=3, expected_type=int)
+        self.fold_aggregations = self.get_value("fold_aggregations", base=config)
+        self.label_aggregations = self.get_value("label_aggregations", base=config)
+        self.measures = self.get_value("measures", base=config)
+        self.label_distribution = self.get_value("show_label_distributions", base=config, default="logs")
+
+chain_component_classes = [manip_conf, dataset_conf, representation_conf, transform_conf, semantic_conf, learner_conf, link_conf, evaluator_conf]

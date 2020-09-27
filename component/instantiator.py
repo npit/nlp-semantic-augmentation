@@ -4,6 +4,8 @@ from semantic.instantiator import Instantiator as sem_instantiator
 from transform.instantiator import Instantiator as tra_instantiator
 from learning.instantiator import Instantiator as lrn_instantiator
 from manip.instantiator import Instantiator as manip_instantiator
+from evaluation.instantiator import Instantiator as eval_instantiator
+
 from utils import error
 
 """Generic component instantiator"""
@@ -22,4 +24,6 @@ def create(component_name, component_params):
         return lrn_instantiator.create(component_params)
     if component_name == manip_instantiator.component_name:
         return manip_instantiator.create(component_params)
+    if component_name == eval_instantiator.component_name:
+        return eval_instantiator.create(component_params)
     error("Undefined component type: {}".format(component_name))

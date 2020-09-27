@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 from sklearn import metrics
 from collections import Counter
-import rouge
 
 from utils import (count_label_occurences, debug, error, info,
                    numeric_to_string, one_hot, warning)
@@ -20,11 +19,6 @@ class Evaluator:
     # performance containers, in the format type-measure-aggregation-stat
     performance = None
     majority_label = None
-
-    # predictions storage
-    predictions = None
-    predictions_instance_indexes = None
-    confusion_matrices = None
 
     # available measures, aggregations and run types
     basic_measures = ["precision", "recall", "f1-score"]
@@ -346,15 +340,6 @@ class Evaluator:
     def compute_shilhouette(self, preds):
         test_data = self.embeddings[self.test_data_index, :]
         return metrics.silhouette_score(test_data, preds)
-
-    def compute_rouge(self, preds):
-        maxlen = preds.shape[-1]
-        evaluator = rouge.Rouge(metrics=['rouge-n', 'rouge-l', 'rouge-w'], max_n=4, limit_length=True, length_limit=maxlen, 
-                length_limit_type='words', 
-                apply_avg=True, 
-                alpha=0.5, # Default F1_score 
-                weight_factor=1.2, stemming=True) 
-        scores = evaluator.get_scores()
 
 
     # get average accuracy

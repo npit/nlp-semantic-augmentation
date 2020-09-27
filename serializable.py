@@ -106,7 +106,6 @@ class Serializable(Component):
         # alias some paths
         self.read_functions = [read_pickled, read_pickled, self.fetch_raw]
         self.handler_functions = [self.handle_preprocessed, self.handle_raw_serialized, self.handle_raw]
-        self.set_additional_serialization_sources()
 
     # set paths according to serializable name
     def get_paths_by_name(self, name=None, raw_path=None):
@@ -133,7 +132,7 @@ class Serializable(Component):
 
         # either path is None (resource is acquired without one) or it's a file that will be loaded
         if path is None or (exists(path) and isfile(path)):
-            # debug("Attempting load of {} with {}.".format(path, self.read_functions[index]))
+            debug("Attempting load of {} with {}.".format(path, self.read_functions[index]))
             data = reader(path)
             if data is None:
                 # debug("Failed to load {} from path {}".format(self.name, path))
@@ -209,17 +208,22 @@ class Serializable(Component):
     def get_all_preprocessed(self):
         error("Need to override preprocessed data getter for {}".format(self.name))
 
-    def get_model(self):
-        error("Need to override model getter for {}".format(self.name))
-
     def get_model_path(self):
         """Get a path of the trained model"""
         return join(self.config.folders.run, self.name)
+
+    def load_model(self):
+        """Load the transform model"""
+        try:
+            self.model = read_pickled(self.get_model_path())
+        except FileNotFoundError:
+            False
 
     def save_model(self):
         """Save the serializable model"""
         write_pickled(self.get_model_path(), self.get_model())
 
-    def load_model(self):
-        """Load the transform model"""
-        return read_pickled(self.get_model_path())
+    def save_outputs(self):
+        """Save the produced outputs"""
+        info("Writing outputs to {}".format(self.serialization_path_preprocessed))
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())

@@ -11,30 +11,16 @@ from utils import datetime_str, warning
 
 class print_conf(Configuration):
     conf_key_name = "print"
-    run_types = None
-    fold_aggregations = None
-    label_aggregations = None
     folds = None
-    measures = None
-    error_analysis = None
-    label_distribution = None
-    top_k = 3
 
     def __init__(self, config=None):
         """Constructor for the printing component configuration"""
         super().__init__(config)
         if config is None:
             return
-        self.run_types = self.get_value("run_types", base=config)
-        self.measures = self.get_value("measures", base=config)
-        self.label_aggregations = self.get_value("label_aggregations", base=config)
         self.folds = self.get_value("folds", base=config, default=False)
         self.training_progress = self.get_value("training_progress", base=config, default=True)
-        self.fold_aggregations = self.get_value("fold_aggregations", base=config)
-        self.error_analysis = self.get_value("error_analysis", base=config, default=True)
-        self.top_k = self.get_value("top_k", base=config, default=3, expected_type=int)
         self.log_level = self.get_value("log_level", base=config, default="info")
-        self.label_distribution = self.get_value("label_distribution", base=config, default="logs")
 
 
 class misc_conf(Configuration):

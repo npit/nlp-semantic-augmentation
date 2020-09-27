@@ -1,5 +1,6 @@
 from bundle.datatypes import *
 import numpy as np
+from utils import as_list
 
 class DataUsage:
     """Abstract class for types of data utilization"""
@@ -24,18 +25,35 @@ class Indices(DataUsage):
         if epi is None:
             epi = [np.ones((len(ind),), np.int32) for ind in instances]
         self.elements_per_instance = epi 
-        self.instances = instances
-        self.roles = roles
+
+        self.instances = []
+        self.roles = []
+        instances = as_list(instances)
+        if roles is None:
+            roles = []
+        roles = as_list(roles)
+        for i in range(len(instances)):
+            try:
+                role = roles[i]
+            except IndexError:
+                role = None
+
+            inst = instances[i]
+            if len(inst) == 0:
+                continue
+            self.instances.append(inst)
+            if role is not None:
+                self.roles.append(role)
 
     def get_train_test(self):
         """Get train/test indexes"""
-        train, test = [], []
+        train, test = np.ndarray((0,), np.int32), np.ndarray((0,), np.int32)
         for i in range(len(self.instances)):
             if self.roles[i] == defs.roles.train:
-                train.append(self.instances[i])
+                train = np.append(train, self.instances[i])
             elif self.roles[i] == defs.roles.test:
-                test.append(self.instances[i])
-        return np.asarray(train), np.asarray(test)
+                test = np.append(test, self.instances[i])
+        return train, test
 
 
     def summarize_content(self):
@@ -52,7 +70,7 @@ class Indices(DataUsage):
         """Retrieve instances associated with the input role"""
         if not self.has_role(role):
             error(f"Required role {role} not found in indices!", must_exist)
-            return None
+            return np.ndarray((0,), dtype=np.int32)
         role_idx = [i for i in range(len(self.roles)) if self.roles[i] == role]
         inst = [self.instances[i] for i in role_idx]
         if must_be_single:
@@ -60,7 +78,16 @@ class Indices(DataUsage):
             inst = inst[0]
         return inst
 
+    def append_index(self, idx, role=None):
+        """Add another set of indices"""
+        self.instances.append(idx)
+        self.roles.append(role)
 
+
+class Predictions(Indices):
+    """Usage for denoting learner predictions"""
+    name = "predictions"
+    pass
 
 class GroundTruth(DataUsage):
     """Class for abstract ground truth objects"""

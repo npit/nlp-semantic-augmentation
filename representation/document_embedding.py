@@ -58,10 +58,7 @@ class DocumentEmbedding(Embedding):
         self.save_model()
         self.model = model
 
-    def get_model():
-        return self.model
-
-    def map_text(self):
+    def produce_outputs(self):
         if self.loaded_preprocessed or self.loaded_aggregated:
             return
         info("Mapping to {} embeddings.".format(self.name))
@@ -84,9 +81,6 @@ class DocumentEmbedding(Embedding):
                     self.embeddings = np.append(self.embeddings, vec, axis=0)
 
         self.set_constant_elements_per_instance()
-        # write
-        info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
-        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def set_params(self):
         Embedding.set_params(self)
@@ -94,7 +88,7 @@ class DocumentEmbedding(Embedding):
         self.compatible_aggregations = [defs.alias.none, None]
         self.compatible_sequence_lengths = [defs.sequence_length.unit]
 
-    def process_component_inputs(self):
+    def get_component_inputs(self):
         Representation.process_component_inputs(self)
         if self.loaded_aggregated or self.loaded_preprocessed:
             return

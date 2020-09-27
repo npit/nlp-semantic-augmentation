@@ -1,5 +1,7 @@
 import numpy as np
 from sklearn.cluster import KMeans
+from bundle.datausages import *
+from bundle.datausages import *
 
 from learning.learner import Learner
 from utils import debug, error
@@ -23,10 +25,21 @@ class Clusterer(Learner):
             pass
 
     def is_supervised(self):
-        """All clusterers don't require label information"""
+        """All clusterers don't require ground truth information"""
         return False
     def get_model(self):
         return self.model
+
+    def set_component_outputs(self):
+        """Set the output data of the clusterer"""
+        # pass the clustering input features and the produce clusters for evaluation
+        # self.validation.get_inputs_base_object(), self.validation.get_current_evaluation_indices()
+        # input data
+        dat = DataPack(Numeric(self.embeddings), Indices(self.prediction_indexes))
+        # predictions
+        pred = Numeric(self.predictions)
+        pred = DataPack(pred, Predictions([[0]]))
+        self.data_pool.add_data_packs([dat, pred], self.name)
 
 class KMeansClusterer(Clusterer):
     name = "kmeans"

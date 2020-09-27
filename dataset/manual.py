@@ -37,11 +37,12 @@ class ManualDataset(Dataset):
         return raw_data
 
     def handle_raw(self, raw_data):
-        mdr = ManualDatasetReader()
-        mdr.read_dataset(raw_data=raw_data)
-        self.train, self.test = mdr.train, mdr.test
-        self.train_labels, self.test_labels = mdr.train_labels, mdr.test_labels
-        self.train_targets, self.test_targets = mdr.train_targets, mdr.test_targets
+        mdr = self.apply_dataset_reader(raw_data)
+        self.data = mdr.data
+        self.labels = mdr.labels
+        self.indices = mdr.indices
+        self.targets = mdr.targets
+        self.roles = mdr.roles
         self.multilabel = mdr.max_num_instance_labels > 1
         self.labelset, self.label_names = mdr.labelset, mdr.label_names
         self.language = mdr.language
@@ -49,6 +50,11 @@ class ManualDataset(Dataset):
 
         # write serialized data
         write_pickled(self.serialization_path, self.get_all_raw())
+
+    def apply_dataset_reader(self, data):
+        mdr = ManualDatasetReader()
+        mdr.read_dataset(raw_data=data)
+        return mdr
 
     def handle_raw_serialized(self, deserialized_data):
         Dataset.handle_raw_serialized(self, deserialized_data)

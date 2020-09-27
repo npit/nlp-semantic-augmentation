@@ -356,6 +356,11 @@ def error(msg, condition=True):
     logger.error(msg)
     raise Exception(msg)
 
+def update_cumulative_index(new_data, container=None):
+    if container is None or len(container) == 0:
+        return
+    idx = np.arange(len(container), len(new_data))
+    return idx
 
 def info(msg):
     logger = logging.getLogger()

@@ -134,12 +134,12 @@ class Sampler:
             new_labels = np.asarray([x for l in new_labels for x in l])
         return new_data, new_labels, new_targets
 
-    def apply_class_limit(self, data, labels, labelset, label_names, multilabel, targets):
+    def apply_class_limit(self, data, index, labels, labelset, label_names, multilabel, targets):
         c_lim = self.clim
         num_labels = len(labelset)
         error("Specified non-sensical class limit from {} classes to {}.".format(num_labels, c_lim), c_lim >= num_labels)
         if data:
-            train, test = data
+            train, test = index
             train_labels, test_labels = labels
             train_targets, test_targets = targets
             # data have been loaded -- apply limit
@@ -163,14 +163,26 @@ class Sampler:
         test_labels = [np.asarray(x) for x in test_labels]
         return (train, test), (train_labels, test_labels), (labelset, label_names), (train_targets, test_targets)
 
-    def subsample(self, data, labels=None, labelset=None, label_names=None, multilabel=None, targets=None):
+    def subsample(self, data, index, labels=None, labelset=None, label_names=None, multilabel=None, targets=None):
         """Apply data and class sub-sampling"""
         if any(l is not None for l in labels) and self.clim is not None:
-            data, labels, (labelset, label_names), targets = self.apply_class_limit(data, labels, labelset, label_names, multilabel, targets)
+            data, labels, (labelset, label_names), targets = self.apply_class_limit(data, index, labels, labelset, label_names, multilabel, targets)
 
         if self.dlim is not None:
-            data, labels, labelset, targets = self.apply_data_limit(data, labels, multilabel, targets)
+            data, labels, labelset, targets = self.apply_data_limit(data, index, labels, multilabel, targets)
 
-        return data, labels, labelset, label_names,  targets
+        return data, index, labels, labelset, label_names,  targets
 
     # endregion
+
+    def matching_limits(self, train, test, labelset):
+        """Check if the train/test instances match the limits"""
+        if self.clim is not None:
+            if not labelset:
+                return False
+            return self.clim == len(labelset)
+        if self.dlim is not None:
+            tr_lim = self.dlim[0]
+            te_lim = self.dlim[1] if len(self.dlim) > 1 else None
+            return tr_lim == len(train) and (te_lim is None or te_lim == len(test))
+        return True

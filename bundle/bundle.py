@@ -84,10 +84,13 @@ class DataPool:
 
     def match_usage(self, candidate_usage, usage_requested, usage_matching, usage_exclude=None):
         candidate_usage = as_list(candidate_usage)
-        usage_requested = as_list(usage_requested)
+        if usage_matching != "all":
+            usage_requested = as_list(usage_requested)
         usage_exclude = as_list(usage_exclude)
         if any(x in candidate_usage for x in usage_exclude):
             return False
+        if usage_matching == "all":
+            return True
         if usage_matching == "exact":
             if not equal_lengths(candidate_usage, usage_requested):
                 return False
@@ -103,7 +106,7 @@ class DataPool:
         Args:
             data_type (str): Name of datatype
             usage (str): Name or class of usage
-            usage_matching (str): How to match the usage, candidates are "exact", "anyof", "subset". Defaults to "exact"
+            usage_matching (str): How to match the usage, candidates are "exact", "anyof", "all", "subset". Defaults to "exact"
             client ([type]): [description]
             must_be_single (bool, optional): [description]. Defaults to True.
             on_error_message (str, optional): [description]. Defaults to "Data request failed:".
@@ -115,7 +118,8 @@ class DataPool:
         curr_inputs = self.get_current_inputs()
         res = []
         # all to string
-        data_type = data_type.name if type(data_type) is not str and issubclass(data_type, Datatype) else data_type
+        if data_type is not None:
+            data_type = data_type.name if type(data_type) is not str and issubclass(data_type, Datatype) else data_type
         usage = as_list(usage)
         usage = [x.name if type(x) is not str and issubclass(x, DataUsage) else x for x in usage]
         if usage_exclude is not None:
@@ -123,10 +127,14 @@ class DataPool:
             usage_exclude = [x.name if type(x) is not str and issubclass(x, DataUsage) else x for x in usage_exclude]
         for data in curr_inputs:
             matches_usage = self.match_usage(data.get_usage_names(), usage, usage_matching, usage_exclude)
-            if matches_usage and data.type() == data_type:
+            if matches_usage and (data_type is None or data.type() == data_type):
                 res.append(data)
         if must_be_single:
-            error(on_error_message + f" Available: {data_type}{usage}{client}, matches: {len(res)} candidates but requested a singleton.", len(res) != 1)
+            if len(res) != 1:
+                warning("Examined current inputs:")
+                for c in curr_inputs:
+                    warning(str(c))
+                error(on_error_message + f" Available: {data_type}/{usage}/{client}, matches: {len(res)} candidates but requested a singleton.")
             res = res[0]
         return res
             

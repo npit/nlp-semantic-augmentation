@@ -17,8 +17,18 @@ class Datatype:
 
     # variable for the distinct data units
     instances = None
+
     def __init__(self, instances):
         self.instances = instances
+
+    def get_instance(self, instance_idx):
+        try:
+            if type(self.instances) is np.ndarray:
+                return self.instances[instance_idx]
+            else:
+                return [self.instances[i] for i in instance_idx]
+        except KeyError:
+            return None
 
     # def get_instance_index(self, idx):
     #     llen = len(self.instances)
@@ -50,6 +60,9 @@ class Datatype:
     # def summarize_content(self):
     #     data_summary(self, self.name)
 
+    def append_instance(self, inst):
+        """Append another instance object"""
+        self.instances = np.append(self.instances, inst, axis=0)
 
 
 class Text(Datatype):

@@ -30,17 +30,17 @@ class Dataset(Serializable):
     dir_name = "datasets"
     undefined_word_index = None
     preprocessed = False
-    train, test = None, None
-    data_names = ["train-data", "test-data", "traintest-roles"]
-    label_data_names = ["train-labels", "label-names", "test-labels", "labelset"]
-    target_data_names = ["train-target", "test-target"]
-    train_labels, test_labels = None, None
-    train_targets, test_targets = None, None
+
+    data, roles, indices = None, None, None
+    labels, labelset, multilabel = None, None, None
     num_labels = None
-    labelset = None
-    multilabel = False
+
+    data_names = ["data", "indices", "roles"]
+    target_data_names = ["targets"]
+    label_data_names = ["labels", "label_names", "labelset"]
+
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
-    roles = None
+
     filter_stopwords = True
     stopwords = None
 
@@ -93,10 +93,11 @@ class Dataset(Serializable):
         if self.config.filter_stopwords is not None:
             self.filter_stopwords = self.config.filter_stopwords
 
-    def populate(self):
+    def load_outputs_from_disk(self):
+        # set serialization params here, after name's been configured
         self.set_serialization_params()
         self.acquire_data()
-        if self.loaded():
+        if self.loaded() and (not self.config.has_limit() or self.sampler.matching_limits(self.indices, self.labelset)):
             # downloaded successfully
             self.loaded_index = self.load_flags.index(True)
         else:
@@ -116,14 +117,13 @@ class Dataset(Serializable):
             error("Failed to load dataset", not self.loaded())
             self.loaded_index = self.load_flags.index(True)
             # reapply the limit
-            data, labels, self.labelset, self.label_names, targets = self.sampler.subsample(
-                self.get_data(), self.get_labels(), self.labelset, self.label_names, self.multilabel, self.get_targets())
-            self.train, self.test = data
-            self.train_labels, self.test_labels = labels
-            self.train_targets, self.test_targets = targets
+            train, test = self.indices.get_train_test()
+            self.data, self.indices, self.labels, self.labelset, self.label_names, self.targets = self.sampler.subsample(
+                self.data, (train, test), self.labels, self.labelset, self.label_names, self.multilabel, self.targets)
             self.name = self.sampler.get_limited_name(self.name)
             self.set_serialization_params()
             write_pickled(self.serialization_path, self.get_all_raw())
+            self.loaded_preprocessed = False
 
         self.config.full_name = self.name
         info("Acquired dataset:{}".format(str(self)))
@@ -133,8 +133,7 @@ class Dataset(Serializable):
         """Placeholder class for sanity checking"""
         # ensure numeric labels
         try:
-            for labels in [self.train_labels, self.test_labels]:
-                list(map(int, flatten(labels)))
+            list(map(int, flatten(self.labels[:1])))
         except ValueError as ve:
             error("Non-numeric label encountered: {}".format(ve))
         except TypeError as ve:
@@ -149,10 +148,11 @@ class Dataset(Serializable):
         info(self.get_info())
         self.loaded_raw_serialized = False
         self.loaded_preprocessed = True
+        self.indices = Indices(self.indices, roles=self.roles)
 
     # region getters
     def get_data(self):
-        return self.train, self.test
+        return self.data
 
     def is_multilabel(self):
         """Multilabel status getter"""
@@ -160,15 +160,15 @@ class Dataset(Serializable):
 
     def get_targets(self):
         """Targets getter"""
-        return self.train_targets, self.test_targets
+        return self.targets
 
     def get_labels(self):
         """Labels getter"""
-        return self.train_labels, self.test_labels
+        return self.labels
 
     def is_labelled(self):
         """Boolean for labelling"""
-        return self.train_labels is not None and self.train_labels[0] is not None
+        return self.labels is not None and self.labels[0] is not None
 
     def get_num_labels(self):
         """Number of labels getter"""
@@ -176,7 +176,7 @@ class Dataset(Serializable):
 
     def get_info(self):
         """Current data information getter"""
-        return f"{self.name} data: {len(self.train)} train, {len(self.test)} test, {self.num_labels} labels, {len(self.train_targets) if self.train_targets is not None else None} targets"
+        return f"{self.name} data: {len(self.data)}, {self.num_labels} labels, {len(self.targets) if self.targets is not None else None} targets"
 
     def get_raw_path(self):
         error("Need to override raw path datasea getter for {}".format(self.name))
@@ -203,13 +203,13 @@ class Dataset(Serializable):
         return " ".join([item["words"] for item in data])
 
     def handle_raw_serialized(self, deserialized_data):
-        self.train, self.test, self.roles = [deserialized_data[n] for n in self.data_names]
+        self.data, self.indices, self.roles = [deserialized_data[n] for n in self.data_names]
         self.loaded_raw_serialized = True
-        self.train_labels, self.label_names, self.test_labels, self.labelset = [deserialized_data[n] for n in self.label_data_names]
-        self.train_targets, self.test_targets = [deserialized_data[n] for n in self.target_data_names]
-        if self.train_labels is not None:
+        self.labels, self.label_names, self.labelset = [deserialized_data[n] for n in self.label_data_names]
+        self.targets = [deserialized_data[n] for n in self.target_data_names if n in deserialized_data]
+        if self.labels is not None:
             self.num_labels = len(set(self.label_names))
-            self.multilabel = self.contains_multilabel(self.train_labels)
+            self.multilabel = self.contains_multilabel(self.labels)
 
     # endregion
 
@@ -287,22 +287,23 @@ class Dataset(Serializable):
         return data
 
     def has_text_targets(self):
-        return self.train_targets is not None and type(self.train_targets[0]) == str
+        return self.targets is not None and len(self.targets) > 0 and type(self.targets[0]) == str
 
     # preprocess single
-    def preprocess_text_collection(self, document_list, track_vocabulary=False):
+    def preprocess_text_collection(self, texts_container, container_idxs, track_vocabulary=False):
         # filt = '!"#$%&()*+,-./:;<=>?@\[\]^_`{|}~\n\t1234567890'
         ret_words_pos, ret_voc = [], set()
         num_words = []
         discarded_indexes = []
-        if not document_list:
+        if not container_idxs.any():
             info("(Empty collection)")
             return [], [], None
-        with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100, unit="collection") as pbar:
-            for i in range(len(document_list)):
-                pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
+        with tqdm.tqdm(desc="Mapping document collection", total=len(container_idxs), ascii=True, ncols=100, unit="collection") as pbar:
+            for i, idx in enumerate(container_idxs):
+                data = texts_container[idx]
+                pbar.set_description("Document {}/{}".format(i + 1, len(container_idxs)))
                 pbar.update()
-                data = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
+                data = self.process_single_text(data, punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
                                                           word_prepro_func=self.word_prepro_func, stopwords=self.stopwords)
                 word_data = data["words"]
                 if not word_data:
@@ -325,14 +326,23 @@ class Dataset(Serializable):
             info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
             return
         self.setup_nltk_resources()
+        self.indices = Indices(self.indices, roles=self.roles)
+        train_idx = self.indices.get_role_instances(defs.roles.train, must_exist=False)
+        test_idx = self.indices.get_role_instances(defs.roles.test, must_exist=False)
+        error("Neither train or test indices found to process dataset", not (train_idx.any() or test_idx.any()))
+        preproc_data = []
+        preproc_targets = []
+
         with tictoc("Preprocessing {}".format(self.name)):
             info("Mapping text training data to word collections.")
-            self.train, self.vocabulary, discarded_indexes = self.preprocess_text_collection(self.train, track_vocabulary=True)
+            txts, self.vocabulary, discarded_indexes = self.preprocess_text_collection(self.data, train_idx, track_vocabulary=True)
+            preproc_data.extend(txts)
 
             if self.has_text_targets():
                 info("Mapping text training targets to word collections.")
-                self.train_targets, voc, _ = self.preprocess_text_collection(self.train_targets, track_vocabulary=True)
+                txts, voc, _ = self.preprocess_text_collection(self.targets, train_idx, track_vocabulary=True)
                 self.vocabulary.update(voc)
+                preproc_targets.extend(txts)
 
             # if discarded_indexes:
             #     warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
@@ -340,10 +350,12 @@ class Dataset(Serializable):
             #         self.train_labels = [self.train_labels[i] for i in range(len(self.train_labels)) if i not in discarded_indexes]
 
             info("Mapping text test data to word collections.")
-            self.test, _, discarded_indexes = self.preprocess_text_collection(self.test)
+            txts, _, discarded_indexes = self.preprocess_text_collection(self.data, test_idx)
+            preproc_data.extend(txts)
             if self.has_text_targets():
                 info("Mapping text test targets to word collections.")
-                self.test_targets, _, _ = self.preprocess_text_collection(self.test_targets)
+                targets, _, _ = self.preprocess_text_collection(self.test_targets, test_idx)
+                preproc_targets.extend(txts)
 
             # if discarded_indexes:
             #     warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
@@ -356,11 +368,15 @@ class Dataset(Serializable):
                 self.vocabulary_index.append(index)
             # add another for the missing word
             self.undefined_word_index = len(self.vocabulary)
-        # serialize
+            self.data = preproc_data
+
+    def save_outputs(self):
+        # serialize preprocessed
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        data = {lbl: data for (lbl, data) in zip(self.data_names, (self.train, self.test, self.roles))}
+        indices = self.indices.instances if type(self.indices) is Indices else self.indices
+        data = {lbl: data for (lbl, data) in zip(self.data_names, (self.data, indices, self.roles))}
         for key, value in zip(self.label_data_names, self.get_labelled_data()):
             data[key] = value
         for key, value in zip(self.target_data_names, self.get_targets()):
@@ -368,7 +384,7 @@ class Dataset(Serializable):
         return data
 
     def get_labelled_data(self):
-        return [self.train_labels, self.label_names, self.test_labels, self.labelset]
+        return [self.labels, self.label_names, self.labelset]
 
     def get_all_preprocessed(self):
         res = self.get_all_raw()
@@ -388,30 +404,33 @@ class Dataset(Serializable):
 
     # region # chain methods
 
-    def set_outputs(self):
+    def set_component_outputs(self):
         """Set text data to the output bundle"""
         outputs = []
-        indices = [np.arange(len(x)) for x in self.get_data()]
-        indices = Indices(instances=indices, roles=self.roles)
+        # indices = [np.arange(len(x)) for x in self.get_data()]
+        # indices = Indices(instances=indices, roles=self.roles)
 
         text = Text(self.get_data(), self.vocabulary)
-        outputs.append(DataPack(text, usage=indices))
+        outputs.append(DataPack(text, usage=self.indices))
 
         if self.is_labelled():
             labels_data = Numeric(self.get_labels())
             labels_usage = Labels(self.labelset, self.multilabel)
             dp = DataPack(labels_data, labels_usage)
-            dp.add_usage(indices)
+            dp.add_usage(self.indices)
             outputs.append(dp)
-        if self.train_targets is not None:
+        if self.targets:
             # tar = self.train_targets + self.test_targets
             # dp = DataPack.make(tar, GroundTruth)
-            dp = DataPack.make(self.get_targets(), GroundTruth)
-            dp.add_usage(indices)
+            dp = DataPack.make(self.targets, GroundTruth)
+            dp.add_usage(self.indices)
             outputs.append(dp)
 
         self.data_pool.add_data_packs(outputs, self.name)
 
+    def get_component_inputs(self):
+        # not needed for datasets
+        pass
 
     def configure_name(self):
         self.name = Dataset.generate_name(self.config)
@@ -422,8 +441,7 @@ class Dataset(Serializable):
             self.name = Dataset.generate_name(self.config)
         Component.configure_name(self, self.name)
 
-    def run(self):
-        self.populate()
+    def produce_outputs(self):
         self.preprocess()
-        self.set_outputs()
+
     # endregion
