@@ -154,3 +154,9 @@ class Representation(Serializable):
         self.vocabulary = self.text.data.vocabulary
         self.indices = self.text.get_usage(Indices.name)
         self.roles = self.indices.roles
+
+    def check_model_building_resources(self):
+        """Check model building resources are sufficient"""
+        train_idx = self.indices.get_train_instances()
+        if len(train_idx) == 0:
+            error(f"Cannot build {self.name} model without training data")

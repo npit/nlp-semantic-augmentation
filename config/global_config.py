@@ -15,6 +15,7 @@ class GlobalConfig(Configuration):
     folders = None
     # key for declaring chains
     chains_key = "chains"
+    triggers_key = "triggers"
 
     def __init__(self):
         super().__init__(None)

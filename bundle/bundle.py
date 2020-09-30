@@ -58,6 +58,8 @@ class DataPool:
 
     current_running_chain = None
 
+    reference_data = None
+
     def add_data_packs(self, datapack_list, source_name):
         for dp in datapack_list:
             dp.chain = self.current_running_chain
@@ -67,6 +69,33 @@ class DataPool:
 
     def make_datapack_id(self, chain, source):
         return chain
+
+    def get_outputs(self):
+        # get global matches
+        res = self.request_data(None, Predictions, "data_pool", usage_matching="subset", reference_data=self.data, must_be_single=False)
+        output = {}
+        for dp in res:
+            output[dp.get_id()] = {}
+            output[dp.get_id()]["data"] = dp.data.to_json()
+        return output
+
+    def mark_as_reference_data(self):
+        """Designate current contents as reference data"""
+        self.reference_data = list(range(len(self.data)))
+        debug("Data pool marked reference:")
+        for x in self.data:
+            info(str(x))
+
+    def fallback_to_reference_data(self):
+        """Recall to reference"""
+        res = []
+        for i, dat in enumerate(self.data):
+            if i in self.reference_data:
+                res.append(dat)
+        self.data = res
+        debug("Data pool fallback complete -- contents now:")
+        for x in self.data:
+            info(str(x))
 
     def add_data(self, data):
         """Add a data pack to the pool"""
@@ -100,7 +129,7 @@ class DataPool:
         else:
             error(f"Specified undefined usage: {usage_requested}")
 
-    def request_data(self, data_type, usage, client, usage_matching="exact", usage_exclude=None, must_be_single=True, on_error_message="Data request failed:"):
+    def request_data(self, data_type, usage, client, usage_matching="exact", usage_exclude=None, must_be_single=True, on_error_message="Data request failed:", reference_data=None):
         """Get data from the data pool
 
         Args:
@@ -108,14 +137,18 @@ class DataPool:
             usage (str): Name or class of usage
             usage_matching (str): How to match the usage, candidates are "exact", "anyof", "all", "subset". Defaults to "exact"
             client ([type]): [description]
-            must_be_single (bool, optional): [description]. Defaults to True.
-            on_error_message (str, optional): [description]. Defaults to "Data request failed:".
+            must_be_single (bool, optional): Singleton enforcer. Defaults to True.
+            on_error_message (str, optional): What to print on error. Defaults to "Data request failed:".
+            reference_data (list, optional): Data list to draw candidates from. Defaults to None, which is resolved to the current chain feeders.
 
         Returns:
             [type]: [description]
         """
         # get the data available to the client
-        curr_inputs = self.get_current_inputs()
+        if reference_data is None:
+            curr_inputs = self.get_current_inputs()
+        else:
+            curr_inputs = reference_data
         res = []
         # all to string
         if data_type is not None:
@@ -138,6 +171,9 @@ class DataPool:
             res = res[0]
         return res
             
+    def summarize_contents(self):
+        for dat in self.data:
+            info(dat)
     def get_current_inputs(self):
         """Fetch datapacks currently available from supplying chains / components"""
         res = []

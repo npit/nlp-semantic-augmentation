@@ -8,8 +8,8 @@ from bundle.bundle import DataPool
 class Chain(Component):
     """Class to represent an ordered sequence of components"""
     components = None
-    input_requirements = None
     name = None
+    triggered = False
 
     def get_components(self):
         return self.components
@@ -20,11 +20,19 @@ class Chain(Component):
     def __init__(self, name, fields, configs):
         """Constructor for the chain"""
         self.components = []
+
+        # parse potential pipeline inputs
         # parse potential chain inputs
         if defs.alias.link in fields:
             idx = fields.index(defs.alias.link)
             link_component = configs[idx]
             self.required_finished_chains = link_component.get_links()
+            del fields[idx]
+            del configs[idx]
+        elif defs.alias.triggered in fields:
+            idx = fields.index(defs.alias.triggered)
+            trigger_args = [] # TODO, if necessary
+            self.triggered = True
             del fields[idx]
             del configs[idx]
 
@@ -34,6 +42,13 @@ class Chain(Component):
             component = instantiator.create(component_name, component_params)
             self.components.append(component)
             debug("Created chain {} component {}/{}: {}".format(name, idx + 1, self.num_components, str(self.components[-1])))
+
+    def setup_suspension_handling(self):
+        for com in self.components:
+            com.suspension_handler = self.handle_suspension
+
+    def handle_suspension(self, component):
+        pass
         # info("Created chain with {} components.".format(self.num_components))
 
     # def backtrack_output_demand(self, requesting_chain_name, requesting_component_name, consumes, data_pool):

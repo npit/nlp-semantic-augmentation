@@ -378,22 +378,28 @@ def warning(msg):
 
 
 # read pickled data
-def read_pickled(path, defaultNone=False):
+def read_pickled(path, defaultNone=False, msg=""):
     """Pickle deserializer function
     """
+    if msg:
+        msg += " "
     if defaultNone:
         if not exists(path):
             return None
-    info("Reading serialized from {}".format(path))
+    info(f"Reading serialized {msg} from {path}")
     with open(path, "rb") as f:
         return pickle.load(f)
 
 
 # write pickled data
-def write_pickled(path, data):
+def write_pickled(path, data, msg="", write_intermmediate=True):
     """Pickle serializer function
     """
-    info("Serializing to {}".format(path))
+    if msg:
+        msg += " "
+    if write_intermmediate:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    info(f"Serializing {msg}to {path}")
     with open(path, "wb") as f:
         pickle.dump(data, f)
 

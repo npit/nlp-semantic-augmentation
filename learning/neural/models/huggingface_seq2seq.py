@@ -1,8 +1,9 @@
 import torch
 from torch.nn import functional as F
 from learning.neural.base_model import BaseModel
-from utils import error, info
+from utils import error, info, debug
 
+from transformers import EncoderDecoderConfig, EncoderDecoderModel
 class HuggingfaceSeq2seq(BaseModel):
     """Neural model provided by huggingface"""
 
@@ -21,9 +22,11 @@ class HuggingfaceSeq2seq(BaseModel):
 
     def make_predictions(self, inputs):
         # generate
+        debug(f"Making predictions on input data {inputs.shape} and seqlen {self.sequence_length}")
         input_tokens = torch.LongTensor(self.embeddings[inputs]).to(self.device_name)
         att_mask = torch.LongTensor(self.masks[inputs]).to(self.device_name)
-        preds =  self.model.generate(input_tokens, decoder_start_token_id=self.model.config.decoder.pad_token_id, sequence_length=self.sequence_length, attention_mask=att_mask)
+        preds =  self.model.generate(input_tokens, decoder_start_token_id=self.model.config.decoder.pad_token_id,
+            max_length=self.sequence_length, min_length=self.sequence_length, attention_mask=att_mask)
         return preds
 
     def assign_ground_truth(self, gt):

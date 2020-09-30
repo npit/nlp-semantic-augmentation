@@ -66,6 +66,11 @@ class Indices(DataUsage):
             return False
         return role in self.roles
 
+    def get_train_instances(self):
+        return self.get_role_instances(defs.roles.train)
+    def get_test_instances(self):
+        return self.get_role_instances(defs.roles.test)
+
     def get_role_instances(self, role, must_be_single=True, must_exist=True):
         """Retrieve instances associated with the input role"""
         if not self.has_role(role):
@@ -136,6 +141,9 @@ class DataPack:
 
     def usage(self):
         return "_".join([x.name for x in self.usages])
+
+    def get_id(self):
+        return self.data.name + "|" + self.usage()
 
     def type(self):
         """Get type of data"""

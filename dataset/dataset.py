@@ -128,6 +128,7 @@ class Dataset(Serializable):
         self.config.full_name = self.name
         info("Acquired dataset:{}".format(str(self)))
         self.check_sanity()
+        return self.loaded_preprocessed
 
     def check_sanity(self):
         """Placeholder class for sanity checking"""
@@ -206,7 +207,7 @@ class Dataset(Serializable):
         self.data, self.indices, self.roles = [deserialized_data[n] for n in self.data_names]
         self.loaded_raw_serialized = True
         self.labels, self.label_names, self.labelset = [deserialized_data[n] for n in self.label_data_names]
-        self.targets = [deserialized_data[n] for n in self.target_data_names if n in deserialized_data]
+        self.targets = deserialized_data[self.target_data_names[0]]
         if self.labels is not None:
             self.num_labels = len(set(self.label_names))
             self.multilabel = self.contains_multilabel(self.labels)
@@ -295,7 +296,7 @@ class Dataset(Serializable):
         ret_words_pos, ret_voc = [], set()
         num_words = []
         discarded_indexes = []
-        if not container_idxs.any():
+        if container_idxs.size == 0:
             info("(Empty collection)")
             return [], [], None
         with tqdm.tqdm(desc="Mapping document collection", total=len(container_idxs), ascii=True, ncols=100, unit="collection") as pbar:
@@ -326,16 +327,19 @@ class Dataset(Serializable):
             info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
             return
         self.setup_nltk_resources()
+        # make indices object -- this filters down non-existent (with no instances) roles
         self.indices = Indices(self.indices, roles=self.roles)
-        train_idx = self.indices.get_role_instances(defs.roles.train, must_exist=False)
+        self.roles = self.indices.roles
+        train_idx, test_idx = self.indices.get_train_test()
         test_idx = self.indices.get_role_instances(defs.roles.test, must_exist=False)
-        error("Neither train or test indices found to process dataset", not (train_idx.any() or test_idx.any()))
+        error("Neither train or test indices found to process dataset", not (train_idx.size > 0 or test_idx.size > 0))
         preproc_data = []
         preproc_targets = []
 
         with tictoc("Preprocessing {}".format(self.name)):
             info("Mapping text training data to word collections.")
             txts, self.vocabulary, discarded_indexes = self.preprocess_text_collection(self.data, train_idx, track_vocabulary=True)
+            self.vocabulary = set(self.vocabulary)
             preproc_data.extend(txts)
 
             if self.has_text_targets():
@@ -354,7 +358,7 @@ class Dataset(Serializable):
             preproc_data.extend(txts)
             if self.has_text_targets():
                 info("Mapping text test targets to word collections.")
-                targets, _, _ = self.preprocess_text_collection(self.test_targets, test_idx)
+                txts, _, _ = self.preprocess_text_collection(self.targets, test_idx)
                 preproc_targets.extend(txts)
 
             # if discarded_indexes:
@@ -368,7 +372,9 @@ class Dataset(Serializable):
                 self.vocabulary_index.append(index)
             # add another for the missing word
             self.undefined_word_index = len(self.vocabulary)
+
             self.data = preproc_data
+            self.targets = preproc_targets
 
     def save_outputs(self):
         # serialize preprocessed
@@ -379,8 +385,7 @@ class Dataset(Serializable):
         data = {lbl: data for (lbl, data) in zip(self.data_names, (self.data, indices, self.roles))}
         for key, value in zip(self.label_data_names, self.get_labelled_data()):
             data[key] = value
-        for key, value in zip(self.target_data_names, self.get_targets()):
-            data[key] = value
+        data[self.target_data_names[0]] = self.targets
         return data
 
     def get_labelled_data(self):
@@ -444,4 +449,9 @@ class Dataset(Serializable):
     def produce_outputs(self):
         self.preprocess()
 
+    def attempt_load_model_from_disk(self, force_reload=False, failure_is_fatal=False):
+        # building a dataset model is not defined -- failure never fatal
+        info(f"No need to load the model for {self.get_full_name()}")
+        return super().attempt_load_model_from_disk(force_reload=force_reload, failure_is_fatal=False)
+        
     # endregion

@@ -42,11 +42,11 @@ class ManualDataset(Dataset):
         self.labels = mdr.labels
         self.indices = mdr.indices
         self.targets = mdr.targets
-        self.roles = mdr.roles
         self.multilabel = mdr.max_num_instance_labels > 1
         self.labelset, self.label_names = mdr.labelset, mdr.label_names
         self.language = mdr.language
         self.roles = mdr.roles
+
 
         # write serialized data
         write_pickled(self.serialization_path, self.get_all_raw())

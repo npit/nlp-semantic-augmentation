@@ -32,14 +32,13 @@ class Clusterer(Learner):
 
     def set_component_outputs(self):
         """Set the output data of the clusterer"""
-        # pass the clustering input features and the produce clusters for evaluation
+        super().set_component_outputs()
+        # pass the clustering input features and the produced clusters for evaluation
         # self.validation.get_inputs_base_object(), self.validation.get_current_evaluation_indices()
-        # input data
+        # pass the input data, and the indexes denoting on which of these the clusterer used to generate its predictions
+        # (e.g. useful if validation occurred)
         dat = DataPack(Numeric(self.embeddings), Indices(self.prediction_indexes))
-        # predictions
-        pred = Numeric(self.predictions)
-        pred = DataPack(pred, Predictions([[0]]))
-        self.data_pool.add_data_packs([dat, pred], self.name)
+        self.data_pool.add_data_packs([dat], self.name)
 
 class KMeansClusterer(Clusterer):
     name = "kmeans"

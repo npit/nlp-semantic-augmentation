@@ -30,6 +30,13 @@ class Datatype:
         except KeyError:
             return None
 
+    def to_json(self):
+        res = {}
+        for i, inst in enumerate(self.instances):
+            if type(inst) is np.ndarray:
+                inst = inst.tolist()
+            res[i] = inst
+        return res
     # def get_instance_index(self, idx):
     #     llen = len(self.instances)
     #     if llen <= idx:

@@ -26,11 +26,20 @@ class HuggingfaceTransformerLanguageModel(NeuralLanguageModel):
         NeuralLanguageModel.__init__(self)
 
     def configure_language_model(self):
-        self.neural_model = self.get_model()
-        self.tokenizer = self.get_tokenizer()
+        # if not self.model_loaded:
+        #     self.neural_model = self.get_model()
+        self.tokenizer = self.neural_model_class.get_tokenizer(pretrained_id=self.neural_model_class.pretrained_id)
 
     def get_model(self):
         return self.neural_model_class(self.config, use_pretrained=True)
+
+    def load_model(self):
+        try:
+            path = self.get_model_path()
+            self.neural_model = self.neural_model_class.from_pretrained(path)
+        except:
+            return False
+        return True
 
     def get_tokenizer(self):
         return self.neural_model.get_tokenizer()
@@ -38,8 +47,12 @@ class HuggingfaceTransformerLanguageModel(NeuralLanguageModel):
     def map_text(self):
         """Process input text into tokenized elements"""
         super().map_text()
-        # associate the attention masks with the model, after their computation
+
+    def produce_outputs(self):
+        # associate the attention masks with the model
         self.neural_model.configure_masking(self.masks)
+        # produce the outputs
+        super().produce_outputs()
 
     # handle huggingface models IO
     def save_model(self):

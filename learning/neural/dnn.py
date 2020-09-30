@@ -5,7 +5,7 @@ from learning.neural.models import instantiator
 import torch
 from os.path import join
 import numpy as np
-from utils import info
+from utils import info, debug
 
 class DNN:
     """ class for all pytorch-lightning deep neural networks"""
@@ -25,6 +25,7 @@ class DNN:
 
     def assign_test_data(self, model_instance):
         """Transfer test input indexes to the nn model"""
+        model_instance.embeddings = self.embeddings
         model_instance.test_index = torch.LongTensor(self.test_index)
 
     def get_current_model_path(self):
@@ -34,14 +35,19 @@ class DNN:
 
     def test_model(self, model_instance):
         """Testing function"""
+        # debug(f"Setting eval mode")
         model_instance.eval()
+        # debug(f"Assigning test data")
         self.assign_test_data(model_instance)
         # import ipdb; ipdb.set_trace()
+        # debug(f"Setting no-grad")
         with torch.no_grad():
             predictions = []
             # defer to model's forward function
             for input_batch in model_instance.test_dataloader():
+                # debug(f"Testing batch {input_batch.shape}")
                 batch_predictions = model_instance.make_predictions(input_batch)
+                debug(f"Got predictions: {batch_predictions.shape}")
                 batch_predictions = self.process_predictions(batch_predictions)
                 # batch_predictions = model_instance(input_batch)
                 # account for possible batch padding TODO fix

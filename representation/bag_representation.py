@@ -120,45 +120,54 @@ class BagRepresentation(Representation):
             return True
         return False
 
-    def produce_outputs(self):
-        """Map text to bag representations"""
-        if self.loaded_aggregated:
-            debug("Skippping {} mapping due to preloading".format(self.base_name))
-            return
-        # need to calc term numeric index for aggregation
+    def get_model(self):
+        return self.term_list
+
+    def build_model_from_inputs(self):
+        """Build the bag model"""
         if self.term_list is None:
             # no supplied token list -- use vocabulary of the training dataset
             self.term_list = self.vocabulary
             info("Setting bag dimension to {} from input vocabulary.".format(len(self.term_list)))
-        if self.do_limit:
-            self.dimension = self.limit_number
-        else:
-            self.dimension = len(self.term_list)
+        self.dimension = self.limit_number if self.do_limit else len(self.term_list)
         self.config.dimension = self.dimension
-
-        # calc term index mapping
-        self.term_index = {term: self.term_list.index(term) for term in self.term_list}
-
-        if self.loaded_preprocessed:
-            debug("Skippping {} mapping due to preloading".format(self.base_name))
-            return
 
         bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range)
         if self.do_limit:
             bagger.set_thresholds(self.limit_type, self.limit_number)
 
-        do_fit = self.term_list is None
-        train_idx, test_idx = self.indices.get_train_test()
-
+        train_idx = self.indices.get_train_instances()
         texts = Text.get_strings(self.text.data.get_instance(train_idx))
-        vec_train = bagger.map_collection(texts, fit=do_fit)
-        del texts
+        bagger.map_collection(texts, fit=True, transform=False)
+        self.term_list = bagger.get_vocabulary()
 
-        texts = Text.get_strings(self.text.data.get_instance(test_idx))
-        vec_test = bagger.map_collection(texts, fit=do_fit)
-        del texts
 
-        self.embeddings = np.vstack((vec_train, vec_test))
+    def produce_outputs(self):
+        """Map text to bag representations"""
+        # if self.loaded_aggregated:
+        #     debug("Skippping {} mapping due to preloading".format(self.base_name))
+        #     return
+        # need to calc term numeric index for aggregation
+
+
+        # if self.loaded_preprocessed:
+        #     debug("Skippping {} mapping due to preloading".format(self.base_name))
+        #     return
+
+        bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range)
+
+        self.embeddings = np.ndarray((0, len(self.term_list)), dtype=np.int32)
+        for idx in self.indices.get_train_test():
+            texts = Text.get_strings(self.text.data.get_instance(idx))
+            vecs = bagger.map_collection(texts, fit=False, transform=True)
+            self.embeddings = np.append(self.embeddings, vecs, axis=0)
+            del texts
+
+        # texts = Text.get_strings(self.text.data.get_instance(test_idx))
+        # vec_test = bagger.map_collection(texts, fit=do_fit)
+        # del texts
+
+        # self.embeddings = np.vstack((vec_train, vec_test))
 
         # self.embeddings = np.append(vec_train, vec_test)
         # self.vector_indices = (np.arange(len(train)), np.arange(len(test)))

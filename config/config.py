@@ -12,11 +12,14 @@ class Configuration:
     Includes global-level configs as well.
     """
     component = None
+    explicit_model_path = None
 
     def __init__(self, config):
         self.conf = config
         self.config_objects = []
         self.config_object_names = []
+        if config is not None:
+            self.explicit_model_path = self.get_value("model_path", default=None, base=config)
 
     def add_config_object(self, conf_name, conf_object):
         """Add a configuration sub-object to the current configuration object

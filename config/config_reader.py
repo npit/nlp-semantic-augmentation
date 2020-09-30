@@ -5,6 +5,7 @@ from os.path import exists, join
 import utils
 from component.chain import Chain
 from component.pipeline import Pipeline
+from component.trigger_instantiator import TriggerInstantiator as trigger_inst
 from config.chain_components import chain_component_classes
 from config.global_components import global_component_classes
 from config.global_config import GlobalConfig
@@ -19,6 +20,14 @@ class ConfigReader:
         # read the configuration file
         conf_dict = utils.read_ordered_yaml(conf_file)
 
+        # read execution triggers
+        try:
+            trigger_conf = conf_dict[GlobalConfig.triggers_key]
+            triggers = ConfigReader.read_triggers(trigger_conf)
+            del conf_dict[GlobalConfig.triggers_key]
+        except KeyError:
+            triggers = [trigger_inst.make_default(conf_dict)]
+
         # read non-chain configuration
         global_config = ConfigReader.read_global_configuration(conf_dict, ignore_undefined)
         # copy configuration to the run folder
@@ -30,7 +39,21 @@ class ConfigReader:
         global_config.setup_logging()
         # read chains
         pipeline = ConfigReader.read_pipeline(conf_dict, global_config)
-        return global_config, pipeline
+
+        return global_config, pipeline, triggers
+
+    @staticmethod
+    def read_triggers(conf):
+        """Read configuration for execution triggers"""
+        res = []
+        if not conf:
+            res.append(trigger_inst.make_default())
+        for name in conf:
+            conf = conf[name]
+            cconf = utils.to_namedtuple(conf, "trigger_conf")
+            trigger = trigger_inst.create(name, cconf)
+            res.append(trigger)
+        return res
 
     @staticmethod
     def read_global_configuration(config_dict, ignore_undefined=False):

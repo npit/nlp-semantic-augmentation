@@ -5,9 +5,11 @@ from utils import debug, error, info, warning
 class Pipeline:
     """A collection of execution chains"""
     chains = None
+    trigger_recipient_chains = None
 
     def __init__(self):
         """Constructor"""
+        self.trigger_recipient_chains = []
         self.chains = {}
         self.data_pool = DataPool()
 
@@ -70,6 +72,7 @@ class Pipeline:
                 # log the chain-level data demand
                 # data_pool.log_data_request(chain.get_name(), required_input_chains)
                 input_identifier = self.data_pool.get_input_identifier(chain.components[0].get_consumption(chain.get_name()), required_input_chains)
+
             debug(f"Configuring chain [{chain.get_name()}]")
             # run chain components
             for c, component in enumerate(chain.components):
@@ -102,6 +105,21 @@ class Pipeline:
 
         info("Pipeline configuration complete!")
 
+    def configure_outputs(self):
+        """Configure pipeline outputs"""
+        # unclear what output should be
+        # for now just return learner outputs
+        for chain in self.chains.values():
+            # if chain.get_components()
+            # pass
+            pass
+
+    def load_models(self, failure_is_fatal=True):
+        """Load the model from each component"""
+        info("Loading the models for each component")
+        for chain in self.chains.values():
+            for comp in chain.get_components():
+                comp.attempt_load_model_from_disk(failure_is_fatal=failure_is_fatal)
 
     def run(self):
         """Executes the pipeline"""
@@ -135,14 +153,20 @@ class Pipeline:
             #     # we only need to assign the first output bundle
             #     # the rest is handled via the linkage mechanism
             #     completed_chain_outputs = chain.get_outputs()
+
             completed_chain_names.append(chain.get_name())
 
             # info(f"Default linkage after completion of chain {chain.get_name()}")
             # Bundle.print_linkages(completed_chain_outputs)
+        outputs = self.data_pool.get_outputs()
+        return outputs
+
 
     def add_chain(self, chain):
         """Add a chain to the pipeline"""
         chain_name = chain.get_name()
+        if chain.triggered:
+            self.trigger_recipient_chains.append(chain)
         error("Duplicate chain: {}".format(chain_name), chain_name in self.chains)
         self.chains[chain_name] = chain
 
@@ -155,3 +179,6 @@ class Pipeline:
                 if req_out not in self.chains:
                     error("Chain {} requires an output of a non-existent chain: {}".format(chain_name, req_out))
                 all_required_inputs.add(req_out)
+
+    def setup_triggers():
+        pss

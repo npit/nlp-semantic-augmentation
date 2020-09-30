@@ -5,6 +5,7 @@ from utils import error, info, one_hot
 import numpy as np
 from bundle.datatypes import *
 from bundle.datausages import *
+from tqdm import tqdm
 
 
 class NeuralLanguageModel(SupervisedDNN):
@@ -31,7 +32,7 @@ class NeuralLanguageModel(SupervisedDNN):
         self.fetch_language_model_inputs()
 
         # produce embeddings and/or masks
-        info("Tokenizing LM textual input data to tokens")
+        info(f"Tokenizing LM textual input data to tokens with a sequence length of {self.sequence_length}")
         self.map_text()
 
     def fetch_language_model_inputs(self):
@@ -56,30 +57,33 @@ class NeuralLanguageModel(SupervisedDNN):
 
         self.embeddings, self.masks, self.train_embedding_index, self.test_embedding_index = \
              self.map_text_collection(self.text, self.indices)
+        pass
 
     def map_text_collection(self, texts, indices):
         """Encode a collection of texts into tokens, masks and train/test indexes"""
-        train_index, test_index = [], []
-        tokens, masks = [], []
-        for i in range(len(texts.instances)):
-            offset = len(tokens)
-            texts_instance = texts.instances[i]
-            role = indices.roles[i]
-            for doc_data in texts_instance:
+        train_index, test_index = np.ndarray((0,), np.int32), np.ndarray((0,), np.int32)
+        tokens, masks = np.ndarray((0,self.sequence_length), np.int64), np.ndarray((0,self.sequence_length), np.int64)
+        for i in range(len(indices.instances)):
+            idx = indices.instances[i]
+            # role = indices.roles[i]
+            # offset = len(tokens)
+            for doc_idx in tqdm(idx, total=len(idx), desc=f"Encoding role: {indices.roles[i]}"):
+                doc_data = texts.instances[doc_idx]
                 words = doc_data["words"]
                 text = " ".join(words)
                 toks, mask = self.encode_text(text)
-                tokens.append(toks)
-                masks.append(mask)
+                tokens = np.append(tokens, toks, axis=0)
+                masks = np.append(masks, mask, axis=0)
 
-            idxs = list(range(len(texts_instance)))
-            if role == defs.roles.train:
-                train_index.extend([x + offset for x in idxs])
-            elif role == defs.roles.test:
-                test_index.extend([x + offset for x in idxs])
+            # idxs = list(range(len(texts_instance)))
+            # if role == defs.roles.train:
+            #     train_index = np.append(train_idx, idx) extend([x + offset for x in idxs])
+            # elif role == defs.roles.test:
+            #     test_index.extend([x + offset for x in idxs])
 
-        tokens = np.concatenate(tokens)
-        masks = np.concatenate(masks)
-        train_index = np.asarray(train_index, dtype=np.long)
-        test_index = np.asarray(test_index, dtype=np.long)
+        # tokens = np.concatenate(tokens)
+        # masks = np.concatenate(masks)
+        train_index, test_index = indices.get_train_test()
+        # train_index = np.asarray(train_index, dtype=np.long)
+        # test_index = np.asarray(test_index, dtype=np.long)
         return tokens, masks, train_index, test_index

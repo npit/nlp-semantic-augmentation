@@ -170,6 +170,9 @@ class learner_conf(Configuration):
         self.save_interval =  self.get_value("save_interval", default=1, base=config)
 
 
+class trigger_receptor(Configuration):
+    conf_key_name = "triggered"
+
 class link_conf(Configuration):
     """Dummy configuration, linking chains with each other"""
     conf_key_name = "link"
@@ -200,4 +203,15 @@ class evaluator_conf(Configuration):
         self.measures = self.get_value("measures", base=config)
         self.label_distribution = self.get_value("show_label_distributions", base=config, default="logs")
 
-chain_component_classes = [manip_conf, dataset_conf, representation_conf, transform_conf, semantic_conf, learner_conf, link_conf, evaluator_conf]
+class endpoint_conf(Configuration):
+    conf_key_name = "endpoint"
+    def __init__(self, config):
+        super().__init__(config)
+        if config is None:
+            return
+        self.name = self.get_value("name", default="io")
+        self.url = self.get_value("url", default="localhost")
+        self.port = self.get_value("port", default="9999")
+        self.endpoint_name = self.get_value("endpoint_name", default="smaug")
+
+chain_component_classes = [manip_conf, dataset_conf, representation_conf, transform_conf, semantic_conf, learner_conf, link_conf, evaluator_conf, endpoint_conf, trigger_receptor]

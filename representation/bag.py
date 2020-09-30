@@ -14,6 +14,8 @@ class Bag:
     threshold_type = None
     threshold = None
 
+    model = None
+
     def set_thresholds(self, threshold_type, threshold):
         """Populate thresholding"""
         self.threshold_type = threshold_type
@@ -39,22 +41,24 @@ class Bag:
         if ngram_range is None:
             ngram_range = (1, 1)
         self.ngram_range = ngram_range
+        self.model = CountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range)
 
-    def map_collection(self, text_collection, fit=True):
-        mapper = CountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range)
+    def get_vocabulary(self):
+        return self.model.get_feature_names()
+
+    def map_collection(self, text_collection, fit=False, transform=False):
+
         if fit:
-            # fit to discover the vocabulary
-            vectors = mapper.fit_transform(text_collection)
-        else:
-            vectors = mapper.transform(text_collection)
+            self.model.fit(text_collection)
 
-        vectors = vectors.toarray()
-        if self.threshold is not None:
-            vectors = self.apply_thresholds(vectors)
-        if len(vectors) == 0:
-            vectors = np.zeros((0, len(self.vocabulary)), dtype=np.int32)
-        else:
-            if self.weighting == "tfidf" and len(vectors) > 0:
-                tft = TfidfTransformer()
-                vectors = tft.fit_transform(vectors).toarray()
-        return vectors
+        if transform:
+            vectors = self.model.transform(text_collection).toarray()
+            if self.threshold is not None:
+                vectors = self.apply_thresholds(vectors)
+            if len(vectors) == 0:
+                vectors = np.zeros((0, len(self.vocabulary)), dtype=np.int32)
+            else:
+                if self.weighting == "tfidf" and len(vectors) > 0:
+                    tft = TfidfTransformer()
+                    vectors = tft.fit_transform(vectors).toarray()
+            return vectors

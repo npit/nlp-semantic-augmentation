@@ -128,6 +128,8 @@ class ManualDatasetReader:
         self.indices = []
 
         for role in [defs.roles.train, defs.roles.test]:
+            if role not in json_data['data']:
+                continue
             data, labels, labelset, label_names, is_labelled, fully_labelled, max_num_instance_labels, targets = \
                 self.read_instances(json_data['data'][role])
 

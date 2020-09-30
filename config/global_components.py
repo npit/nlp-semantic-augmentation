@@ -82,7 +82,6 @@ class deploy_conf(Configuration):
         if config is None:
             return
         super().__init__(config)
-        self.url = self.get_value("url", base=config, default="localhsot")
-        self.port = self.get_value("port", base=config, default="5556")
+
 
 global_component_classes = [print_conf, misc_conf, folders_conf, deploy_conf]

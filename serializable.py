@@ -1,6 +1,6 @@
 from utils import error, read_pickled, info, debug, write_pickled
 from component.component import Component
-from os.path import exists, isfile, join
+from os.path import exists, isfile, join, dirname, isabs
 from os import makedirs
 
 """
@@ -210,20 +210,32 @@ class Serializable(Component):
 
     def get_model_path(self):
         """Get a path of the trained model"""
+        if self.config.explicit_model_path is not None:
+            path = self.config.explicit_model_path
+            if not exists(path):
+                fp = join(self.config.folders.run, path)
+                if exists(fp):
+                    path = fp
+                    info(f"Using full path of {path}")
+            return path
         return join(self.config.folders.run, self.name)
 
     def load_model(self):
-        """Load the transform model"""
+        """Default model loading function, via pickled object deserializaLoad the model"""
         try:
-            self.model = read_pickled(self.get_model_path())
+            # info(f"Loading model for {self.get_full_name()}")
+            self.model = read_pickled(self.get_model_path(), msg=f"{self.get_full_name()} model")
+            return True
         except FileNotFoundError:
-            False
+            return False
 
     def save_model(self):
         """Save the serializable model"""
-        write_pickled(self.get_model_path(), self.get_model())
+        # write intermmediate folders
+        makedirs(dirname(self.get_model_path()), exist_ok=True)
+        write_pickled(self.get_model_path(), self.get_model(), msg=f"{self.get_full_name()} model" )
 
     def save_outputs(self):
         """Save the produced outputs"""
         info("Writing outputs to {}".format(self.serialization_path_preprocessed))
-        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed(), msg=f"{self.get_full_name()} outputs")
