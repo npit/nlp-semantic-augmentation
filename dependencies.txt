@@ -14,8 +14,10 @@ pyspotlight
 pandas
 numpy
 tqdm
+flask==1.1.2
 # ngg
 networkx
 # pygraphviz
 statsmodels
 py-rouge
+
