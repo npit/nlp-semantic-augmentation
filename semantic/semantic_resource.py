@@ -4,7 +4,7 @@ from os.path import dirname, exists, join
 import defs
 import numpy as np
 from bundle.bundle import DataPool
-from bundle.datatypes import Text, Numeric
+from bundle.datatypes import *
 from bundle.datausages import *
 from component.component import Component
 from defs import is_none
@@ -26,10 +26,8 @@ class SemanticResource(Serializable):
     hypernym_cache = {}
     word_concept_embedding_cache = {}
 
-    concept_freqs = []
     concept_context_word_threshold = None
 
-    reference_concepts = None
 
     semantic_vector_indices = None
     semantic_epi = None
@@ -40,8 +38,11 @@ class SemanticResource(Serializable):
 
     do_cache = True
 
-    data_names = ["concept_weights", "global_weights", "reference_concepts"]
-    data_names_vectorized = ["semantic_vectors", "semantic_vector_indices", "elements_per_instance"]
+    data_names = ["weights", "indices", "roles"]
+
+    vocabulary = None
+    indices = None
+    roles = None
 
     consumes=Text.name
     produces=Numeric.name
@@ -50,11 +51,11 @@ class SemanticResource(Serializable):
     def get_available():
         return [cls.name for cls in SemanticResource.__subclasses__()]
 
-    def set_additional_serialization_sources(self):
-        self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
-        self.data_paths.insert(0, self.serialization_path_vectorized)
-        self.read_functions.insert(0, read_pickled)
-        self.handler_functions.insert(0, self.handle_vectorized)
+    # def set_additional_serialization_sources(self):
+    #     self.serialization_path_vectorized = self.serialization_path_preprocessed + ".vectorized"
+    #     self.data_paths.insert(0, self.serialization_path_vectorized)
+    #     self.read_functions.insert(0, read_pickled)
+    #     self.handler_functions.insert(0, self.handle_vectorized)
 
     def set_multiple_config_names(self):
         return
@@ -84,12 +85,14 @@ class SemanticResource(Serializable):
         self.set_parameters()
         self.set_serialization_params()
         self.acquire_data()
+        loaded = any(self.load_flags)
 
         # discard multiple-source namings and restore correct config
         self.set_parameters()
         self.set_name()
         self.set_serialization_params()
         info("Restored semantic name to : {}".format(self.name))
+        return loaded
 
     def get_vectors(self):
         return self.semantic_document_vectors
@@ -193,8 +196,7 @@ class SemanticResource(Serializable):
             }
 
     def get_all_preprocessed(self):
-        return {"concept_weights": self.concept_freqs, "global_weights": self.global_freqs,
-                "reference_concepts": self.reference_concepts}
+        return {"weights": self.embeddings, "indices": self.indices.instances, "roles": self.indices.roles}
 
     def lookup(self, candidate):
         error("Attempted to lookup from the base class")
@@ -204,7 +206,6 @@ class SemanticResource(Serializable):
             self.limit_type, self.limit_number = self.config.limit
 
         self.semantic_weights = self.config.weights
-        # self.semantic_unit = self.config.unit
 
         self.disambiguation = self.config.disambiguation.lower()
 
@@ -287,80 +288,41 @@ class SemanticResource(Serializable):
         info("Writing a {}-long semantic cache to {}.".format(len(self.lookup_cache), cache_path))
         write_pickled(cache_path, self.lookup_cache)
 
-    def process_similar_loaded(self):
-        """Handles the cases where similar but not exactly equal data has been loaded.
-
-        Some prost-processing is required to arrive at the exact configuration (e.g. filtering or TFIDF scaling)"""
-        # if loaded non-filtered data and limiting is applied
-        if not is_none(self.config.limit):
-            if self.limit_type == defs.limit.top and len(self.reference_concepts) < self.limit_number:
-                # only left to filtering with the bag object
-                self.bag = Bag()
-                self.bag.populate_all_data(self.concept_freqs, self.global_freqs, self.reference_concepts)
-                self.bag.set_term_filtering(self.limit_type, self.limit_number)
-                self.bag.filter_terms()
-                self.concept_freqs = self.bag.get_weights()
-                self.global_freqs = self.bag.get_global_weights()
-                self.reference_concepts = self.bag.get_term_list()
-
-        if self.semantic_weights == defs.weights.tfidf:
-            # loaded concept-wise and global-wise frequencies; only left to compute TFIDF
-            info("Computing TFIDF from the loaded preprocessed raw frequencies.")
-            # train
-            self.bag = TFIDF()
-            self.bag.idf_normalize((self.concept_freqs[0], self.global_freqs[0]))
-            self.concept_freqs[0] = self.bag.get_weights()
-            # test
-            self.bag_test = TFIDF()
-            self.bag_test.idf_normalize((self.concept_freqs[1], self.global_freqs[1]))
-            self.concept_freqs[1] = self.bag_test.get_weights()
-
-    # function to map words to wordnet concepts
-    def map_text(self):
-        if self.loaded_vectorized:
-            debug("Skipping mapping text due to vectorized data already loaded.")
-            return
-        if self.loaded_preprocessed:
-            if self.semantic_weights == defs.weights.bag:
-                debug("Skipping mapping text due to preprocessed data already loaded.")
-                return
-            self.process_similar_loaded()
-            return
-
+    def build_model_from_inputs(self):
+        bagger = self.get_bagger()
         self.initialize_lookup()
-
-        # compute bag from scratch
-        bag_class = get_bag_class(self.semantic_weights)
-        self.bag_train, self.bag_test =  bag_class(), bag_class()
-
         # read the semantic resource input-concept cache , if it exists
         self.load_semantic_cache()
 
-        # get representation-relatd information of the data to semantically annotate, if applicable
-        train_data, test_data = self.text
+        train_idx = self.indices.get_train_instances()
+        words = Text.get_words(self.text.data.get_slice(train_idx))
+        info(f"Building {self.name} model")
+        bagger.map_collection(words, fit=True, transform=False)
+        self.vocabulary = bagger.get_vocabulary()
+        self.model = self.vocabulary
+        del bagger
 
-        # train
-        info("Extracting {}-{} semantic information from the training dataset".format(self.name, self.semantic_weights))
-        self.bag_train.set_term_weighting_function(self.get_concept)
-        self.bag_train.set_term_delineation_function(self.get_term_delineation)
-        if not is_none(self.config.limit):
-            self.bag_train.set_term_filtering(self.limit_type, self.limit_number)
-        self.bag_train.set_term_extraction_function(lambda x: x)
-        self.bag_train.map_collection(train_data)
-        self.reference_concepts = self.bag_train.get_term_list()
+    def get_bagger(self):
+        """Retrieve a bag class instance"""
+        bagger = Bag(weighting=self.semantic_weights, vocabulary=self.vocabulary, ngram_range=self.config.ngram_range, analyzer=self.analyze)
+        return bagger
 
-        # test - since we restrict to the training set concepts, no need to filter
-        info("Extracting {}-{} semantic information with a {}-long term list from the test dataset".
-             format(self.name, self.semantic_weights, len(self.reference_concepts)))
-        self.bag_test.set_term_list(self.reference_concepts)
-        self.bag_test.set_term_weighting_function(self.get_concept)
-        self.bag_test.set_term_delineation_function(self.get_term_delineation)
-        self.bag_test.set_term_extraction_function(lambda x: x)
-        self.bag_test.map_collection(test_data)
+    # function to map words to wordnet concepts
+    def map_text(self):
+        info(f"Producing {self.name} semantic outputs")
+        self.initialize_lookup()
+        # read the semantic resource input-concept cache , if it exists
+        self.load_semantic_cache()
 
-        # collect vectors
-        self.concept_freqs = [self.bag_train.get_weights(), self.bag_test.get_weights()]
-        self.global_freqs = [self.bag_train.get_global_weights(), self.bag_test.get_global_weights()]
+        self.embeddings = np.ndarray((0, len(self.vocabulary)), dtype=np.int32)
+        bagger = self.get_bagger()
+        for idx in self.indices.get_train_test():
+            texts = Text.get_strings(self.text.data.get_slice(idx))
+            vecs = bagger.map_collection(texts, fit=False, transform=True)
+            self.embeddings = np.append(self.embeddings, vecs, axis=0)
+            del texts
+
+        del bagger
 
         # write results
         info("Writing semantic assignment results to {}.".format(self.serialization_path_preprocessed))
@@ -374,8 +336,10 @@ class SemanticResource(Serializable):
 
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.concept_freqs, self.global_freqs, self.reference_concepts = [preprocessed[x] for x in self.data_names]
-        debug("Read preprocessed concept docs shapes: {}, {}".format(*shapes_list(self.concept_freqs)))
+        # single item
+        self.embeddings, ind, self.roles = [preprocessed[x] for x in self.data_names]
+        self.indices = Indices(instances=ind, roles=self.roles)
+        debug("Read preprocessed concept docs shapes: {}".format(str(self.embeddings.shape)))
 
     def get_term_delineation(self, document_text):
         """ Function to produce a list of terms of interest, from which to extract concepts """
@@ -386,20 +350,24 @@ class SemanticResource(Serializable):
         pass
 
     # region: # chain methods
-    def run(self):
-        self.process_component_inputs()
-        self.populate()
+    def load_outputs_from_disk(self):
+        return self.populate()
+
+    def produce_outputs(self):
         self.map_text()
-        self.generate_vectors()
-        self.outputs.set_vectors(Numeric(vecs=self.semantic_document_vectors))
-        self.outputs.set_indices(Indices(indices=self.semantic_vector_indices, epi=self.semantic_epi))
+        # self.generate_vectors()
+
+    def set_component_outputs(self):
+        # self.data_pool.set_vectors(Numeric(vecs=self.semantic_document_vectors))
+        dp = DataPack(Numeric(self.embeddings), usage=self.indices, source=self.name)
+        self.data_pool.add_data_packs([dp], self.name)
 
     def configure_name(self):
-        self.source_name = self.inputs.get_source_name()
         self.set_parameters()
         self.set_name()
         Component.configure_name(self, self.name)
 
-    def process_component_inputs(self):
-        error("{} requires text.".format(self.get_full_name()), not self.inputs.has_text())
-        self.text = self.inputs.get_text().instances
+    def get_component_inputs(self):
+        """Get text input data pack """
+        self.text = self.data_pool.request_data(Text, Indices, usage_matching="subset",client=self.name)
+        self.indices = self.text.get_usage(Indices.name)

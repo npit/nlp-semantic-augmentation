@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.dummy import DummyClassifier as sk_Dummy
 from sklearn.linear_model import LogisticRegression as sk_LogReg
 from sklearn.naive_bayes import GaussianNB as sk_NaiveBayes
+from sklearn.preprocessing import StandardScaler
 
 from learning.labelled_learner import LabelledLearner
 from utils import (error, ill_defined, one_hot, read_pickled, warning,
@@ -53,9 +54,22 @@ class SKLClassifier(Classifier):
 
     def train_model(self):
         train_data = self.get_data_from_index(self.train_index, self.embeddings)
+        train_labels = self.targets.get_slice(self.train_index)
+        self.scaler = StandardScaler()
+        train_data = self.scaler.fit_transform(train_data)
         self.model = self.model_class(**self.args)
-        self.model.fit(train_data, np.asarray(self.train_labels).ravel())
+        self.model.fit(train_data, np.asarray(train_labels).ravel())
         return self.model
+
+    def load_model(self):
+        super().load_model()
+        if self.model_loaded:
+            self.model, self.scaler = self.model
+
+    def save_model(self):
+        self.model = (self.model, self.scaler)
+        super().save_model()
+        self.model, _ = self.model
 
     # evaluate a clustering
     def test_model(self, model):
@@ -102,5 +116,5 @@ class LogisticRegression(SKLClassifier):
         SKLClassifier.__init__(self)
 
     def make(self):
-        error("Cannot apply {} to multilabel data.".format(self.name), self.multilabel_input)
+        error("Cannot apply {} to multilabel data.".format(self.name), self.do_multilabel)
         SKLClassifier.make(self)

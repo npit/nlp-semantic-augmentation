@@ -114,7 +114,7 @@ class Serializable(Component):
         if not exists(self.serialization_dir):
             makedirs(self.serialization_dir, exist_ok=True)
         # raw
-        serialization_path = "{}/raw_{}.pkl".format(self.serialization_dir, name)
+        serialization_path = "{}/{}_raw.pkl".format(self.serialization_dir, name)
         # preprocessed
         serialization_path_preprocessed = "{}/{}.preprocessed.pkl".format(self.serialization_dir, name)
         return [serialization_path_preprocessed, serialization_path, raw_path]

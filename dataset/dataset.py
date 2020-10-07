@@ -90,8 +90,8 @@ class Dataset(Serializable):
             return
         Serializable.__init__(self, self.dir_name)
         self.config.full_name = self.name
-        if self.config.filter_stopwords is not None:
-            self.filter_stopwords = self.config.filter_stopwords
+        self.filter_stopwords = self.config.filter_stopwords
+        self.remove_digits = self.config.remove_digits
 
     def load_outputs_from_disk(self):
         # set serialization params here, after name's been configured
@@ -272,7 +272,10 @@ class Dataset(Serializable):
 
         # remove stopwords and numbers
         # words = [w.translate(digit_remover) for w in words if w not in stopwords and w.isalpha()]
-        words = [w for w in [w.translate(digit_remover) for w in words] if w]
+        # remove empty "words"
+        words = [w for w in words if w]
+        if self.remove_digits:
+            words = [w for w in [w.translate(digit_remover) for w in words] if w]
         if self.filter_stopwords:
             words = [w for w in words if w not in stopwords]
         data["words"] = words
@@ -419,7 +422,7 @@ class Dataset(Serializable):
         outputs.append(DataPack(text, usage=self.indices))
 
         if self.is_labelled():
-            labels_data = Numeric(self.get_labels())
+            labels_data = Numeric(self.labels)
             labels_usage = Labels(self.labelset, self.multilabel)
             dp = DataPack(labels_data, labels_usage)
             dp.add_usage(self.indices)

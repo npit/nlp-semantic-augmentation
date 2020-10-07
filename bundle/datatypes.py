@@ -18,10 +18,11 @@ class Datatype:
     # variable for the distinct data units
     instances = None
 
+    name = None
     def __init__(self, instances):
         self.instances = instances
 
-    def get_instance(self, instance_idx):
+    def get_slice(self, instance_idx):
         try:
             if type(self.instances) is np.ndarray:
                 return self.instances[instance_idx]
@@ -37,39 +38,18 @@ class Datatype:
                 inst = inst.tolist()
             res[i] = inst
         return res
-    # def get_instance_index(self, idx):
-    #     llen = len(self.instances)
-    #     if llen <= idx:
-    #         error(f"Requested index {idx} from {self.name} datatype which has only (llen)")
-    #     return self.instances[idx]
-
-    # def has_role(self, role):
-    #     """Checks for the existence of a role in the avail. instances"""
-    #     if not self.roles:
-    #         return False
-    #     return role in self.roles
-
-    # def get_train_role_indexes(self):
-    #     """Retrieve instance indexes with a training role"""
-    #     return self.get_role_indexes(defs.roles.train)
-
-    # def get_test_role_indexes(self):
-    #     """Retrieve instance indexes with a testing role"""
-    #     return self.get_role_indexes(defs.roles.test)
-        
-    # def get_role_indexes(self, inp_role):
-    #     res = []
-    #     for r, role in enumerate(self.roles):
-    #         if role == inp_role:
-    #             res.append(r)
-    #     return res
-
-    # def summarize_content(self):
-    #     data_summary(self, self.name)
 
     def append_instance(self, inst):
         """Append another instance object"""
         self.instances = np.append(self.instances, inst, axis=0)
+    
+    @classmethod
+    def get_subclasses(cls):
+        """Get a list of names matching the datatype"""
+        ret =  [cls.name]
+        for scls in cls.__subclasses__():
+            ret.extend(scls.get_subclasses())
+        return ret
 
 
 class Text(Datatype):
@@ -85,6 +65,10 @@ class Text(Datatype):
     def get_strings(data):
         """Get text from the dataset outputs"""
         return [" ".join(item["words"]) for item in data]
+    @staticmethod
+    def get_words(data):
+        """Get text from the dataset outputs"""
+        return [item["words"] for item in data]
 
 class Numeric(Datatype):
     name = "numeric"

@@ -4,7 +4,7 @@ import numpy as np
 import defs
 import logging
 import torch
-from utils import error, info, one_hot, equal_lengths, warning, shapes_list
+from utils import error, info, one_hot, equal_lengths, warning, shapes_list, write_pickled
 from learning.neural.languagemodel.huggingface_transformer_lm import HuggingfaceTransformerLanguageModel
 from bundle.datatypes import *
 from bundle.datausages import *
@@ -19,6 +19,7 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
     """Wrapper class for seq2seqhuggingface transformer models"""
 
     name = "huggingface_seq2seq_transformer_lm"
+    text_predictions = None
 
     def __init__(self, config):
         """
@@ -27,6 +28,7 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
         """
         self.config = config
         self.sequence_length = self.config.sequence_length
+        self.text_predictions = []
         HuggingfaceTransformerLanguageModel.__init__(self, config)
 
 
@@ -85,7 +87,17 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
         super().set_component_outputs()
         info("Converting output sequence tokens to string")
         # convert predictions to text as well
-        self.text_predictions = []
+
+        # (e.g. useful if validation occurred)
+        dat = DataPack(Text(self.text_predictions), Predictions([np.arange(len(self.predictions))]))
+        self.data_pool.add_data_packs([dat], self.name)
+
+    def save_outputs(self):
+        self.make_text_predictions()
+        outpath = join(self.config.folders.run, "results", self.get_full_name() + ".predictions.pkl")
+        write_pickled(outpath, [self.predictions, self.text_predictions])
+
+    def make_text_predictions(self):
         for prediction_set in self.predictions:
             text_preds = []
             for predictions_instance in prediction_set:
@@ -93,15 +105,10 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
                 text_preds.append(txt)
             self.text_predictions.append(text_preds)
 
-        # (e.g. useful if validation occurred)
-        dat = DataPack(Text(self.text_predictions), Predictions([np.arange(len(self.predictions))]))
-        self.data_pool.add_data_packs([dat], self.name)
-
     def prediction_to_text(self, pred):
         """Convert a sequence of predicted token ids to the corresponding text"""
-
-        toks = self.tokenizer.convert_ids_to_tokens(pred, skip_special_tokens=True)
-        return " ".join(toks)
+        text = self.tokenizer.decode(pred, skip_special_tokens=True)
+        return text
 
 
 

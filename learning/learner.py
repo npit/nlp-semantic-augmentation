@@ -1,9 +1,8 @@
 from copy import deepcopy
 from os import makedirs
-from os.path import dirname, exists, join, basename
+from os.path import dirname, exists, join, basename, abspath, isabs
 
 import numpy as np
-from sklearn.model_selection import KFold, ShuffleSplit
 
 from bundle.bundle import DataPool
 from bundle.datatypes import *
@@ -13,8 +12,8 @@ from component.component import Component
 from defs import datatypes, roles
 from learning.evaluator import Evaluator
 from learning.sampling import Sampler
-from learning.validation.validation import ValidationSetting
-from utils import error, info, read_pickled, tictoc, write_pickled
+from learning.validation.validation import ValidationSetting, get_info_string
+from utils import error, info, read_pickled, tictoc, write_pickled, warning
 
 
 """
@@ -41,6 +40,8 @@ class Learner(Serializable):
 
     # store information pertaining to the learning run(s) executed
     predictions = []
+    prediction_tags = []
+    prediction_roles = []
     prediction_indexes = []
     models = []
 
@@ -83,7 +84,6 @@ class Learner(Serializable):
         self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
         self.do_sampling = self.sampling_method is not None
         self.save_interval = self.config.save_interval
-        self.do_test = self.config.do_test and (self.test_data_available() or self.validation_exists)
 
     def check_sanity(self):
         """Sanity checks"""
@@ -94,25 +94,19 @@ class Learner(Serializable):
         if self.do_folds and self.do_validate_portion:
             error("Specified both folds {} and validation portion {}.".format(
                 self.folds, self.validation_portion))
-        if not (self.validation_exists or self.test_data_available()):
-            error("No test data or cross/portion-validation setting specified.")
         # self.evaluator.check_sanity()
 
     def configure_validation_setting(self):
         """Initialize validation setting"""
-        self.validation = ValidationSetting(self.folds, self.validation_portion, self.test_data_available())
-        self.validation.assign_data(self.embeddings, train_index=self.train_index, test_index=self.test_index)
+        self.validation = ValidationSetting(self.config, self.train_embedding_index, self.test_embedding_index, folds=self.folds, portion=self.validation_portion, seed=self.seed)
 
     def configure_sampling(self):
         """No label-agnostic sampling"""
         # No label-agnostic sampling available
         pass
-    def get_all_preprocessed(self):
-        return self.predictions
 
-    def attach_evaluator(self):
-        """Evaluator instantiation"""
-        self.evaluator = Evaluator(self.config, self.embeddings, self.train_index, self.validation.use_for_testing)
+    def get_all_preprocessed(self):
+        return (self.predictions, self.prediction_tags, self.prediction_indexes)
 
     def make(self):
         # get handy variables
@@ -128,20 +122,16 @@ class Learner(Serializable):
     def get_model_instance_name(self):
         """Get a model instance identifier from all model instances in the experiment"""
         model_name = self.name
-        if self.do_folds:
+        if self.config.train.folds:
             model_name += "_fold_" + str(self.fold_index)
-        elif self.do_validate_portion:
+        elif self.config.train.validation_portion:
             model_name += "_valportion_" + str(self.fold_index)
         return model_name
 
-    def get_predictions_file(self):
-        return join(self.config.folders.results, basename(self.get_model_path())) + ".predictions.pkl"
-
-    def get_existing_predictions(self):
-        path = self.validation.modify_suffix(
-            join(self.results_folder, "{}".format(
-                self.name))) + ".predictions.pkl"
-        return read_pickled(path) if exists(path) else (None, None)
+    def get_predictions_file(self, tag="test"):
+        if tag:
+            tag += "."
+        return join(self.get_results_folder(),  self.get_model_filename() + "." + tag + "predictions.pkl")
 
     def get_existing_trainval_indexes(self):
         """Check if the current training run is already completed."""
@@ -160,40 +150,33 @@ class Learner(Serializable):
         path = self.get_current_model_path()
         return path if exists(path) else None
 
-    def test_data_available(self):
-        return len(self.test_embedding_index) > 0
 
     # function to retrieve training data as per the existing configuration
-    def get_trainval_indexes(self):
+    def configure_trainval_indexes(self):
         """Retrieve training/validation instance indexes
 
         :returns: 
         :rtype: 
 
         """
-        trainval_idx = None
-        if not trainval_idx:
-            if not self.validation_exists:
-                # return all training indexes, no validation
-                return [(np.arange(len(self.train_embedding_index)), np.arange(0))]
-            # compute the indexes
-            trainval_idx = self.compute_trainval_indexes()
-            trainval_serialization_file = self.get_trainval_serialization_file()
+        trainval_idx = self.validation.get_trainval_indexes()
 
-            # do sampling processing
-            if self.do_sampling:
-                smpl = Sampler()
-                trainval_idx = smpl.sample()
+        # get train/val splits
+        trainval_serialization_file = join(self.config.folders.run, self.get_trainval_serialization_file())
 
-            # save the splits
-            makedirs(dirname(trainval_serialization_file), exist_ok=True)
-            write_pickled(trainval_serialization_file, trainval_idx)
+        # do sampling 
+        if self.do_sampling:
+            smpl = Sampler()
+            trainval_idx = smpl.sample()
+
+        # save the splits
+        makedirs(dirname(trainval_serialization_file), exist_ok=True)
+        write_pickled(trainval_serialization_file, trainval_idx)
 
         # handle indexes for multi-instance data
         if self.sequence_length > 1:
             self.validation.set_trainval_label_index(deepcopy(trainval_idx))
             # trainval_idx = self.expand_index_to_sequence(trainval_idx)
-        return trainval_idx
 
     def acquire_trained_model(self):
         """Trains the learning model or load an existing instance from a persisted file."""
@@ -211,123 +194,93 @@ class Learner(Serializable):
                 info("Skipping training due to existing model successfully loaded.")
         return model
 
-    def assign_current_run_data(self, iteration_index, trainval):
-        """Sets data for the current run"""
-        self.train_index, self.val_index, self.test_index, self.test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
-        self.num_train, self.num_val, self.num_test = [len(x) for x in (self.train_index, self.val_index, self.test_index)]
+    # def assign_current_run_data(self, iteration_index, trainval):
+    #     """Sets data for the current run"""
+    #     self.train_index, self.val_index = self.validation.get_
+    #     self.train_index, self.val_index, self.test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
+    #     self.num_train, self.num_val, self.num_test = [len(x) for x in (self.train_index, self.val_index, self.test_index)]
 
     # perfrom a train-test loop
     def do_traintest(self):
-        with tictoc("Entire learning run", do_print=self.do_folds, announce=False):
+        with tictoc("Learning run", do_print=self.do_folds, announce=False):
 
-            # get trainval data
-            train_val_idxs = self.get_trainval_indexes()
+            # get training - validation instance indexes for building the model
+            self.configure_trainval_indexes()
 
-            # keep track of models' test performances and paths wrt selected metrics
-            model_paths = []
+            # iterate over required runs (e.g. portion split or folds)
+            # # as per the validation setting
+            for iteration_index, trainval in enumerate(self.validation.get_trainval_indexes()):
+                # set the train/val data indexes
+                self.train_index, self.val_index = trainval
+                
+                # self.prediction_indexes.append(self.validation.get_prediction_indexes())
 
-            # iterate over required runs as per the validation setting
-            for iteration_index, trainval in enumerate(train_val_idxs):
-                self.assign_current_run_data(iteration_index, trainval)
-                self.prediction_indexes.append(self.validation.get_prediction_indexes())
-
-                # for evaluation, pass all information of the current (maybe cross-validated) run testing
-                # self.evaluator.update_reference_data(train_index=self.train_index, test_index=self.test_index)
-
-                # train the model
+                # train and keep track of the model
                 model = self.acquire_trained_model()
                 self.models.append(model)
-                model_paths.append(self.get_current_model_path())
 
-                # if self.do_test:
-                #     # test and evaluate the model
-                #     with tictoc("Testing run [{}] on {} test data.".format(self.validation.descr, self.num_test)):
-                #         self.do_test_evaluate(model, loaded_predictions)
-                self.conclude_validation_iteration()
+                # self.conclude_validation_iteration()
 
             # end of entire train-test loop
             self.conclude_traintest()
-            # report results across entire training
-            # self.evaluator.report_overall_results(self.validation.descr, self.results_folder)
 
 
     def conclude_traintest(self):
         """Perform concuding actions for the entire traintest loop"""
         pass
 
-    def conclude_validation_iteration(self):
-        """Perform concluding actions for a single validation loop"""
-        # wrap up the current validation iteration
-        self.validation.conclude_iteration()
-
-    # def get_model_path(self):
-    #     return self.get_current_model_path()
-
     def get_current_model_path(self):
-        if self.explicit_model_path is not None:
-            return self.explicit_model_path
-        return self.validation.modify_suffix(
-            join(self.results_folder, "models", "{}".format(self.name))) + ".model"
+        if self.config.explicit_model_path is not None:
+            return self.config.explicit_model_path
+        folder = join(self.get_results_folder(), "models")
+        return join(folder, self.get_model_filename())
+
+    def get_model_filename(self):
+        """Retrieve model filename"""
+        return self.name + get_info_string(self.config) + ".model"
+
+    def get_results_folder(self):
+        """Return model folder"""
+        run_folder = self.config.folders.results
+        if not isabs(run_folder):
+            run_folder = join(abspath(run_folder))
+        return run_folder
 
     def get_trainval_serialization_file(self):
-        sampling_suffix = "{}.trainvalidx.pkl".format(
-            "" if not self.do_sampling else "{}_{}".
-            format(self.sampling_method, "_".
-                   join(map(str, self.sampling_ratios))))
-        return self.validation.modify_suffix(
-            join(self.results_folder, "{}".format(
-                self.name))) + sampling_suffix
-
-    # produce training / validation splits, with respect to sample indexes
-    def compute_trainval_indexes(self):
-        """Compute training/validation indexes
-
-        :returns: The training/validation indexes
-        :rtype: list of ndarray tuples
-
-        """
-
-        if self.do_folds:
-            info("Splitting {} with input data: {} samples, on {} folds"
-                .format(self.name, self.num_train, self.folds))
-            splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
-
-        if self.do_validate_portion:
-            info("Splitting {} with input data: {} samples on a {} validation portion"
-                .format(self.name, self.num_train, self.validation_portion))
-            splitter = ShuffleSplit(
-                n_splits=1,
-                test_size=self.validation_portion,
-                random_state=self.seed)
-
-        # generate. for multilabel K-fold, stratification is not usable
-        splits = list(splitter.split(np.zeros(self.num_train)))
-        return splits
-
-    def is_supervised(self):
-        error("Attempted to access abstract learner is_supervised() method")
-        return None
-
-    # def save_model(self, model):
-    #     path = self.get_current_model_path()
-    #     info("Saving model to {}".format(path))
-    #     write_pickled(path, model)
-
-    # def load_model(self):
-    #     path = self.get_current_model_path()
-    #     if not path or not exists(path):
-    #         return None
-    #     info("Loading existing learning model from {}".format(path))
-    #     return read_pickled(self.get_current_model_path())
+        name = "trainvalidx.pkl"
+        if self.do_sampling:
+            name = self.sampling_method + "_" + "_". join(map(str, self.sampling_ratios)) + "." + name
+        if self.validation:
+            name += self.validation.get_info_string() 
+        return name
 
     # region: component functions
     def load_outputs_from_disk(self):
         self.set_serialization_params()
         self.add_serialization_source(self.get_predictions_file(), reader=read_pickled, handler=lambda x: x)
+        return self.load_existing_predictions()
+
+    def load_existing_predictions(self):
+        """Loader function for existing, already computed predictions. Checks for label matching."""
+        # get predictions and instance indexes they correspond to
+        try:
+            self.predictions, self.prediction_indexes = read_pickled(self.get_predictions_file())
+        except FileNotFoundError:
+            return False
+        # also check labels
+        return True
+
+
+
+
+
+
 
     def build_model_from_inputs(self):
         self.make()
         self.configure_validation_setting()
+        if self.validation_exists and not len(self.test_embedding_index) > 0:
+            self.validation.reserve_validation_for_testing()
         # self.attach_evaluator()
         self.configure_sampling()
         self.check_sanity()
@@ -335,21 +288,60 @@ class Learner(Serializable):
         self.do_traintest()
 
     def produce_outputs(self):
-        self.test_index = self.test_embedding_index
-        self.num_test = len(self.test_embedding_index)
-        with tictoc(f"Testing run on {self.num_test} test data."):
-            self.do_test_evaluate(self.model)
+        # apply the learning model on the input data
+        # produce pairing with ground truth for future evaluation
+        # training data
+        if self.validation is not None:
+            train_indexes = self.validation.get_train_indexes()
+            test_indexes = self.validation.get_test_indexes()
+        else:
+            train_indexes = [self.train_embedding_index]
+            test_indexes = [self.test_embedding_index]
 
+        for idx_group, role in zip([train_indexes, test_indexes], [defs.roles.train, defs.roles.test]):
+            if len(idx_group) > 1:
+                info(f"Applying {self.name} model on {len(idx_group)} {role} data")
+            for i, idxs in enumerate(idx_group):
+                info(f"Applying {self.name} model on {len(idxs)} {role} data")
+                tag = role + f"{i+1}" if len(idx_group)>1 else role
+                self.apply_model(index=idxs, tag=tag)
+                self.prediction_roles.append(role)
+
+        # with tictoc(f"Applying the {self.name} on the training data."):
+        #     for i, train_idx in enumerate(train_indexes):
+        #         tag = f"train{i+1}" if len(test_indexes) > 0 else "train"
+        #         self.apply_model(index=train_idx, tag=tag)
+        # # test data
+        # with tictoc(f"Applying the {self.name} on the test data."):
+        #     for i, test_idx in enumerate(test_indexes):
+        #         tag = f"test{i+1}" if len(test_indexes) > 0 else "test"
+        #         self.apply_model(index=test_idx, tag=tag)
+
+        # self.test_index = self.test_embedding_index
+        # if self.test_index.size > 0:
+        #     self.num_test = len(self.test_embedding_index)
+        #     with tictoc(f"Testing run on {self.num_test} test data."):
+        #         self.do_test_evaluate(self.model)
+
+    def get_model(self):
+        return self.model
     # evaluate a model on the test set
-    def do_test_evaluate(self, model):
-        # evaluate the model
-        error("No test data supplied!", len(self.test_index) == 0)
+    def apply_model(self, model=None, index=None, tag="test"):
+        """Evaluate the model on the current test indexes"""
+        if model is None:
+            model = self.get_model()
+        if index is not None:
+            self.test_index = index
+        if len(self.test_index) == 0:
+            warning(f"Attempted to apply {self.name} model on empty indexes!")
+            return
         predictions = self.test_model(model)
         # write the predictions and relevant idxs (i.e. if testing on validation)
         # predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pkl"
-        predictions_file = self.get_predictions_file() 
+        predictions_file = self.get_predictions_file(tag) 
         write_pickled(predictions_file, [predictions, self.test_instance_indexes])
         self.predictions.append(predictions)
+        self.prediction_tags.append(tag)
         self.prediction_indexes.append(self.test_index)
 
     def load_model_from_disk(self):
@@ -359,9 +351,9 @@ class Learner(Serializable):
     def acquire_embedding_information(self):
         """Get embedding and embedding information"""
         # get data
-        vectors = self.data_pool.request_data(Numeric.name, Indices.name, self.name)
+        vectors = self.data_pool.request_data(Numeric, Indices.name, self.name)
         self.embeddings = vectors.data.instances
-        self.indices = vectors.get_usage(Indices.name)
+        self.indices = vectors.get_usage(Indices)
         self.train_embedding_index, self.test_embedding_index = self.indices.get_train_test()
         # self.test_embedding_index = self.indices.get_role_instances(roles.train)
         # if self.indices.has_role(roles.test):
@@ -386,15 +378,6 @@ class Learner(Serializable):
         self.train_index = np.arange(len(self.train_embedding_index))
         self.test_index = np.arange(len(self.test_embedding_index))
 
-    def load_existing_predictions(self):
-        """Loader function for existing, already computed predictions"""
-        # get predictions and instance indexes they correspond to
-        existing_predictions, existing_instance_indexes = self.get_existing_predictions()
-        if existing_predictions is not None:
-            info("Loaded existing predictions.")
-        if not np.all(np.equal(existing_instance_indexes, self.test_instance_indexes)):
-            error("Different instance indexes loaded than the ones generated.")
-        return existing_predictions, existing_instance_indexes
 
     def get_data_from_index(self, index, embeddings):
         """Get data index from the embedding matrix"""
@@ -409,6 +392,6 @@ class Learner(Serializable):
         # predictions to output
         # predictions
         pred = Numeric(self.predictions)
-        pred = DataPack(pred, Predictions([[0]]))
+        pred = DataPack(pred, Predictions(self.prediction_indexes, roles=self.prediction_roles))
         self.data_pool.add_data_packs([pred], self.name)
 

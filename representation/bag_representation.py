@@ -137,7 +137,7 @@ class BagRepresentation(Representation):
             bagger.set_thresholds(self.limit_type, self.limit_number)
 
         train_idx = self.indices.get_train_instances()
-        texts = Text.get_strings(self.text.data.get_instance(train_idx))
+        texts = Text.get_strings(self.text.data.get_slice(train_idx))
         bagger.map_collection(texts, fit=True, transform=False)
         self.term_list = bagger.get_vocabulary()
 
@@ -158,12 +158,12 @@ class BagRepresentation(Representation):
 
         self.embeddings = np.ndarray((0, len(self.term_list)), dtype=np.int32)
         for idx in self.indices.get_train_test():
-            texts = Text.get_strings(self.text.data.get_instance(idx))
+            texts = Text.get_strings(self.text.data.get_slice(idx))
             vecs = bagger.map_collection(texts, fit=False, transform=True)
             self.embeddings = np.append(self.embeddings, vecs, axis=0)
             del texts
 
-        # texts = Text.get_strings(self.text.data.get_instance(test_idx))
+        # texts = Text.get_strings(self.text.data.get_slice(test_idx))
         # vec_test = bagger.map_collection(texts, fit=do_fit)
         # del texts
 

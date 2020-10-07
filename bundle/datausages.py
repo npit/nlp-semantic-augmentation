@@ -4,10 +4,18 @@ from utils import as_list
 
 class DataUsage:
     """Abstract class for types of data utilization"""
-    name = "DATA_USAGE"
+    name = None
     valid_datatypes = None
     def __init__(self, valid_datatypes):
         self.valid_datatypes = valid_datatypes
+
+    @classmethod
+    def get_subclasses(cls):
+        """Get a list of names matching the datatype"""
+        ret =  [cls.name]
+        for scls in cls.__subclasses__():
+            ret.extend(scls.get_subclasses())
+        return ret
 
 class Indices(DataUsage):
     """Indexes to a collection of data with train/test roles"""
@@ -101,6 +109,11 @@ class GroundTruth(DataUsage):
     discrete = None
     def __init__(self, discrete=False):
         self.discrete = discrete
+
+    # @classmethod
+    # def get_matching_names(cls):
+    #     """Get a list of names matching the datatype"""
+    #     return [GroundTruth.name ]
 
 class Labels(GroundTruth):
     """Class for enumerable discrete ground truth"""

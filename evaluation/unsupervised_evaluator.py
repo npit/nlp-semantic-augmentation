@@ -18,26 +18,18 @@ class UnsupervisedEvaluator(Evaluator):
     consumes = Numeric.name
     available_measures = ("silhouette")
 
-    @staticmethod
-    def matches_config(config):
-        """Determine whether the evaluator is applicable wrt the input config"""
-        return (not config.measures) or all(me in UnsupervisedEvaluator.available_measures for me in config.measures)
-
     def __init__(self, config):
         self.config = config
         self.measure_funcs = {"silhouette": UnsupervisedEvaluator.compute_silhouette}
-
-        self.measures = self.config.measures
-
         super().__init__(config)
 
 
     def get_component_inputs(self):
         """Get inputs for unsupervised evaluation"""
 
+        super().get_component_inputs()
         # get learner inputs
         dp = self.data_pool.request_data(None, Indices, usage_matching="subset", client=self.name, usage_exclude=[GroundTruth, Predictions])
-        preds = self.data_pool.request_data(None, Predictions, usage_matching="exact", client=self.name)
 
         self.indices = dp.get_usage(Indices.name).instances
         self.data = dp.data.instances
@@ -45,49 +37,38 @@ class UnsupervisedEvaluator(Evaluator):
         # train_idx = self.indices.get_role_instances(defs.roles.train)
         # test_idx = self.indices.get_role_instances(defs.roles.test)
         # # fetch learner train, test and prediction data
-        # test = data.get_instance(test_idx)
+        # test = data.get_instances(test_idx)
         # if test:
         #     self.data = test
         # else:
-        #     self.data = data.get_instance(train_idx)
-        self.preds = preds.data.instances
+        #     self.data = data.get_instances(train_idx)
         if len(self.preds) > 1:
             self.num_eval_iterations = len(self.preds)
 
-    def make_evaluations(self):
-        """Do evaluations"""
-        self.results = {"run":{}, "random": {}}
-        self.evaluate_predictions(self.preds, self.results["run"])
-        # baselines
-        rand_preds = [get_random_predictions(self.preds[0].shape) for _ in range(self.num_eval_iterations)]
-        self.evaluate_predictions(rand_preds, self.results["random"])
+    # def evaluate_predictions(self, preds, out_dict):
+    #     """Perform all evaluations on given predictions"""
+    #     # iterate over all measures
+    #     for measure in self.measures:
+    #         out_dict[measure] = {self.iteration_name:[]}
+    #         # iterate over data, corresponding to folds
+    #         for i, _ in enumerate(self.preds):
+    #             idx = self.indices[i]
+    #             data = self.data[idx]
+    #             preds = self.preds[i]
+    #             score = self.evaluate_measure((data, preds), measure)
+    #             out_dict[measure][self.iteration_name].append(score)
+    #         # fold aggregations
+    #         for name, func in zip("mean std var".split(), (np.mean, np.std, np.var)):
+    #             out_dict[name] = func(out_dict[measure][self.iteration_name])
+    def get_evaluation_input(self, prediction_index):
+        """Retrieve input data to evaluation function(s)
 
-    def get_results(self):
-        return self.results
-
-    def evaluate_predictions(self, preds, out_dict):
-        """Perform all evaluations on given predictions"""
-        # iterate over all measures
-        for measure in self.measures:
-            out_dict[measure] = {self.iteration_name:[]}
-            # iterate over data, corresponding to folds
-            for i, _ in enumerate(self.preds):
-                idx = self.indices[i]
-                data = self.data[idx]
-                preds = self.preds[i]
-                score = self.evaluate_measure((data, preds), measure)
-                out_dict[measure][self.iteration_name].append(score)
-            # fold aggregations
-            for name, func in zip("mean std var".split(), (np.mean, np.std, np.var)):
-                out_dict[name] = func(out_dict[measure][self.iteration_name])
-
-    def evaluate_measure(self, data, measure):
-        """Apply an evaluation measure"""
-        try:
-            return self.measure_funcs[measure](self, data)
-        except KeyError:
-            warning(f"Unavailable measure: {measure}")
-            return -1.0
+        For unsupervised evaluation, retrieve input data and predictions
+        """
+        preds = super().get_evaluation_input(prediction_index)
+        idx = self.indices[prediction_index]
+        data = self.data[idx]
+        return (data, preds)
 
     # individual eval. methods:
     ###########
@@ -102,3 +83,8 @@ class UnsupervisedEvaluator(Evaluator):
         preds = np.argmax(preds, axis=1)
         return metrics.silhouette_score(data, preds)
 
+
+    def evaluate_measure(self, data, measure):
+        """Dict wrapper"""
+        score = super().evaluate_measure(data, measure)
+        return {"score": score}

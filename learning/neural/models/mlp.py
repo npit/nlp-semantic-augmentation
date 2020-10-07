@@ -9,7 +9,7 @@ from learning.neural.dnn import SupervisedDNN
 class MLPModel(BaseModel):
     """MLP """
     name = "mlp"
-    wrapper_name = "supervised_dnn"
+    wrapper_name = "labelled_dnn"
 
 
     def __init__(self, config, embeddings, output_dim, working_folder, model_name):
@@ -23,6 +23,13 @@ class MLPModel(BaseModel):
         self.linear_layers = neural_utils.make_linear_chain(embeddings.shape[-1], num_layers * [hidden_dim])
         # build final output layer
         self.linear_out = torch.nn.Linear(hidden_dim, output_dim)
+
+    def model_to_device(self):
+        # linear layers
+        for l in self.linear_layers:
+            l.to(self.device_name)
+        self.linear_out.to(self.device_name)
+        self.embedding_layer.to(self.device_name)
 
     def forward(self, input_data):
         """Forward pass method"""

@@ -31,9 +31,7 @@ class ManualDatasetReader:
                 lbls[i] = current_label_names.index(l)
                 current_labelset.add(lbls[i])
         return lbls, current_labelset
-                
 
-        
     """Reader class for reading custom serialized datasets"""
     def read_instances(self, json_object, data_key="text", labels_key="labels", targets_key="targets"):
         """Read a json object containing text dataset instances
@@ -137,7 +135,7 @@ class ManualDatasetReader:
             idx = np.arange(offset, len(data) + offset)
             self.indices.append(idx)
             self.data.extend(data)
-            self.labels.append([np.asarray(x) for x in labels])
+            self.labels.extend([np.asarray(x) for x in labels])
             if targets:
                 self.targets.extend(targets)
             self.roles.append(role)

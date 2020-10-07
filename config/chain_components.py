@@ -34,7 +34,8 @@ class dataset_conf(Configuration):
         self.class_limit = self.get_value("class_limit", default=None, expected_type=int)
         self.prepro = self.get_value("prepro", default=None)
         self.extract_pos = self.get_value("extract_pos", default=False)
-        self.filter_stopwords = self.get_value("filter_stopwords", default=None)
+        self.filter_stopwords = self.get_value("filter_stopwords", default=True)
+        self.remove_digits = self.get_value("remove_digits", default=False)
 
     def has_data_limit(self):
         return self.data_limit is not None and any([x is not None for x in self.data_limit])
@@ -94,10 +95,11 @@ class semantic_conf(Configuration):
         if config is None:
             return
         self.name = config["name"]
-        self.unit = config["unit"]
+        # self.unit = config["unit"]
         self.enrichment = self.get_value("enrichment", base=config, default=None)
-        self.disambiguation = config["disambiguation"]
-        self.weights = config["weights"]
+        self.disambiguation = self.get_value("disambiguation", default=defs.disam.first)
+        self.weights = self.get_value("weights", default=defs.weights.bag)
+        self.ngram_range = self.get_value("weights", default=None)
         self.limit = self.get_value("limit", base=config, default=[], expected_type=list)
         # context file only relevant on semantic embedding disamgibuation
         self.context_file = self.get_value("context_file", base=config)
@@ -198,7 +200,7 @@ class evaluator_conf(Configuration):
         self.baselines = self.get_value("baselines", base=config)
         self.averages = self.get_value("averages", base=config, default=True)
         self.top_k = self.get_value("top_k", base=config, default=3, expected_type=int)
-        self.fold_aggregations = self.get_value("fold_aggregations", base=config)
+        self.iter_aggregations = self.get_value("iter_aggregations", base=config)
         self.label_aggregations = self.get_value("label_aggregations", base=config)
         self.measures = self.get_value("measures", base=config)
         self.label_distribution = self.get_value("show_label_distributions", base=config, default="logs")

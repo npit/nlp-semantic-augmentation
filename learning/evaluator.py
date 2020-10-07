@@ -8,7 +8,7 @@ import pandas as pd
 from sklearn import metrics
 from collections import Counter
 
-from utils import (count_label_occurences, debug, error, info,
+from utils import (count_occurences, debug, error, info,
                    numeric_to_string, one_hot, warning)
 
 
@@ -529,7 +529,7 @@ class Evaluator:
         if distribution_input:
             distr = labels_or_distr
         else:
-            distr = count_label_occurences(labels_or_distr)
+            distr = count_occurences(labels_or_distr)
         local_max_lbl = max(distr, key=lambda x: x[1])[0]
 
         majority_labels = []
@@ -573,7 +573,7 @@ class Evaluator:
         if self.is_supervised():
             # majority learner
             if self.majority_label is None:
-                self.majority_label = count_label_occurences(self.get_current_reference_labels(), return_only_majority=True)
+                self.majority_label = count_occurences(self.get_current_reference_labels(), return_only_majority=True)
             info("Majority label: {}".format(self.majority_label))
             majpred = np.zeros(predictions.shape, np.float32)
             majpred[:, self.majority_label] = 1.0

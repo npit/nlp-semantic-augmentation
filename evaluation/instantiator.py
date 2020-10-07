@@ -1,4 +1,5 @@
 from evaluation.unsupervised_evaluator import UnsupervisedEvaluator
+from evaluation.supervised_evaluator import SupervisedEvaluator
 from utils import error
 
 class Instantiator:
@@ -7,7 +8,7 @@ class Instantiator:
     @staticmethod
     def create(config):
         """Function to instantiate an evaluator"""
-        candidates = [UnsupervisedEvaluator]
+        candidates = [UnsupervisedEvaluator, SupervisedEvaluator]
 
         # instantiate non-neural candidates
         for candidate in candidates:

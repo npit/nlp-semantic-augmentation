@@ -296,18 +296,18 @@ def align_index(input_list, reference):
     return output
 
 
-def count_label_occurences(labels, return_only_majority=False):
+def count_occurences(data, return_only_majority=False):
     """Gets majority (in terms of frequency) label in (potentially multilabel) input
     """
     counts = Counter()
     try:
-        # iterable labels
-        labels[0].__iter__
-        for lab in labels:
+        # iterable data
+        data[0].__iter__
+        for lab in data:
             counts.update(lab)
     except AttributeError:
-        # non-iterable labels
-        counts = Counter(labels)
+        # non-iterable data
+        counts = Counter(data)
     # just the max label
     if return_only_majority:
         return counts.most_common(1)[0][0]
@@ -362,9 +362,13 @@ def update_cumulative_index(new_data, container=None):
     idx = np.arange(len(container), len(new_data))
     return idx
 
-def info(msg):
+def info(msg, banner=None):
     logger = logging.getLogger()
+    if banner in ["top", "surround"]:
+        info("-" * len(msg))
     logger.info(msg)
+    if banner in ["bottom", "surround"]:
+        info("-" * len(msg))
 
 
 def debug(msg):

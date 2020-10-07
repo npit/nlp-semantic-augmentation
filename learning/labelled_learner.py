@@ -2,8 +2,6 @@ from os import makedirs
 from os.path import dirname
 
 import numpy as np
-from sklearn.model_selection import (KFold, StratifiedKFold, ShuffleSplit, StratifiedShuffleSplit)
-from skmultilearn.model_selection import IterativeStratification, iterative_train_test_split
 
 from bundle.datatypes import *
 from bundle.datausages import *
@@ -11,12 +9,12 @@ from defs import roles
 from learning.supervised_learner import SupervisedLearner
 from learning.sampling import Sampler
 from learning.validation.validation import ValidationSetting
-from utils import (count_label_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot)
+from utils import (count_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot)
 
 
 class LabelledLearner(SupervisedLearner):
-    """Class where the ground truth for each sample is numeric labels"""
-    train_labels, test_labels = None, None
+    """Class for supervised learners where the ground truth for each sample are distinct numeric labels"""
+    labels_info = None
 
     def __init__(self):
         SupervisedLearner.__init__(self, consumes=[Numeric.name, Labels.name])
@@ -24,13 +22,13 @@ class LabelledLearner(SupervisedLearner):
     def count_samples(self):
         """Sample counter that includes the label samples"""
         super().count_samples()
-        self.num_train_labels, self.num_test_labels = map(len, [self.train_labels, self.test_labels])
+        self.num_train_labels, self.num_test_labels = map(len, [self.train_embedding_index, self.test_embedding_index])
 
-    def make(self):
-        super().make()
-        self.do_multilabel = is_multilabel(self.train_labels)
-        label_counts = count_label_occurences(self.train_labels)
-        self.num_labels = len(label_counts)
+    # def make(self):
+    #     super().make()
+    #     self.do_multilabel = is_multilabel(self.train_labels)
+    #     label_counts = count_label_occurences(self.train_labels)
+    #     self.num_labels = len(label_counts)
 
     def attach_evaluator(self):
         super().attach_evaluator()
@@ -49,19 +47,15 @@ class LabelledLearner(SupervisedLearner):
 
     def check_sanity(self):
         super().check_sanity()
-        if not self.do_multilabel:
-            # need at least one sample per class
-            zero_samples_idx = np.where(np.sum(self.train_labels, axis=0) == 0)
-            if np.any(zero_samples_idx):
-                error("No training samples for class index {}".format(zero_samples_idx))
-        else:
-            ok, nosamples = all_labels_have_samples(self.train_labels, self.labelset)
-            if not ok:
-                error(f"No samples for label(s): {nosamples}")
+        # need at least one sample per class
+        existing_labels = set(np.concatenate(self.targets.instances))
+        missing_labels = [x for x in self.labelset if x not in existing_labels]
+        error("No training samples for label(s): {missing_labels}", len(missing_labels) > 0)
 
     def configure_validation_setting(self):
-        self.validation = ValidationSetting(self.folds, self.validation_portion, self.test_data_available(), use_labels=True, do_multilabel=self.do_multilabel)
-        self.validation.assign_data(self.embeddings, train_index=self.train_embedding_index, train_labels=self.train_labels, test_labels=self.test_labels, test_index=self.test_embedding_index)
+        self.validation = ValidationSetting(self.config, self.train_embedding_index, self.test_embedding_index,
+        self.targets, self.labels_info, self.folds, self.validation_portion, self.seed)
+        # self.validation.assign_data(self.embeddings, train_index=self.train_embedding_index, labels=self.targets, test_index=self.test_embedding_index)
 
     def configure_sampling(self):
         """Over/sub sampling"""
@@ -99,65 +93,29 @@ class LabelledLearner(SupervisedLearner):
         train_indexes, test_indexes = next(stratifier.split(np.zeros(len(self.train_labels)), labels))
         return [(train_indexes, test_indexes)]
 
-    # produce training / validation splits, with respect to sample indexes
-    def compute_trainval_indexes(self):
-        if self.do_folds:
-            # stratified fold splitting
-            info("Training {} with input data: {} samples, {} labels, on {} stratified folds"
-                .format(self.name, self.num_train, self.num_train_labels, self.folds))
-            # for multilabel K-fold, stratification is not available. Also convert label format.
-            if self.do_multilabel:
-                # splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
-                splitter = IterativeStratification(self.folds, order=1)
-                oh_labels = one_hot(self.train_labels, self.num_labels, is_multilabel=True)
-                return list(splitter.split(np.zeros(self.num_train_labels), oh_labels))
-            else:
-                splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
-                # convert to 2D array
-                self.train_labels = np.squeeze(self.train_labels)
-
-        elif self.do_validate_portion:
-            info(f"Splitting {self.name} with input data: {self.num_train} samples, {self.num_train_labels} labels, on a {self.validation_portion} validation portion")
-            if self.do_multilabel:
-                # splitter = ShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
-
-                # splitter = lambda X, y: iterative_train_test_split(X, y, test_size=self.validation_portion)
-                # iterative_train_test_split(np.zeros(self.num_train_labels), self.train_labels,test_size=self.validation_portion)
-                return self.stratified_mutltilabel_split()
-            else:
-                splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
-
-        # generate splits
-        splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
-        return splits
-
-
     def process_ground_truth_input(self):
-        labels = self.data_pool.request_data(Numeric.name, Labels, usage_matching="subset", client=self.name, on_error_message=f"{self.name} learner needs label information.")
-        indices = labels.get_usage(Indices.name)
-        labels_info = labels.get_usage(Labels.name)
-        train_idx, test_idx = indices.get_train_test()
-        # TODO fix labels as embeddings
-        self.train_labels =  labels.data.instances[0]
-        self.test_labels = labels.data.instances[1]
-        self.labelset, self.multilabel_input = labels_info.labelset, labels_info.multilabel
+        super().process_ground_truth_input()
+        # labels = self.data_pool.request_data(Numeric.name, Labels, usage_matching="subset", client=self.name, on_error_message=f"{self.name} learner needs label information.")
+        # indices = labels.get_usage(Indices.name)
+        # train_idx, test_idx = indices.get_train_test()
+        # # TODO fix labels as embeddings
+        self.labels_info = self.targets_data.get_usage(Labels.name)
+        error(f"Learner {self.name} requires numeric label information.", self.labels_info is None)
+        self.labelset, self.do_multilabel = self.labels_info.labelset, self.labels_info.multilabel
         self.num_labels = len(self.labelset)
 
+        # self.labels = labels.data
+        # self.train_labels =  labels.data.get_slice(train_idx)
+        # self.test_labels = labels.data.get_slice(test_idx)
+        # self.labelset, self.multilabel_input = labels_info.labelset, labels_info.multilabel
+        # self.num_labels = len(self.labelset)
+
+
     def get_ground_truth(self):
-        """GT retrieval"""
-        return self.train_labels, self.val_labels
-
-    def load_existing_predictions(self):
-        """Loader function for existing, already computed predictions. Checks for label matching."""
-        # get predictions and instance indexes they correspond to
-        existing_predictions, existing_instance_indexes = super().load_existing_predictions()
-        # also check labels
-        if existing_predictions is not None:
-            existing_test_labels = self.validation.get_test_labels(self.test_instance_indexes)
-            if not np.all(np.equal(existing_test_labels, self.test_labels)):
-                error("Different instance labels loaded than the ones generated.")
-        return existing_predictions, existing_instance_indexes
-
+        # convert to labels
+        gt = super().get_ground_truth().instances
+        gt = np.concatenate(gt)
+        return gt
     # def conclude_validation_iteration(self):
     #     """Perform concluding actions for a single validation loop"""
     #     super().conclude_validation_iteration()
@@ -168,5 +126,6 @@ class LabelledLearner(SupervisedLearner):
         """Perform concuding actions for the entire traintest loop"""
         super().conclude_traintest()
         # show label distribution, if desired
-        if self.config.print.label_distribution:
-            self.evaluator.show_reference_label_distribution()
+        pass
+        # if self.config.print.label_distribution:
+        #     self.evaluator.show_reference_label_distribution()

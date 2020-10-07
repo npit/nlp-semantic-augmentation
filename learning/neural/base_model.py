@@ -59,7 +59,7 @@ class BaseModel(ptl.LightningModule):
             return datum
 
     def assign_ground_truth(self, gt):
-        self.train_ground_truth = gt
+        self.ground_truth = gt
 
     def make_predictions(self, inputs):
         # regular forward
@@ -70,13 +70,16 @@ class BaseModel(ptl.LightningModule):
         # incorporate embeddings in the neural architecture
         error("Attempted to access abstract embedding configuration function.")
 
+    def model_to_device(self):
+        self.model.to(self.device_name)
+
     # high-level functions for NN ptl operations
     ########################################
     def train_model(self):
         """Training and validation function"""
         # also check https://pytorch-lightning.readthedocs.io/en/latest/fast_training.html
         # logger = ptl.loggers.TensorBoardLogger(self.working_folder, name=self.model_name)
-        self.model.to(self.device_name)
+        self.model_to_device()
 
 
         model_savepath = join(self.working_folder, 'models')

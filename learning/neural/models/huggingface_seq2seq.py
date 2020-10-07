@@ -23,6 +23,7 @@ class HuggingfaceSeq2seq(BaseModel):
     def make_predictions(self, inputs):
         # generate
         debug(f"Making predictions on input data {inputs.shape} and seqlen {self.sequence_length}")
+        self.model.to(self.device_name)
         input_tokens = torch.LongTensor(self.embeddings[inputs]).to(self.device_name)
         att_mask = torch.LongTensor(self.masks[inputs]).to(self.device_name)
         preds =  self.model.generate(input_tokens, decoder_start_token_id=self.model.config.decoder.pad_token_id,

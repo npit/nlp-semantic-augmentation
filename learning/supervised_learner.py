@@ -6,6 +6,8 @@ from bundle.datatypes import *
 
 class SupervisedLearner(Learner):
     """Class for learners with generic ground truth"""
+    targets_data = None
+
     def __init__(self, consumes=[Numeric.name, GroundTruth.name]):
         Learner.__init__(self, consumes)
 
@@ -27,9 +29,16 @@ class SupervisedLearner(Learner):
         # get indexes
         super().get_component_inputs()
 
+    def get_ground_truth(self):
+        """GT retrieval"""
+        return self.targets
 
     def process_ground_truth_input(self):
-        targets = self.data_pool.request_data(Text, GroundTruth, usage_matching="subset", client=self.name, must_be_single=(not self.model_loaded))
+        # if we have to train the mode, we can load more than one ground truth instance (i.e. train & test)
+        single_instances = not self.model_loaded
+        # fetch any type of ground 
+        targets = self.data_pool.request_data(None, GroundTruth.get_subclasses(), usage_matching="any", client=self.name, must_be_single=single_instances)
+        self.targets_data = targets
         if targets:
             self.targets = targets.data
             self.target_indices = targets.get_usage(Indices.name)
@@ -37,21 +46,20 @@ class SupervisedLearner(Learner):
             self.targets = Numeric([])
             self.target_indices = Indices([])
 
-    def attach_evaluator(self):
-        super().attach_evaluator()
-        train_target, test_target = self.get_train_test_targets()
-        self.evaluator.set_targets(train_target, test_target)
-        # self.evaluator.set_labelling(train_target, self.tokenizer.get_vocab().values(), do_multilabel=True)
+    # def attach_evaluator(self):
+    #     super().attach_evaluator()
+    #     train_target, test_target = self.get_train_test_targets()
+    #     self.evaluator.set_targets(train_target, test_target)
+    #     # self.evaluator.set_labelling(train_target, self.tokenizer.get_vocab().values(), do_multilabel=True)
 
-    def check_sanity(self):
-        super().check_sanity()
-        # if we're to build the model, check that everything matches
-        if not self.model_loaded:
-            if len(self.train_embedding_index) != len(self.target_train_embedding_index):
-                error(f"Supplied train data-gt instance number mismatch: {len(self.train_embedding_index)} data and {len(self.target_train_embedding_index)}")
-            if len(self.test_embedding_index) != len(self.target_test_embedding_index):
-                error(f"Supplied test data-gt instance number mismatch: {len(self.test_embedding_index)} data and {len(self.target_test_embedding_index)}")
-
+    # def check_sanity(self):
+    #     super().check_sanity()
+    #     # if we're to build the model, check that everything matches
+    #     if not self.model_loaded:
+    #         if len(self.train_embedding_index) != len(self.target_train_embedding_index):
+    #             error(f"Supplied train data-gt instance number mismatch: {len(self.train_embedding_index)} data and {len(self.target_train_embedding_index)}")
+    #         if len(self.test_embedding_index) != len(self.target_test_embedding_index):
+    #             error(f"Supplied test data-gt instance number mismatch: {len(self.test_embedding_index)} data and {len(self.target_test_embedding_index)}")
 
     def get_train_test_targets():
         error("Attempted to access target getter from base class")

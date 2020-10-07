@@ -33,15 +33,17 @@ class Bag:
         vectors = vectors.squeeze()[:, term_idxs]
         return vectors
 
-    def __init__(self, weighting="counts", vocabulary=None, ngram_range=None):
+    def __init__(self, weighting="counts", vocabulary=None, ngram_range=None, tokenizer_func=None, analyzer=None):
         if weighting not in "bag tfidf".split():
             error(f"Undefined weighting {weighting}")
         self.weighting = weighting
         self.vocabulary = vocabulary
+        self.tokenizer = tokenizer_func
+        self.analyzer = analyzer
         if ngram_range is None:
             ngram_range = (1, 1)
         self.ngram_range = ngram_range
-        self.model = CountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range)
+        self.model = CountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range, analyzer=self.analyzer)
 
     def get_vocabulary(self):
         return self.model.get_feature_names()
