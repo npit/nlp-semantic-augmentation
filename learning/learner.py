@@ -302,6 +302,9 @@ class Learner(Serializable):
             if len(idx_group) > 1:
                 info(f"Applying {self.name} model on {len(idx_group)} {role} data")
             for i, idxs in enumerate(idx_group):
+                if len(idxs) == 0:
+                    info(f"Skipping model application on{role} data since it has no instances.")
+                    continue
                 info(f"Applying {self.name} model on {len(idxs)} {role} data")
                 tag = role + f"{i+1}" if len(idx_group)>1 else role
                 self.apply_model(index=idxs, tag=tag)

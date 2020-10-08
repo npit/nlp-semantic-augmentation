@@ -5,7 +5,7 @@ from learning.neural.models import instantiator
 import torch
 from os.path import join, exists
 import numpy as np
-from utils import info, debug
+from utils import info, debug, warning
 
 class DNN:
     """ class for all pytorch-lightning deep neural networks"""
@@ -45,7 +45,7 @@ class DNN:
             for input_batch in model_instance.test_dataloader():
                 # debug(f"Testing batch {input_batch.shape}")
                 batch_predictions = model_instance.make_predictions(input_batch)
-                debug(f"Got predictions: {batch_predictions.shape}")
+                # debug(f"Got predictions: {batch_predictions.shape}")
                 batch_predictions = self.process_predictions(batch_predictions)
                 # batch_predictions = model_instance(input_batch)
                 # account for possible batch padding TODO fix
@@ -57,18 +57,26 @@ class DNN:
         return preds.cpu()
 
     def save_model(self):
+        """Model loading function for DNNs"""
         path = self.get_current_model_path()
         info("Saving model to {}".format(path))
         torch.save(self.neural_model.state_dict(), path)
 
     def load_model(self):
+        """Model loading function for DNNs"""
         path = self.get_current_model_path()
+        if not exists(path):
+            return False
+        state_dict = torch.load(path)
         # instantiate object
         self.build_model()
         # load weights
-        if not exists(path):
+        try:
+            self.neural_model.load_state_dict(state_dict)
+        except RuntimeError as rte:
+            warning(str(rte))
+            warning("Weights loading failed -- aborting model loading.")
             return False
-        self.neural_model.load_state_dict(torch.load(path))
         return True
 
     def get_model(self):

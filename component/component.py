@@ -33,7 +33,7 @@ class Component:
         for pr in self.consumes:
             try:
                 dtype, usage = pr
-            except ValueError:
+            except (ValueError, TypeError):
                 dtype, usage = pr, None
             res.append(Consumes(dtype, usage, self.get_name(), chain_name))
         return res
@@ -43,7 +43,7 @@ class Component:
         for pr in self.produces:
             try:
                 dtype, usage = pr
-            except ValueError:
+            except (ValueError, TypeError):
                 dtype, usage = pr, None
             res.append(Produces(dtype, usage, self.get_name(), chain_name))
         return res

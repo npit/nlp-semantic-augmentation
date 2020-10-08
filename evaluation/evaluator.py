@@ -64,23 +64,24 @@ class Evaluator(Serializable):
         self.print_results()
 
     def print_results(self):
-        df = pd.DataFrame(columns=[self.iterations_alias] + list(self.iteration_aggregations))
         for results_type in self.results:
             # info(f"{results_type} | {self.iterations_alias} {' '.join(self.iteration_aggregations)}:")
+            df = pd.DataFrame(columns=[self.iterations_alias] + list(self.iteration_aggregations))
             for measure in self.results[results_type]:
                 self.print_measure(measure, self.results[results_type][measure], df=df)
 
-        # df.style.format('{:.4f}')
-        pd.options.display.max_rows = 999
-        pd.options.display.max_columns = 999
-        pd.options.display.precision = 3
+            # df.style.format('{:.4f}')
+            pd.options.display.max_rows = 999
+            pd.options.display.max_columns = 999
+            pd.options.display.precision = 3
 
-        df = self.set_printable_info(df)
-        info("-------------------------------")
-        for k in df.to_string().split("\n"):
-            info(k)
-        info("-------------------------------")
-        # info("\n" + df.to_string(), banner="surround")
+            df = self.set_printable_info(df)
+            info(f"{results_type}:")
+            info("-------------------------------")
+            for k in df.to_string().split("\n"):
+                info(k)
+            info("-------------------------------")
+            # info("\n" + df.to_string(), banner="surround")
 
     def set_printable_info(self, df):
         # iteration aggregations

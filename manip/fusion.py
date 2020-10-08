@@ -10,15 +10,15 @@ from utils import error, info, shapes_list, warning
 
 class Fusion(Manipulation):
 
-    def __init__(self, _):
+    def __init__(self, config):
+        self.config = config
         Manipulation.__init__(self)
         # self.num_inputs = len(config.inputs)
 
     def fuse(self):
         error("Attempted to call abstract fuse() from component {}".format(self.name))
 
-    def run(self):
-        self.process_component_inputs()
+    def produce_outputs(self):
 
         info("{self.name} fusion order:")
         for i, vecs in enumerate(self.vectors):
@@ -41,26 +41,3 @@ class Fusion(Manipulation):
         #     info(msg + " {}".format(self.vectors[v].shape))
 
         # self.outputs.set_vectors(Numeric(vecs=self.vectors, epi=[np.ones(len(vecs), np.int32) * self.num_elements_per_instance for vecs in self.vectors]))
-
-    def process_component_inputs(self):
-        # make sure input is a collection of bundles
-        Manipulation.process_component_inputs(self)
-        # ensure equal epis along the vector collections
-        try:
-            # for vecs in self.vectors:
-            pass
-
-        except:
-            error(f"Non-matching vector inputs to {self.name}")
-
-        # all_epis = np.unique(all_epis)
-        # error("Cannot fuse inputs with different elements per instance: {}".format(all_epis), len(all_epis) > 1)
-        # self.num_elements_per_instance = all_epis[0]
-
-        # # error("Unequal elements per instance during {} manip".format(str(epis)), np.all(np.diff(epis)) == 0)
-        # error("{} can only fuse a collection of bundles".format(self.name), len(self.inputs) <= 1)
-        # for v, vecs in enumerate(self.vectors):
-        #     if vecs is None:
-        #         bund = self.inputs.get(v)
-        #         error("Specified {} manip for chain {} / bundle {}, which does not contain vectors.".format(
-        #             self.name, bund.get_chain_name(), bund.get_source_name()))

@@ -33,7 +33,7 @@ class Bag:
         vectors = vectors.squeeze()[:, term_idxs]
         return vectors
 
-    def __init__(self, weighting="counts", vocabulary=None, ngram_range=None, tokenizer_func=None, analyzer=None):
+    def __init__(self, weighting="counts", vocabulary=None, ngram_range=None, tokenizer_func=None, analyzer="word"):
         if weighting not in "bag tfidf".split():
             error(f"Undefined weighting {weighting}")
         self.weighting = weighting

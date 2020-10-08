@@ -131,7 +131,8 @@ class DataPool:
         else:
             error(f"Specified undefined usage matching: {usage_matching}")
 
-    def request_data(self, data_type, usage, client, usage_matching="exact", usage_exclude=None, must_be_single=True, on_error_message="Data request failed:", reference_data=None):
+    def request_data(self, data_type, usage, client, usage_matching="exact", usage_exclude=None, must_be_single=True,
+                     on_error_message="Data request failed:", reference_data=None):
         """Get data from the data pool
 
         Args:

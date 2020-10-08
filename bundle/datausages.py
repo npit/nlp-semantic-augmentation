@@ -96,6 +96,14 @@ class Indices(DataUsage):
         self.instances.append(idx)
         self.roles.append(role)
 
+    def equals(self, other):
+        if not len(self.instances) == len(other.instances):
+            return False
+        for i in range(len(self.instances)):
+            if not np.array_equal(self.instances[i], other.instances[i]):
+                return False
+        return True
+
 
 class Predictions(Indices):
     """Usage for denoting learner predictions"""

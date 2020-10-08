@@ -15,16 +15,10 @@ class Concatenation(Fusion):
     def __init__(self, config):
         Fusion.__init__(self, config)
 
-    def fuse(self, input_vectors):
-        try:
-            debug(f"Concatenating input chunck {input_vectors.shape}")
-            if self.output is None:
-                # output has the same number of instances as the input
-                self.output = input_vectors
-            else:
-                self.output = np.concatenate([self.output, input_vectors], axis=1)
-            return self.output
-        except:
-            msg = "Error during {} manip.".format(self.name)
-            error(msg)
-        return None
+    def produce_outputs(self):
+        self.outputs = np.concatenate(self.vectors, axis=1)
+        # dim = self.vectors[0].shape[-1]
+        # dtype = self.vectors[0].dtype
+        # self.output = np.ndarray((0, dim), dtype=dtype)
+        # for v in self.vectors:
+        #     self.output = np.append(self.output, v, axis=1)
