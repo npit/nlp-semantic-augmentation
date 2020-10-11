@@ -34,9 +34,6 @@ class Evaluator(Serializable):
         """Determine whether the evaluator is applicable wrt the input config"""
         return (not config.measures) or all(me in cls.available_measures for me in config.measures)
 
-
-
-
     def __init__(self, config):
         self.config = config
         self.output_folder = join(config.folders.run, "results")
@@ -52,13 +49,13 @@ class Evaluator(Serializable):
         self.predictions = self.preprocess_predictions(self.predictions)
 
         info("Evaluating run")
-        self.evaluate_predictions(self.predictions, self.results["run"])
+        self.evaluate_predictions(self.predictions, "run")
         # baselines
         info("Evaluating random baseline")
         rand_preds = [get_random_predictions(prediction_shape) for _ in range(self.num_eval_iterations)]
         rand_preds = self.preprocess_predictions(rand_preds)
 
-        self.evaluate_predictions(rand_preds, self.results["random"])
+        self.evaluate_predictions(rand_preds, "random")
         # info(json.dumps(self.results, indent=2))
         info("Displaying results")
         self.print_results()
@@ -81,7 +78,10 @@ class Evaluator(Serializable):
             for k in df.to_string().split("\n"):
                 info(k)
             info("-------------------------------")
-            # info("\n" + df.to_string(), banner="surround")
+
+    def compute_additional_info(self):
+        """Print additional information on the run"""
+        pass
 
     def set_printable_info(self, df):
         # iteration aggregations
@@ -111,12 +111,14 @@ class Evaluator(Serializable):
             return [self.round(x) for x in val]
         return np.round(val, self.print_precision)
 
-    def evaluate_predictions(self, preds, out_dict):
+    def evaluate_predictions(self, preds, key):
         """Perform all evaluations on given predictions"""
+        out_dict = self.results[key]
         # iterate over all measures
         for measure in self.available_measures:
             result = self.evaluate_measure(preds,measure)
             out_dict[measure] = result
+        self.compute_additional_info(preds, key)
 
     def aggregate_iterations(self, ddict):
         """Aggregate multi-value entries"""
@@ -150,6 +152,7 @@ class Evaluator(Serializable):
         """Fetch predictions"""
         if predictions is None:
             predictions = self.predictions
+        # get a batch of predictions
         return predictions[prediction_index]
 
     def set_component_outputs(self):

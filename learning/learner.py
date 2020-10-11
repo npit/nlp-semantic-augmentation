@@ -12,7 +12,7 @@ from component.component import Component
 from defs import datatypes, roles
 from learning.evaluator import Evaluator
 from learning.sampling import Sampler
-from learning.validation.validation import ValidationSetting, get_info_string
+from learning.validation.validation import ValidationSetting, get_info_string, load_trainval
 from utils import error, info, read_pickled, tictoc, write_pickled, warning
 
 
@@ -37,6 +37,7 @@ class Learner(Serializable):
     allow_prediction_loading = None
 
     train_embedding = None
+    model_index = None
 
     # store information pertaining to the learning run(s) executed
     predictions = []
@@ -127,7 +128,7 @@ class Learner(Serializable):
             model_name += "_valportion_" + str(self.fold_index)
         return model_name
 
-    def get_predictions_file(self, tag="test"):
+    def get_predictions_file(self, model_index=None, tag="test"):
         if tag:
             tag += "."
         return join(self.get_results_folder(),  self.get_model_filename() + "." + tag + "predictions.pkl")
@@ -215,6 +216,7 @@ class Learner(Serializable):
                 # self.prediction_indexes.append(self.validation.get_prediction_indexes())
 
                 # train and keep track of the model
+                self.model_index = iteration_index
                 model = self.acquire_trained_model()
                 self.models.append(model)
 
@@ -234,9 +236,10 @@ class Learner(Serializable):
         folder = join(self.get_results_folder(), "models")
         return join(folder, self.get_model_filename())
 
-    def get_model_filename(self):
+    def get_model_filename(self, model_index=None):
         """Retrieve model filename"""
-        return self.name + get_info_string(self.config) + ".model"
+        model_id = "" if self.model_index is None else ".{model_index}"
+        return self.name + get_info_string(self.config) + model_id  + ".model"
 
     def get_results_folder(self):
         """Return model folder"""
@@ -274,8 +277,12 @@ class Learner(Serializable):
     def build_model_from_inputs(self):
         self.make()
         self.configure_validation_setting()
+
+
         if self.validation_exists and not len(self.test_embedding_index) > 0:
             self.validation.reserve_validation_for_testing()
+        output_file = self.get_current_model_path() + ".trainval_idx"
+        self.validation.write(output_file)
         # self.attach_evaluator()
         self.configure_sampling()
         self.check_sanity()
@@ -290,6 +297,12 @@ class Learner(Serializable):
             train_indexes = self.validation.get_train_indexes()
             test_indexes = self.validation.get_test_indexes()
         else:
+            try:
+                idxs_file = self.get_current_model_path() + ".trainval_idx"
+                train_indexes, _, test_indexes = load_trainval(idxs_file)
+                info(f"Restored train/test splits from saved indexes: {idxs_file}")
+            except FileNotFoundError:
+                pass
             train_indexes = [self.train_embedding_index]
             test_indexes = [self.test_embedding_index]
 
@@ -341,12 +354,14 @@ class Learner(Serializable):
 
     def save_outputs(self):
         """Save produced predictions"""
-        predictions_file = self.get_predictions_file() 
-        write_pickled(predictions_file, [self.predictions, self.prediction_indexes])
+        for m in range(len(self.predictions)):
+            predictions_file = self.get_predictions_file(m) 
+            write_pickled(predictions_file, [self.predictions[m], self.prediction_indexes[m]])
 
     def load_model_from_disk(self):
         """Load the component's model from disk"""
-        return self.load_model()
+        model_loaded = self.load_model()
+        return model_loaded
 
     def acquire_embedding_information(self):
         """Get embedding and embedding information"""
@@ -355,21 +370,6 @@ class Learner(Serializable):
         self.embeddings = vectors.data.instances
         self.indices = vectors.get_usage(Indices)
         self.train_embedding_index, self.test_embedding_index = self.indices.get_train_test()
-        # self.test_embedding_index = self.indices.get_role_instances(roles.train)
-        # if self.indices.has_role(roles.test):
-        #     self.test_embedding_index = self.indices.get_role_instances(roles.test)
-        # else:
-        #     self.test_embedding_index = np.ndarray((0,), np.float32)
-
-
-        # self.embeddings = vectors_bundle.get_vectors().instances
-        # self.train_embedding_index = vectors_bundle.get_indices(role=roles.train, enforce_single=True)
-        # # get_train self.inputs.get_indices(single=True, role=roles.train)
-
-        # if vectors_bundle.get_indices().has_role(roles.test):
-        #     self.test_embedding_index = vectors_bundle.get_indices(role=roles.test, enforce_single=True)
-        # else:
-        #     self.test_embedding_index = np.ndarray((), np.float32)
 
     def get_component_inputs(self):
         """Component processing for input indexes and vectors"""
@@ -399,4 +399,10 @@ class Learner(Serializable):
         return True
 
     def save_model_wrapper(self):
-        pass
+        pass        
+
+    def save_model(self):
+        for m in self.models:
+            path = self.get_current_model_path(m)
+        super().save_model(path=path, model=self.models[m])
+

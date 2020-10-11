@@ -1,5 +1,6 @@
 from sklearn.model_selection import KFold, StratifiedKFold, ShuffleSplit, StratifiedShuffleSplit
 from skmultilearn.model_selection import IterativeStratification, iterative_train_test_split
+import numpy as np
 
 from utils import info, one_hot
 """Module for validation splits"""
@@ -23,7 +24,7 @@ from utils import info, one_hot
 
 #     def get_splits(self):
 
-def kfold_split(self, data, num_folds, seed, labels=None, label_info=None):
+def kfold_split(data, num_folds, seed, labels=None, label_info=None):
     """Do K-fold cross-validation"""
     num_data = len(data)
     info("Splitting {num_data} input data to {num_folds} folds")
@@ -35,13 +36,13 @@ def kfold_split(self, data, num_folds, seed, labels=None, label_info=None):
         if multilabel:
             splitter = IterativeStratification(num_folds, order=1)
             oh_labels = one_hot(labels, len(labelset), is_multilabel=True)
-            return list(splitter.split(np.zeros(len(labels), oh_labels)))
+            return list(splitter.split(np.zeros(len(labels)), oh_labels))
         else:
             return list(StratifiedKFold(num_folds, shuffle=True, random_state=seed).split())
 
 
 
-def portion_split(self, data, portion, seed=1337, labels=None, label_info=None):
+def portion_split(data, portion, seed=1337, labels=None, label_info=None):
     """Perform a k% split to train-validation instances"""
 
     if labels is None:

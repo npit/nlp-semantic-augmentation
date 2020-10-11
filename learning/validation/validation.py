@@ -1,7 +1,7 @@
 import numpy as np
 from learning.validation.splitting import kfold_split, portion_split
 
-from utils import error, info, warning
+from utils import error, info, warning, write_pickled, read_pickled
 
 class ValidationSetting:
     train_idx, test_idx, test_idx = None, None, None
@@ -11,6 +11,7 @@ class ValidationSetting:
     current_fold = None
 
     test_via_validation = False
+
 
     def __init__(self, config, train_idx, test_idx, labels=None, label_info=None, folds=None, portion=None, seed=1337):
         """Constructor"""
@@ -27,22 +28,25 @@ class ValidationSetting:
     def make_splits(self):
         """Produce validation splits, if defined"""
         if self.folds is not None:
-            self.trainval_idx = kfold_split(self.train_idx, self.folds, self.seed, self.labels, self.label_info)
+            self.trainval_idx = kfold_split(self.train_idx, self.folds, self.seed, self.labels.instances, self.label_info)
         elif self.portion is not None:
-            self.trainval_idx = portion_split(self.train_idx, self.portion, self.seed, self.labels, self.label_info)
+            self.trainval_idx = portion_split(self.train_idx, self.portion, self.seed, self.labels.instances, self.label_info)
         else:
             self.trainval_idx = [(self.train_idx, np.arange(0, dtype=np.int32))]
     
     def reserve_validation_for_testing(self):
         """Use the validation indexes to test the model"""
-        if self.test_idx is not None:
+        if self.test_idx is not None and self.test_idx.size > 0:
             warning(f"Reserving validation for testing but {len(self.test_idx)} test index exists!")
             warning(f"Deleting existing test indexes")
         self.test_idx = []
-        for i in range(len(trainval_idx)):
-            val_idx = trainval_idx[i]
+        self.test_via_validation = True
+        for i in range(len(self.trainval_idx)):
+            # fetch and replace the validation index
+            val_idx = self.trainval_idx[i][1]
+            self.trainval_idx[i] = (self.trainval_idx[i][0], np.arange(0, dtype=np.int32))
+            # add it as the test index
             self.test_idx.append(val_idx)
-            trainval_idx[i] = np.arange(0, dtype=np.int32)
 
     def get_trainval_indexes(self):
         return self.trainval_idx
@@ -51,8 +55,6 @@ class ValidationSetting:
         return [x[0] for x in self.trainval_idx]
     
     def get_test_indexes(self):
-        if self.test_via_validation:
-            return np.concatenate(x[1] for x in self.trainval_idx)
         return self.test_idx
 
     def get_info_string(self):
@@ -65,6 +67,17 @@ def get_info_string(config):
     elif config.train.validation_portion is not None:
         return "valportion_{}".format(config.train.validation_portion)
     return ""
+
+    def write_trainval(self, output_file):
+        write_pickled(output_file, (self.trainval_idx, self.test_index), "validation trainval indexes") 
+
+def load_trainval(path):
+    dat = read_pickled(path)
+    trainval_idx = dat[0]
+    train = trainval_idx[0]
+    val = trainval_idx[1]
+    test = dat[1]
+    return train, val, test
 
 # class ValidationSetting:
 #     """Class to configure validation

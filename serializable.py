@@ -231,11 +231,15 @@ class Serializable(Component):
         except FileNotFoundError:
             return False
 
-    def save_model(self):
+    def save_model(self, path=None, model=None):
         """Save the serializable model"""
+        if path is None:
+            path = self.get_model_path()
+        if model is None:
+            model = self.get_model()
         # write intermmediate folders
-        makedirs(dirname(self.get_model_path()), exist_ok=True)
-        write_pickled(self.get_model_path(), self.get_model(), msg=f"{self.get_full_name()} model" )
+        makedirs(dirname(path), exist_ok=True)
+        write_pickled(path, model, msg=f"{self.get_full_name()} model" )
 
     def save_outputs(self):
         """Save the produced outputs"""

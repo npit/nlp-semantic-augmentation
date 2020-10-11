@@ -30,7 +30,6 @@ class DNN:
         """Transfer test input indexes to the nn model"""
         model_instance.embeddings = self.embeddings
         model_instance.test_index = torch.LongTensor(self.test_index)
-        self.prepare_testing()
 
     def get_model_filename(self):
         """Get model base filename"""

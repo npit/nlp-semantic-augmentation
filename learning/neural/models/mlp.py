@@ -48,5 +48,5 @@ class MLPModel(BaseModel):
     def make_predictions(self, inputs):
         preds = super().make_predictions(inputs)
         # pass through softmax
-        preds = F.softmax(preds)
+        preds = F.softmax(preds, dim=1)
         return preds

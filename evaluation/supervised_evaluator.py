@@ -6,6 +6,7 @@ from bundle.datausages import *
 from collections import defaultdict
 
 from sklearn import metrics
+from utils import info, count_occurences
 
 class SupervisedEvaluator(Evaluator):
     """Evaluator for supervised tasks"""
@@ -61,7 +62,9 @@ class SupervisedEvaluator(Evaluator):
         if predictions is None:
             predictions = self.predictions
         preds = super().get_evaluation_input(prediction_index, predictions)
+        # fetch the indices to the labels the prediction batch corresponds to
         idx = self.indices[prediction_index]
+        # fetch the labels wrt. the indices
         labels = self.labels.get_slice(idx)
 
         # preds = self.preprocess_predictions(preds)
@@ -78,6 +81,7 @@ class SupervisedEvaluator(Evaluator):
                 preds = np.expand_dims(preds, axis=0)
             predictions[i] = np.argmax(preds, axis=1)
         return predictions
+
     def preprocess_ground_truth(self, gt):
         gt = np.concatenate(gt)
         return gt
@@ -99,6 +103,19 @@ class SupervisedEvaluator(Evaluator):
                 iter_values.append(score)
             res[lbl_aggr] = self.aggregate_iterations(res[lbl_aggr])
         return res
+
+    def compute_additional_info(self, predictions, key):
+        # compute label distributions
+        # tuplelist to string
+        tl2s = lambda tlist: ", ".join(f"({x}: {y})" for (x,y) in tlist)
+
+        for i in range(len(predictions)):
+            info(f"{key} | predictions batch #{i+1} Label distros:")
+            gt, preds= self.get_evaluation_input(i, predictions=predictions)
+            gt_distr, preds_distr = count_occurences(gt), count_occurences(preds)
+
+            info(f"gt:    {tl2s(gt_distr)}")
+            info(f"preds: {tl2s(preds_distr)}")
 
     def print_measure(self, measure, ddict, df=None):
         """Print measure results, aggregating over prediction iterations"""

@@ -36,7 +36,7 @@ class Representation(Serializable):
         # set required resources
         self.set_resources()
         # fetch the required data
-        ret = self.acquire_data()
+        loaded = self.acquire_data()
         # restore name, maybe
         if self.multiple_config_names:
             self.configure_name()
@@ -46,7 +46,7 @@ class Representation(Serializable):
             # Component.configure_name(self)
             # self.check_params()
             info("Restored representation name to {}".format(self.name))
-        return any(self.load_flags)
+        return loaded
 
     # region # serializable overrides
 
