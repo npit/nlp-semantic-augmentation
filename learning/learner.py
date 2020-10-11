@@ -63,7 +63,6 @@ class Learner(Serializable):
         self.allow_prediction_loading = self.config.allow_prediction_loading
         self.allow_model_loading = self.config.misc.allow_model_loading
 
-        self.explicit_model_path = self.config.explicit_model_path
 
         self.sequence_length = self.config.sequence_length
 
@@ -258,6 +257,8 @@ class Learner(Serializable):
     def load_outputs_from_disk(self):
         self.set_serialization_params()
         self.add_serialization_source(self.get_predictions_file(), reader=read_pickled, handler=lambda x: x)
+        if not self.config.allow_prediction_loading:
+            return False
         return self.load_existing_predictions()
 
     def load_existing_predictions(self):
@@ -269,12 +270,6 @@ class Learner(Serializable):
             return False
         # also check labels
         return True
-
-
-
-
-
-
 
     def build_model_from_inputs(self):
         self.make()
@@ -339,13 +334,15 @@ class Learner(Serializable):
             warning(f"Attempted to apply {self.name} model on empty indexes!")
             return
         predictions = self.test_model(model)
-        # write the predictions and relevant idxs (i.e. if testing on validation)
-        # predictions_file = self.validation.modify_suffix(join(self.results_folder, "{}".format(self.name))) + ".predictions.pkl"
-        predictions_file = self.get_predictions_file(tag) 
-        write_pickled(predictions_file, [predictions, self.test_instance_indexes])
+
         self.predictions.append(predictions)
         self.prediction_tags.append(tag)
         self.prediction_indexes.append(self.test_index)
+
+    def save_outputs(self):
+        """Save produced predictions"""
+        predictions_file = self.get_predictions_file() 
+        write_pickled(predictions_file, [self.predictions, self.prediction_indexes])
 
     def load_model_from_disk(self):
         """Load the component's model from disk"""
@@ -398,3 +395,8 @@ class Learner(Serializable):
         pred = DataPack(pred, Predictions(self.prediction_indexes, roles=self.prediction_roles))
         self.data_pool.add_data_packs([pred], self.name)
 
+    def load_model_wrapper(self):
+        return True
+
+    def save_model_wrapper(self):
+        pass

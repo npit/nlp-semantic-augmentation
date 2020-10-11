@@ -94,11 +94,6 @@ class SemanticResource(Serializable):
         info("Restored semantic name to : {}".format(self.name))
         return loaded
 
-    def get_vectors(self):
-        return self.semantic_document_vectors
-
-    def get_semantic_embeddings(self):
-        return None
 
     def generate_vectors(self):
         if self.loaded_vectorized:
@@ -371,3 +366,14 @@ class SemanticResource(Serializable):
         """Get text input data pack """
         self.text = self.data_pool.request_data(Text, Indices, usage_matching="subset",client=self.name)
         self.indices = self.text.get_usage(Indices.name)
+
+    def load_model(self):
+        """Load semantic model"""
+        # load the vocabulary
+        self.model_loaded = super().load_model()
+        if self.model_loaded:
+            self.vocabulary = self.model
+        return self.model_loaded
+
+    def load_model_from_disk(self):
+        return self.load_model()

@@ -212,13 +212,15 @@ class Serializable(Component):
         """Get a path of the trained model"""
         if self.config.explicit_model_path is not None:
             path = self.config.explicit_model_path
+            info(f"Using explicit path {path}")
             if not exists(path):
                 fp = join(self.config.folders.run, path)
                 if exists(fp):
                     path = fp
                     info(f"Using full path of {path}")
             return path
-        return join(self.config.folders.run, self.name)
+        path = join(self.config.folders.run, self.name)
+        return path
 
     def load_model(self):
         """Default model loading function, via pickled object deserializaLoad the model"""

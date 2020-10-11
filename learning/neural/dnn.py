@@ -12,6 +12,9 @@ class DNN:
     neural_model = None
     neural_model_class = None
 
+    embeddings = None
+    input_shape = None
+
     def __init__(self):
         """Constructor"""
         self.neural_model_class = instantiator.get_neural_model_class(self.config.name)
@@ -27,6 +30,7 @@ class DNN:
         """Transfer test input indexes to the nn model"""
         model_instance.embeddings = self.embeddings
         model_instance.test_index = torch.LongTensor(self.test_index)
+        self.prepare_testing()
 
     def get_model_filename(self):
         """Get model base filename"""
@@ -61,26 +65,44 @@ class DNN:
         path = self.get_current_model_path()
         info("Saving model to {}".format(path))
         torch.save(self.neural_model.state_dict(), path)
+        # save wrapper as well
+        self.save_model_wrapper()
+
+    def load_model_weights(self, path):
+        state_dict = torch.load(path)
+        return state_dict
+
+    def get_input_shape_from_weights(self, state_dict):
+        self.input_shape = state_dict['embedding_layer.weight'].shape
 
     def load_model(self):
         """Model loading function for DNNs"""
         path = self.get_current_model_path()
         if not exists(path):
             return False
-        state_dict = torch.load(path)
+        if not super().load_model_wrapper():
+            info(f"Failed to load wrapper metadata for {self.name}")
+            return False
+        state_dict = self.load_model_weights(path)
+        self.get_input_shape_from_weights(state_dict)
         # instantiate object
         self.build_model()
-        # load weights
+        # assign weights to the net
         try:
             self.neural_model.load_state_dict(state_dict)
         except RuntimeError as rte:
             warning(str(rte))
             warning("Weights loading failed -- aborting model loading.")
+            self.clear_model_wrapper()
             return False
         return True
 
     def get_model(self):
         return self.neural_model
+
+    def get_embedding_info(self):
+        input_dim_info = self.embeddings if self.embeddings is not None else self.input_shape
+        return input_dim_info
 
 class GenericSupervisedDNN(DNN):
     """Generic class for deep neural networks with ground truth"""
@@ -129,14 +151,20 @@ class LabelledDNN(GenericSupervisedDNN, LabelledLearner):
         GenericSupervisedDNN.__init__(self)
         LabelledLearner.__init__(self)
 
+    def load_model_weights(self, path):
+        state_dict = super().load_model_weights(path)
+        return state_dict
+
     def get_ground_truth_info(self):
         return self.get_output_dim()
     def get_output_dim(self):
         return self.num_labels
+
     def build_model(self):
         """Build the model"""
         self.num_labels = len(self.labels_info.labelset)
-        self.neural_model = self.neural_model_class(self.config, self.embeddings,
+
+        self.neural_model = self.neural_model_class(self.config, self.get_embedding_info(),
             output_dim=self.get_output_dim(), working_folder=self.config.folders.results, model_name=self.get_model_filename())
         # print(self.neural_model)
 
@@ -159,7 +187,7 @@ class UnsupervisedDNN(DNN, Learner):
 
     def build_model(self):
         """Build the model"""
-        self.neural_model = self.neural_model_class(self.config, self.embeddings, self.num_clusters)
+        self.neural_model = self.neural_model_class(self.config, self.get_embedding_info(), self.num_clusters)
 
     def train_model(self):
         """Training function"""

@@ -15,7 +15,9 @@ class Representation(Serializable):
     compatible_sequence_lengths = []
     sequence_length = 1
 
-    data_names = ["vector_indices", "elements_per_instance", "embeddings", "roles"]
+    data_names = ["elements_per_instance", "embeddings", "indices", "roles"]
+
+
     consumes = Text.name
     produces = Numeric.name
 
@@ -44,15 +46,22 @@ class Representation(Serializable):
             # Component.configure_name(self)
             # self.check_params()
             info("Restored representation name to {}".format(self.name))
-        return ret
+        return any(self.load_flags)
 
     # region # serializable overrides
 
+    def get_all_preprocessed(self):
+        res = {}
+        for k, v in zip(self.data_names, [self.elements_per_instance, self.embeddings, self.indices, self.roles]):
+            res[k] = v
+        return res
+
     def handle_preprocessed(self, preprocessed):
         self.loaded_preprocessed = True
-        self.indices, self.elements_per_instance, self.embeddings, self.roles = [preprocessed[n] for n in Representation.data_names]
-        self.indices = Indices(self.indices, self.elements_per_instance, self.roles)
-        debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.indices.instances)))
+        self.elements_per_instance, self.embeddings, self.indices, self.roles = [preprocessed[n] for n in Representation.data_names]
+
+        # self.indices = Indices(self.indices, self.elements_per_instance, self.roles)
+        # debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.indices.instances)))
 
     # add exra representations-specific serialization paths
     def set_additional_serialization_sources(self):

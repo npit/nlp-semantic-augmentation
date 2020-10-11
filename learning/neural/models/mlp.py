@@ -12,15 +12,15 @@ class MLPModel(BaseModel):
     wrapper_name = "labelled_dnn"
 
 
-    def __init__(self, config, embeddings, output_dim, working_folder, model_name):
+    def __init__(self, config, embeddings_or_dim_info, output_dim, working_folder, model_name):
         super(MLPModel, self).__init__(config, self.wrapper_name, working_folder, model_name)
 
         self.config = config
-        self.embedding_layer = neural_utils.make_embedding_layer(embeddings, config.train.train_embedding)
+        self.embedding_layer = neural_utils.make_embedding_layer(embeddings_or_dim_info, config.train.train_embedding)
 
         hidden_dim = config.hidden_dim
         num_layers = config.num_layers
-        self.linear_layers = neural_utils.make_linear_chain(embeddings.shape[-1], num_layers * [hidden_dim])
+        self.linear_layers = neural_utils.make_linear_chain(self.embedding_layer.embedding_dim, num_layers * [hidden_dim])
         # build final output layer
         self.linear_out = torch.nn.Linear(hidden_dim, output_dim)
 
@@ -44,3 +44,9 @@ class MLPModel(BaseModel):
         #     data = F.dropout(F.relu(layer(data)), p=0.3)
         # return F.softmax(self.linear_out(data))
         return self.linear_out(data)
+
+    def make_predictions(self, inputs):
+        preds = super().make_predictions(inputs)
+        # pass through softmax
+        preds = F.softmax(preds)
+        return preds

@@ -33,7 +33,8 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
 
 
     def get_model(self):
-        return self.neural_model_class(self.config, sequence_length=self.config.sequence_length, use_pretrained=True)
+        return self.neural_model
+        # return self.neural_model_class(self.config, sequence_length=self.config.sequence_length, use_pretrained=True)
 
     # def fetch_language_model_inputs(self):
     #     # obtain regular texts

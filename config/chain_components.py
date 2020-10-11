@@ -61,7 +61,7 @@ class representation_conf(Configuration):
             return
         self.name = config["name"]
         self.aggregation = self.get_value("aggregation", base=config, default=defs.alias.none)
-        self.dimension = config["dimension"]
+        self.dimension = self.get_value("dimension", base=config, default=None)
         self.sequence_length = self.get_value("sequence_length", default=1, base=config)
         self.missing_words = self.get_value("unknown_words", default="unk", base=config)
         self.term_list = self.get_value("term_list", base=config)
@@ -153,6 +153,7 @@ class learner_conf(Configuration):
             self.num_clusters = self.get_value("num_clusters", default=None, base=config)
         self.use_gpu = self.get_value("use_gpu", default=True, base=config)
         self.do_test = self.get_value("do_test", default=True, base=config)
+        self.allow_prediction_loading = self.get_value("allow_prediction_loading", default=False, base=config)
 
         # training parameters
         self.train = learner_conf.train()
@@ -168,7 +169,6 @@ class learner_conf(Configuration):
         self.train.batch_size = config["batch_size"]
         self.train.sampling_method = self.get_value("sampling_method", default=None, base=config)
         self.train.sampling_ratios = self.get_value("sampling_ratios", default=None, base=config, expected_type=list)
-        self.allow_prediction_loading = self.get_value("allow_prediction_loading", default=False, base=config)
         self.save_interval =  self.get_value("save_interval", default=1, base=config)
 
 

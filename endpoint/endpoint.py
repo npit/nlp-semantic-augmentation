@@ -6,20 +6,20 @@ from bundle.datausages import *
 from bundle.datatypes import *
 import numpy as np
 import defs
-from utils import info
+from utils import info, datetime_str
 
 from component.trigger import Trigger
 
 class IOEndpoint(Trigger):
-    name = "rest-endpoint"
+    name = "rest-io"
     data_buffer = None
     buffer_lock = None
 
     outgoing_data = None
 
-    def __init__(self, config):
+    def __init__(self, trigger_name, config):
         self.config = config
-        super().__init__(config, requires_loaded_models=True)
+        super().__init__(trigger_name, config, requires_loaded_models=True)
 
         try:
             self.url = self.config.url
@@ -34,12 +34,14 @@ class IOEndpoint(Trigger):
 
         @self.app.route("/test")
         def ingest():
-            data = request.data
             try:
-                data = json.loads(data)
-            except TypeError:
+                if request.data:
+                    data = json.loads(request.data)
+                else:
+                    data = list(request.args.keys())
+            except (json.JSONDecodeError, TypeError):
                 # return "Cannot JSON decode"
-                data = list(request.args.keys())
+                return {"status": 500, "message": "Malformed inputs."}
             self.insert_to_data_buffer(data)
             results = self.fire()
             return json.dumps(results, ensure_ascii=False)
@@ -82,7 +84,8 @@ class IOEndpoint(Trigger):
         ind = Indices(np.arange(num), np.ones((num,),np.int32), [defs.roles.test])
         dp = DataPack(txt, ind)
         dp.chain = self.name
-        dp.source = self.name
+        # set source dependent on timestamp to prevent deserializations
+        dp.source = f"{self.name}_{datetime_str()}"
         self.data_pool.add_data(dp)
 
     def clean_up_data(self):

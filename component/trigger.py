@@ -5,7 +5,8 @@ class Trigger:
     pipelines = None
     execution_lock = None
     """Class to cause a pipeline execution"""
-    def __init__(self, config, is_blocking=False, requires_loaded_models=False):
+    def __init__(self, trigger_name, config, is_blocking=False, requires_loaded_models=False):
+        self.trigger_name = trigger_name
         self.config = config
         self.pipelines = []
         self.is_blocking = is_blocking
@@ -33,6 +34,7 @@ class Trigger:
         """Cause pipeline execution"""
         outputs = []
         with self.execution_lock:
+            info(f"{self.trigger_name} is firing!")
             try:
                 if data is not None:
                     self.package_data(data)

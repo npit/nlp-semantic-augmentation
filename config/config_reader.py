@@ -48,10 +48,10 @@ class ConfigReader:
         res = []
         if not conf:
             res.append(trigger_inst.make_default())
-        for name in conf:
-            conf = conf[name]
+        for trigger_name in conf:
+            conf = conf[trigger_name]
             cconf = utils.to_namedtuple(conf, "trigger_conf")
-            trigger = trigger_inst.create(name, cconf)
+            trigger = trigger_inst.create(trigger_name, cconf)
             res.append(trigger)
         return res
 

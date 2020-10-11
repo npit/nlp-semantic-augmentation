@@ -65,7 +65,6 @@ class BaseModel(ptl.LightningModule):
         # regular forward
         return self(inputs.to(self.device_name))
 
-
     def configure_embedding(self):
         # incorporate embeddings in the neural architecture
         error("Attempted to access abstract embedding configuration function.")

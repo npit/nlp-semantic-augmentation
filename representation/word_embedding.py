@@ -5,7 +5,10 @@ import numpy as np
 import pandas as pd
 import tqdm
 
+import defs
+
 from representation.embedding import Embedding
+import collections
 from utils import (debug, error, info, realign_embedding_index, tictoc,
                    warning, write_pickled)
 
@@ -90,16 +93,63 @@ class WordEmbedding(Embedding):
         info("Writing embedding mapping to {}".format(self.serialization_path_preprocessed))
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
-    def get_all_preprocessed(self):
-        dat = Embedding.get_all_preprocessed(self)
-        dat["present_words"] = self.present_words
-        return dat
-
     # mark preprocessing
     def handle_preprocessed(self, preprocessed):
-        self.present_words = preprocessed["present_words"]
         self.undefined_word_index = preprocessed["undefined_element_index"]
         Embedding.handle_preprocessed(self, preprocessed)
+
+    def read_raw_embedding_mapping(self, path):
+        super().read_raw_embedding_mapping(path)
+        if self.unknown_word_token not in self.embeddings_source:
+            self.embeddings_source.loc[self.unknown_word_token] = np.zeros(self.dimension)
+
+    def produce_outputs(self):
+        """Produce word embeddings"""
+        # will not limit the embedding source to the used embeddings,
+        # since the model may be used for testing
+
+        # make index to position map to speed up location finder
+        self.key2pos_map = {}
+        counter = collections.Counter()
+        for ind in tqdm.tqdm(self.embeddings_source.index, total=len(self.embeddings_source), desc="Buildilng key index map"):
+            self.key2pos_map[ind] = len(self.key2pos_map)
+
+        self.embeddings, self.elements_per_instance = [], []
+        for doc_dict in tqdm.tqdm(self.text.data.instances, total=len(self.text.data.instances), desc="Mapping word embeddings"):
+            words = doc_dict['words']
+            self.map_words(words, self.embeddings)
+
+    def map_words(self, words, embeddings):
+        """Map input words to indexes of the read embeddings source"""
+
+        # idxs = [self.embeddings_source.index.get_loc(w) if w in self.embeddings_source.index \
+        #         else self.embeddings_source.index.get_loc(self.unknown_word_token) \
+        #         for w in words]
+
+        idxs = [self.key2pos_map[w] if w in self.key2pos_map else self.key2pos_map[self.unknown_word_token] for w in words]
+        if not idxs:
+            idxs = [self.key2pos_map(self.unknown_word_token)]
+        # self.embeddings = np.ndarray((0, self.dimension), dtype=np.float32)
+        self.elements_per_instance.append(len(idxs))
+
+        if self.aggregation == defs.aggregation.avg:
+            # we have to produce a new embedding
+            vec = np.mean(self.embeddings_source.iloc[idxs].values, axis=0)
+            self.embeddings.append(vec)
+
+        elif self.aggregation == defs.aggregation.pad:
+            num_vectors = len(idxs)
+            if self.sequence_length < num_vectors:
+                # truncate
+                idxs = idxs[:self.sequence_length]
+            elif self.sequence_length > num_vectors:
+                # make pad and stack vertically
+                pad_size = self.sequence_length - num_vectors
+                idxs += [self.unknown_element_index] * pad_size
+            vecs = self.embeddings_source[idxs]
+            self.embeddings.append(vecs)
+        else:
+            error(f"Undefined aggregation {self.aggregation}")
 
     # transform input texts to embeddings
     def map_text(self):

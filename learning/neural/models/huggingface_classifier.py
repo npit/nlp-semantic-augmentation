@@ -9,6 +9,8 @@ class HuggingfaceSequenceClassifier(BaseModel):
     # specify the wrapper class name for huggingface models
     wrapper_name = "huggingface_labelled_transformer_lm"
 
+    masks = None
+
     def __init__(self, config):
         """
         Keyword Arguments:

@@ -3,8 +3,8 @@ from utils import error
 from endpoint.endpoint import IOEndpoint
 
 class Instantiator:
-    """Class to instantiate a dataset object"""
-    component_name = "endpoint"
+    """Class to instantiate an endpoint object"""
+    component_name = "rest"
 
     @staticmethod
     def create(config):

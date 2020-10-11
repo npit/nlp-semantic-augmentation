@@ -9,7 +9,7 @@ from defs import roles
 from learning.supervised_learner import SupervisedLearner
 from learning.sampling import Sampler
 from learning.validation.validation import ValidationSetting
-from utils import (count_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot)
+from utils import (count_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot, read_pickled, warning)
 
 
 class LabelledLearner(SupervisedLearner):
@@ -99,10 +99,10 @@ class LabelledLearner(SupervisedLearner):
         # indices = labels.get_usage(Indices.name)
         # train_idx, test_idx = indices.get_train_test()
         # # TODO fix labels as embeddings
-        self.labels_info = self.targets_data.get_usage(Labels.name)
-        error(f"Learner {self.name} requires numeric label information.", self.labels_info is None)
-        self.labelset, self.do_multilabel = self.labels_info.labelset, self.labels_info.multilabel
-        self.num_labels = len(self.labelset)
+        if self.targets_data:
+            self.labels_info = self.targets_data.get_usage(Labels.name)
+            error(f"Learner {self.name} requires numeric label information.", self.labels_info is None)
+            self.process_label_information(self.labels_info)
 
         # self.labels = labels.data
         # self.train_labels =  labels.data.get_slice(train_idx)
@@ -129,3 +129,42 @@ class LabelledLearner(SupervisedLearner):
         pass
         # if self.config.print.label_distribution:
         #     self.evaluator.show_reference_label_distribution()
+
+
+    def save_model_wrapper(self):
+        # get learner wrapper info
+        path = self.get_current_model_path() + ".wrapper"
+        write_pickled(path, self.labels_info)
+
+    def load_model_wrapper(self):
+        # get learner wrapper info
+        try:
+            path = self.get_current_model_path() + ".wrapper"
+            data = read_pickled(path, msg=f"{self.name} metadata")
+            return self.process_label_information(data)
+        except FileNotFoundError as ex:
+            return False
+
+    def clear_model_wrapper(self):
+        self.labels_info, self.labelset, self.do_multilabel = None, None, None
+
+    def process_label_information(self, data):
+        labelset = data.labelset
+        multi = data.multilabel
+        num = len(labelset)
+
+        if self.labels_info is not None:
+            # check compatibility with loaded inputs
+            if num != len(self.labels_info.labelset):
+                warning(f"Got {len(self.labels_info.labelset)} labels from inputs but processed {num}")
+                return False
+            if self.labels_info.labelset != labelset:
+                warning(f"Got labelset: {self.labels_info.labelset} from inputs but processed labelset: {labelset}")
+                return False
+            if self.labels_info.multilabel != multi:
+                warning(f"Got multilabel setting: {self.labels_info.do_multilabel} from inputs but processed: {multi}")
+                return False
+
+        self.labels_info = data
+        self.labelset, self.do_multilabel, self.num_labels = labelset, multi, num
+        return True

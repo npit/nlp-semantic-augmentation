@@ -90,8 +90,9 @@ class BagRepresentation(Representation):
         return None
 
     def get_all_preprocessed(self):
-        return {"vector_indices": self.indices.instances, "elements_per_instance": self.indices.elements_per_instance,
-                "term_list": self.term_list, "embeddings": self.embeddings, "roles": self.indices.roles}
+        res = super().get_all_preprocessed()
+        res["term_list"] = self.term_list
+        return res
 
     # sparse to dense
 

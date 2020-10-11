@@ -8,9 +8,10 @@ class HuggingfaceSeq2seq(BaseModel):
     """Neural model provided by huggingface"""
 
     use_pretrained = True
-    ground_truth_embeddings = None
     # specify the wrapper class name for huggingface models
     wrapper_name = "huggingface_seq2seq_transformer_lm"
+
+    masks = None
 
     def __init__(self, config, sequence_length):
         """

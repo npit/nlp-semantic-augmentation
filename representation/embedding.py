@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from pandas.errors import ParserError
 
+from os.path import join
 import defs
 from representation.representation import Representation
 from utils import (debug, error, get_shape, info, realign_embedding_index,
@@ -33,12 +34,23 @@ class Embedding(Representation):
         #     info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
 
     def get_all_preprocessed(self):
-        return {"vector_indices": self.vector_indices, "elements_per_instance": self.elements_per_instance, "undefined_element_index": self.undefined_element_index, "embeddings": self.embeddings}
+        res = super().get_all_preprocessed()
+        res["undefined_element_index"] = self.undefined_element_index
+        return res
 
     # endregion
 
     def save_raw_embedding_weights(self, weights):
         error("{} is for pretrained embeddings only.".format(self.name))
+
+
+    def load_model_from_disk(self):
+        """Load the component's model from disk"""
+        csv_mapping_path = join(self.config.folders.raw_data, self.dir_name, self.base_name) + ".csv"
+        self.read_raw_embedding_mapping(csv_mapping_path)
+        return True
+
+
 
     def read_raw_embedding_mapping(self, path):
         # check if there's a vocabulary file and map token to its position in the embedding list
@@ -56,21 +68,25 @@ class Embedding(Representation):
 
         # word - vector correspondence
         try:
-            self.embeddings = pd.read_csv(path, sep=self.config.misc.csv_separator, header=None, index_col=0)
+            self.embeddings_source = pd.read_csv(path, sep=self.config.misc.csv_separator, header=None, index_col=0)
+            info(f"Read embeddings of shape {self.embeddings_source.shape} using csv [separator]: [{self.config.misc.csv_separator}]")
         except ParserError as pe:
             error("Failed to read {}-delimited raw embedding from {}".format(self.config.misc.csv_separator, path), pe)
+        except FileNotFoundError:
+            error(f"Could not find embedding mapping file: {path}")
         # sanity check on defined dimension
-        csv_dimension = self.embeddings.shape[-1]
-        error(f"Specified embedding dimension of {self.dimension} but read [{self.config.misc.csv_separator}]-delimited csv embeddings are {csv_dimension}-dimensional.",
-              csv_dimension != self.dimension)
+        csv_dimension = self.embeddings_source.shape[-1]
+        if self.dimension is not None and csv_dimension != self.dimension:
+            error(f"Specified embedding dimension of {self.dimension} but read csv embeddings are {csv_dimension}-dimensional.")
+        self.dimension = csv_dimension
 
     def __init__(self):
         Representation.__init__(self)
 
     # get vector representations of a list of words
     def get_embeddings(self, words):
-        words = [w for w in words if w in self.embeddings.index]
-        word_embeddings = self.embeddings.loc[words]
+        words = [w for w in words if w in self.embeddings_source.index]
+        word_embeddings = self.embeddings_source.loc[words]
         # drop the nans and return
         return word_embeddings
 
@@ -118,7 +134,7 @@ class Embedding(Representation):
                         print()
                     else:
                         new_index = len(new_embedding_matrix)
-                        new_vector = np.expand_dims(np.mean(self.embeddings[curr_instance], axis=0),axis=0)
+                        new_vector = np.expand_dims(np.mean(self.embeddings_source[curr_instance], axis=0),axis=0)
                         # new_vector = np.mean(self.embedding[curr_instance], axis=0).reshape(1, self.dimension)
                         new_embedding_matrix = np.append(new_embedding_matrix, new_vector, axis=0)
 

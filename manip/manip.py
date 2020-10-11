@@ -22,6 +22,9 @@ class Manipulation(Component):
         self.name = "{}_{}".format(self.source_name, self.name)
         Component.configure_name(self, self.name)
 
+    def load_model_from_disk(self):
+        return True
+
     def get_component_inputs(self):
         self.vectors = []
         indices = []

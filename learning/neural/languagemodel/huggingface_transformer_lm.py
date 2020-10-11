@@ -78,3 +78,9 @@ class HuggingfaceTransformerLanguageModel(NeuralLanguageModel):
         input_ids = encoding["input_ids"]
         attention_mask = encoding["attention_mask"]
         return input_ids, attention_mask
+
+    def prepare_testing(self):
+        """Actions potentially required prior to testing"""
+        # if masking data has not been assigned, compute masking wrt. sequence length
+        if self.neural_model.masks is None:
+            neural_model.masks = self.masks

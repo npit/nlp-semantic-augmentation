@@ -195,3 +195,15 @@ class DataPack:
         return f"{self.type()}|{self.usage()}|{self.source}|{self.chain}"
     def __repr__(self):
         return str(self)
+
+def drop_empty_datapacks(dps):
+    res = []
+    for dp in dps:
+        retain = False
+        inst =  dp.data.instances
+        for x in inst:
+            if len(x) >0:
+                retain = True
+        if retain:
+            res.append(dp)
+    return res

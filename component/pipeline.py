@@ -116,7 +116,7 @@ class Pipeline:
 
     def load_models(self, failure_is_fatal=True):
         """Load the model from each component"""
-        info("Loading the models for each component")
+        info("Preloading the models for each component")
         for chain in self.chains.values():
             for comp in chain.get_components():
                 comp.attempt_load_model_from_disk(failure_is_fatal=failure_is_fatal)

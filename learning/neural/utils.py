@@ -15,7 +15,11 @@ def make_linear(input_dim, output_dim):
 def make_embedding_layer(embeddings, trainable):
     """Build an embedding layer out of the input embeddings"""
     # build the model
-    embedding_layer = torch.nn.Embedding.from_pretrained(torch.FloatTensor(embeddings))
+    try:
+        embedding_layer = torch.nn.Embedding.from_pretrained(torch.FloatTensor(embeddings))
+    except ValueError:
+        num_embeddings, embedding_dim = embeddings
+        embedding_layer = torch.nn.Embedding(num_embeddings, embedding_dim)
     if trainable:
         embedding_layer.requires_grad = False
     else:
