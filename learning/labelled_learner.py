@@ -132,6 +132,12 @@ class LabelledLearner(SupervisedLearner):
         except FileNotFoundError as ex:
             return False
 
+    def load_model_from_disk(self):
+        self.model_loaded = super().load_model_from_disk()
+        # always load the model wrapper
+        loaded_wrapper = self.load_model_wrapper()
+        return self.model_loaded and loaded_wrapper
+
     def clear_model_wrapper(self):
         self.labels_info, self.labelset, self.do_multilabel = None, None, None
 
@@ -155,3 +161,10 @@ class LabelledLearner(SupervisedLearner):
         self.labels_info = data
         self.labelset, self.do_multilabel, self.num_labels = labelset, multi, num
         return True
+
+    def get_predictions_datapack(self):
+        preds = super().get_predictions_datapack()
+        # add labelset
+        preds.get_usage(Predictions).add_ground_truth(self.labels_info.labelset)
+        return preds
+

@@ -19,6 +19,7 @@ class ResourceIO:
 class Produces(ResourceIO):
     def __init__(self, dtype, usage, name, chain_name):
         super().__init__(dtype, usage, name, chain_name)
+
 class Consumes(ResourceIO):
     def __init__(self, dtype, usage, name, chain_name):
         super().__init__(dtype, usage, name, chain_name)
@@ -60,6 +61,17 @@ class DataPool:
 
     reference_data = None
 
+    def clear_data(self):
+        self.data = []
+        self.feeder_chains = []
+        self.feeder_components = []
+        # self.supply = defaultdict()
+        # self.requests = defaultdict()
+        # self.data_per_type = defaultdict(list)
+        # self.data_per_usage = defaultdict(list)
+        # self.data_per_chain = defaultdict(list)
+
+
     def add_data_packs(self, datapack_list, source_name):
         for dp in datapack_list:
             dp.chain = self.current_running_chain
@@ -76,7 +88,7 @@ class DataPool:
         output = {}
         for dp in res:
             output[dp.get_id()] = {}
-            output[dp.get_id()]["data"] = dp.data.to_json()
+            output[dp.get_id()] = dp.to_json()
         return output
 
     def mark_as_reference_data(self):

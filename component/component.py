@@ -84,9 +84,10 @@ class Component:
 
     def run(self):
         """Component runner function"""
+        self.set_serialization_params()
 
         # try loading component outputs from disk
-        if not (self.config.misc.allow_deserialization and self.load_outputs_from_disk()):
+        if not (self.config.misc.allow_output_deserialization and self.load_outputs_from_disk()):
             # if not available, fetch component inputs
             self.get_component_inputs()
 
@@ -134,7 +135,7 @@ class Component:
 
     def attempt_load_model_from_disk(self, force_reload=False, failure_is_fatal=False):
         """Wrapper for model loading"""
-        if not self.config.misc.allow_deserialization:
+        if not self.config.misc.allow_model_deserialization:
             return False
         if self.model_loaded and not force_reload:
             # already loaded

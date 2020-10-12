@@ -35,13 +35,3 @@ class InputString(ManualDataset):
         raw_string = self.data_pool.request_data(Text, usage=Indices, client=self.name, reference_data=self.data_pool.data)
         strings = raw_string.data.instances
         self.handle_raw(strings)
-
-    # # override
-    # def acquire_data(self):
-    #     # get data from the input
-    #     # dat = self.data_pool.request_data(Text, None, self.name)
-    #     # return dat.data
-    #     self.load_flags = [True]
-    #     data = ["One two three borat", "Two bears and two cats", "Whatever you think, son"]
-    #     super().handle_raw(data)
-

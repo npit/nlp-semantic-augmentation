@@ -35,9 +35,10 @@ class SupervisedLearner(Learner):
 
     def process_ground_truth_input(self):
         # if we have to train the mode, we can load more than one ground truth instance (i.e. train & test)
-        single_instances = not self.model_loaded
+        need_instances = not self.model_loaded
         # fetch any type of ground 
-        targets = self.data_pool.request_data(None, GroundTruth.get_subclasses(), usage_matching="any", client=self.name, must_be_single=single_instances)
+        # targets = self.data_pool.request_data(None, GroundTruth.get_subclasses(), usage_matching="any", client=self.name, must_be_single=single_instances)
+        targets = self.data_pool.request_data(None, GroundTruth.get_subclasses(), usage_matching="any", client=self.name, must_be_single=need_instances)
         self.targets_data = targets
         if targets:
             self.targets = targets.data

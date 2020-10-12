@@ -450,7 +450,9 @@ class Dataset(Serializable):
             self.name = Dataset.generate_name(self.config)
         Component.configure_name(self, self.name)
 
+
     def produce_outputs(self):
+
         self.preprocess()
 
     def attempt_load_model_from_disk(self, force_reload=False, failure_is_fatal=False):

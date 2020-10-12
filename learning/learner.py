@@ -178,7 +178,7 @@ class Learner(Serializable):
 
     def acquire_trained_model(self):
         """Trains the learning model or load an existing instance from a persisted file."""
-        with tictoc("Training run [{}] on {} training and {} val data.".format(self.validation, self.num_train, len(self.val_index) if self.val_index is not None else "[none]")):
+        with tictoc("Training run [{}] on {} training and {} val data.".format(get_info_string(self.config), self.num_train, len(self.val_index) if self.val_index is not None else "[none]")):
             model = None
             # check if a trained model already exists
             if self.allow_model_loading:
@@ -209,7 +209,7 @@ class Learner(Serializable):
             for iteration_index, trainval in enumerate(self.validation.get_trainval_indexes()):
                 # set the train/val data indexes
                 self.train_index, self.val_index = trainval
-                
+
                 # self.prediction_indexes.append(self.validation.get_prediction_indexes())
 
                 # train and keep track of the model
@@ -285,16 +285,24 @@ class Learner(Serializable):
         # apply the learning model on the input data
         # produce pairing with ground truth for future evaluation
         # training data
+        self.predictions = []
+        self.prediction_tags = []
+        self.prediction_indexes = []
+        self.prediction_model_indexes = []
+        self.prediction_roles = []
 
         if self.validation is not None:
             train_indexes = self.validation.get_train_indexes()
             test_indexes = self.validation.get_test_indexes()
         else:
+            idxs_file = self.get_current_model_path() + ".trainval_idx"
             try:
-                idxs_file = self.get_current_model_path() + ".trainval_idx"
                 train_indexes, _, test_indexes = load_trainval(idxs_file)
                 info(f"Restored train/test splits from saved indexes: {idxs_file}")
             except FileNotFoundError:
+                pass
+            except IndexError:
+                warning(f"Attempted to load existing train/val indexes from {idxs_file} but failed.")
                 pass
             train_indexes = [self.train_embedding_index]
             test_indexes = [self.test_embedding_index]
@@ -331,7 +339,7 @@ class Learner(Serializable):
         # self.prediction_tags.append(tag)
         self.prediction_roles.append(tag)
         # corresponding model
-        self.prediction_model_indexes.append(self.model_index)
+        self.prediction_model_indexes.append(f"model_{self.model_index}")
         # corresponding indexes to instance / label data
         self.prediction_indexes.append(self.test_index)
 
@@ -375,11 +383,15 @@ class Learner(Serializable):
         """Set the output data of the clusterer"""
         # predictions to output
         # predictions
+        pred = self.get_predictions_datapack()
+        self.data_pool.add_data_packs([pred], self.name)
+
+    def get_predictions_datapack(self):
         pred = Numeric(self.predictions)
         preds_usage = Predictions(self.prediction_indexes, roles=self.prediction_roles)
         preds_usage.add_tags(self.prediction_model_indexes)
         pred = DataPack(pred, preds_usage)
-        self.data_pool.add_data_packs([pred], self.name)
+        return pred
 
     def load_model_wrapper(self):
         return True
@@ -392,4 +404,5 @@ class Learner(Serializable):
             self.model_index = m
             path = self.get_current_model_path()
             super().save_model(path=path, model=self.models[m])
+        self.save_model_wrapper()
 

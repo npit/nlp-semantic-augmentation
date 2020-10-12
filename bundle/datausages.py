@@ -27,6 +27,14 @@ class Indices(DataUsage):
     roles = None
     instances = None
 
+    def to_json(self):
+        res = {"instances":[], "roles":[]}
+        for inst in self.instances:
+            res["instances"].append(inst.tolist())
+        for role in self.roles:
+            res["roles"].append(role)
+        return res
+
     def __init__(self, instances, epi=None, roles=None):
         # only numbers
         super().__init__([Numeric])
@@ -109,10 +117,27 @@ class Predictions(Indices):
     """Usage for denoting learner predictions"""
     name = "predictions"
     tags = None
+    labelset = None
+
     def add_tags(self, tags):
+        """Add tag metadata"""
         self.tags = tags
         if len(self.tags) != len(self.instances):
             warning(f"Added {len(self.tags)} tags on predictions composed of {len(self.instances)} instances.")
+
+    def add_ground_truth(self, labelset):
+        self.labelset = labelset
+
+    def to_json(self):
+        res = super().to_json()
+        res["tags"] = []
+        if self.tags is not None:
+            for tag in self.tags:
+                res["tags"].append(tag)
+        res["labelset"] = []
+        if self.labelset is not None:
+            res["labelset"] = list(sorted(self.labelset))
+        return res
 
 class GroundTruth(DataUsage):
     """Class for abstract ground truth objects"""
@@ -141,6 +166,11 @@ class Labels(GroundTruth):
     def is_multilabel(self):
         return self.multilabel
 
+    def to_json(self):
+        res = super().to_json()
+        res["labelset"] = self.labelset
+        res["multilabel"] = int(self.multilabel)
+        return res
 
 class DataPack:
     """Objects with data associated with data usages"""
@@ -149,6 +179,14 @@ class DataPack:
     chain = "NO_CHAIN"
     source = "NO_SOURCE"
     id = "NO_ID"
+
+    def to_json(self):
+        res = {"usages": []}
+        res["data"] = self.data.to_json()
+        for us in self.usages:
+            res["usages"].append(us.to_json())
+        return res
+
 
     def __init__(self, data, usage=None, source=None, chain=None):
         self.data = data

@@ -35,6 +35,7 @@ class Trigger:
         outputs = []
         with self.execution_lock:
             info(f"{self.trigger_name} is firing!")
+            self.data_pool.clear_data()
             try:
                 if data is not None:
                     self.package_data(data)

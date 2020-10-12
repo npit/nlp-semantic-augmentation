@@ -49,7 +49,7 @@ class ManualDataset(Dataset):
 
 
         # write serialized data
-        write_pickled(self.serialization_path, self.get_all_raw())
+        # write_pickled(self.serialization_path, self.get_all_raw())
 
     def apply_dataset_reader(self, data):
         mdr = ManualDatasetReader()

@@ -59,21 +59,22 @@ class SKLClassifier(Classifier):
         train_data = self.scaler.fit_transform(train_data)
         self.model = self.model_class(**self.args)
         self.model.fit(train_data, np.asarray(train_labels).ravel())
-        return self.model
+        return (self.model, self.scaler)
 
     def load_model(self):
-        super().load_model()
+        self.model_loaded = super().load_model()
         if self.model_loaded:
             self.model, self.scaler = self.model
+        return self.model_loaded
 
-    def save_model(self):
-        self.model = (self.model, self.scaler)
-        super().save_model()
-        self.model, _ = self.model
+    def get_model(self):
+        return (self.model, self.scaler)
 
     # evaluate a clustering
     def test_model(self, model):
+        model, scaler = model
         test_data = self.get_data_from_index(self.test_index, self.embeddings)
+        test_data = scaler.transform(test_data)
         predictions = model.predict(test_data)
         # convert back to one-hot
         predictions = one_hot(predictions, self.num_labels, self.do_multilabel)

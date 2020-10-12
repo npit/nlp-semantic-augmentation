@@ -27,10 +27,11 @@ class Representation(Serializable):
 
     def __init__(self):
         """Constructor"""
+        Serializable.__init__(self, self.dir_name)
         pass
 
     def load_outputs_from_disk(self):
-        Serializable.__init__(self, self.dir_name)
+        # Serializable.__init__(self, self.dir_name)
         # check for serialized mapped data
         self.set_serialization_params()
         # set required resources

@@ -168,6 +168,8 @@ class BaseModel(ptl.LightningModule):
             optim = torch.optim.Adam(self.parameters())
         elif self.config.train.optimizer == "sgd":
             optim = torch.optim.SGD(self.parameters(), lr=self.config.train.base_lr)
+        else:
+            error(f"Undefined optimizer: {optim}")
         info(f"Training with optimizer {optim}")
         # LR Scheduler
         if self.config.train.lr_scheduler is not None:

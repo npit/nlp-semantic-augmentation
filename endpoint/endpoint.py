@@ -42,6 +42,8 @@ class IOEndpoint(Trigger):
             except (json.JSONDecodeError, TypeError):
                 # return "Cannot JSON decode"
                 return {"status": 500, "message": "Malformed inputs."}
+            info(f"Got {len(data)} test instances:")
+            info(json.dumps(data))
             self.insert_to_data_buffer(data)
             results = self.fire()
             return json.dumps(results, ensure_ascii=False)
@@ -59,7 +61,7 @@ class IOEndpoint(Trigger):
         """Prime the trigger to be able to fire"""
         info(f"Deploying execution trigger: {self.name}")
         self.data_pool.mark_as_reference_data()
-        self.app.run(host=self.config.url, port=self.config.port)
+        self.app.run(host=self.url, port=self.port)
 
     def fire(self):
         # can continue if there's inputs for ingestion

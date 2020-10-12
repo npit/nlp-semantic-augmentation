@@ -23,7 +23,7 @@ class WordEmbedding(Embedding):
 
     # expected raw data path
     def get_raw_path(self):
-        return "{}/{}_dim{}.pkl".format(self.raw_data_dir, self.base_name, self.dimension)
+        return "{}/{}_dim{}.pkl".format(self.config.folders.raw_data, self.base_name, self.dimension)
 
     def map_text_partial_load(self):
         # iterate over files. match existing words
@@ -129,7 +129,7 @@ class WordEmbedding(Embedding):
 
         idxs = [self.key2pos_map[w] if w in self.key2pos_map else self.key2pos_map[self.unknown_word_token] for w in words]
         if not idxs:
-            idxs = [self.key2pos_map(self.unknown_word_token)]
+            idxs = [self.key2pos_map[self.unknown_word_token]]
         # self.embeddings = np.ndarray((0, self.dimension), dtype=np.float32)
         self.elements_per_instance.append(len(idxs))
 

@@ -48,6 +48,7 @@ class Embedding(Representation):
         """Load the component's model from disk"""
         csv_mapping_path = join(self.config.folders.raw_data, self.dir_name, self.base_name) + ".csv"
         self.read_raw_embedding_mapping(csv_mapping_path)
+        self.model_loaded = True
         return True
 
 

@@ -29,8 +29,8 @@ class misc_conf(Configuration):
     keys = {}
     csv_separator = ","
     independent_component = None
-    allow_deserialization = None
-    allow_model_loading = None
+    allow_output_deserialization = None
+    allow_model_deserialization = None
 
     def __init__(self, config=None):
         """Constructor for the miscellaneous configuration"""
@@ -41,7 +41,8 @@ class misc_conf(Configuration):
             for kname, kvalue in config['keys'].items():
                 self.keys[kname] = kvalue
         self.independent = self.get_value("independent_component", base=config, default=False)
-        self.allow_deserialization = self.get_value("allow_deserialization", base=config, default=True)
+        self.allow_model_deserialization = self.get_value("allow_model_deserialization", base=config, default=True)
+        self.allow_output_deserialization = self.get_value("allow_output_deserialization", base=config, default=True)
         self.allow_prediction_loading = self.get_value("allow_prediction_loading", base=config, default=False)
         self.allow_model_loading = self.get_value("model_loading_allowed", base=config, default=False)
         self.csv_separator = self.get_value("csv_separator", base=config, default=",")
