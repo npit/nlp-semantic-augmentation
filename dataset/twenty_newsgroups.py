@@ -27,8 +27,10 @@ class TwentyNewsGroups(Dataset):
         # map to train/test/categories
         train, test = raw_data
         info("Got {} and {} train / test samples".format(len(train.data), len(test.data)))
-        self.train, self.test = train.data, test.data
-        self.train_labels, self.test_labels = (np.split(x, len(x)) for x in (train.target, test.target))
+        self.data = train.data + test.data
+        labels = np.append(train.target, test.target)
+        self.labels = np.split(labels, len(labels))
+        self.indices = (np.arange(len(train.data)), np.arange(len(test.data)))
         # self.train_labels, self.test_labels = np.array_split(train.target, len(train.target)), np.array_split(test.target, len(test.target))
         if not train.target_names == test.target_names:
             error("Non-matching label names for train and test set! {train.target_names} {test.target_names}")
@@ -37,7 +39,6 @@ class TwentyNewsGroups(Dataset):
         self.num_labels = len(self.label_names)
         self.roles = "train", "test"
         # write serialized data
-        write_pickled(self.serialization_path, self.get_all_raw())
         self.loaded_raw = True
 
     def __init__(self, config):

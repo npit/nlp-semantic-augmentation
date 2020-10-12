@@ -5,8 +5,10 @@ from bundle.datatypes import *
 from bundle.datausages import *
 from collections import defaultdict
 
+import numpy as np
 from sklearn import metrics
 from utils import info, count_occurences
+from sklearn.dummy import DummyClassifier
 
 class SupervisedEvaluator(Evaluator):
     """Evaluator for supervised tasks"""
@@ -42,10 +44,6 @@ class SupervisedEvaluator(Evaluator):
         # TODO subclass
         # perform single-label transformations
         self.labels.instances = np.concatenate(self.labels.instances)
-        # for i in range(len(self.predictions)):
-        #     amx = np.argmax(self.predictions[i], axis=1)
-        #     self.predictions[i] = amx
-        self.indices = matches.get_usage(Indices.name).instances
 
     def set_printable_info(self, df):
         df = super().set_printable_info(df)
@@ -61,9 +59,10 @@ class SupervisedEvaluator(Evaluator):
         """
         if predictions is None:
             predictions = self.predictions
+        # fetch predictions instance
         preds = super().get_evaluation_input(prediction_index, predictions)
         # fetch the indices to the labels the prediction batch corresponds to
-        idx = self.indices[prediction_index]
+        idx = self.reference_indexes[prediction_index]
         # fetch the labels wrt. the indices
         labels = self.labels.get_slice(idx)
 
@@ -86,9 +85,9 @@ class SupervisedEvaluator(Evaluator):
         gt = np.concatenate(gt)
         return gt
 
-    def evaluate_measure(self, predictions, measure):
+    def evaluate_measure(self, predictions, indexes, measure):
         """Evaluate a measure on input data over label aggregations
-        
+
         Arguments:
         Returns:
         res (dict): Dictionary like {"label_aggr1": <score>, "label_aggr2": <score>}
@@ -97,25 +96,61 @@ class SupervisedEvaluator(Evaluator):
         for lbl_aggr in self.label_aggregations:
             res[lbl_aggr] = {self.iterations_alias:[]}
             iter_values = res[lbl_aggr][self.iterations_alias]
-            for i in range(len(predictions)):
-                gt, preds= self.get_evaluation_input(i, predictions=predictions)
+
+            for i in indexes:
+                gt, preds = self.get_evaluation_input(i, predictions=predictions)
                 score = self.measure_funcs[measure](gt, preds, lbl_aggr)
                 iter_values.append(score)
+            # compute aggregation of the multiple-iterations
             res[lbl_aggr] = self.aggregate_iterations(res[lbl_aggr])
         return res
 
-    def compute_additional_info(self, predictions, key):
+
+    def aggregate_tags(self, tags, roles, out_dict):
+        # perform an aggregation across all tags as well, if applicable
+        for role in set(roles):
+            out_dict["all_tags"][role] = {}
+            for measure in self.available_measures:
+                out_dict["all_tags"][role][measure] = {}
+                for laggr in self.label_aggregations:
+                    out_dict["all_tags"][role][measure][laggr] = {}
+                    tag_values = [out_dict[t][role][measure][laggr][self.iterations_alias] for t in set(tags)]
+                    # flatten
+                    tag_values = [x for v in tag_values for x in v]
+                    out_dict["all_tags"][role][measure][laggr] = {self.iterations_alias: tag_values}
+                    self.aggregate_iterations(out_dict["all_tags"][role][measure][laggr])
+
+
+    def compute_additional_info(self, predictions, index, key):
         # compute label distributions
         # tuplelist to string
         tl2s = lambda tlist: ", ".join(f"({x}: {y})" for (x,y) in tlist)
 
-        for i in range(len(predictions)):
-            info(f"{key} | predictions batch #{i+1} Label distros:")
-            gt, preds= self.get_evaluation_input(i, predictions=predictions)
+        for i in index:
+            gt, preds = self.get_evaluation_input(i, predictions=predictions)
+            info(f"{key} | predictions batch #{i+1} ({len(preds)} instances) Label distros:")
             gt_distr, preds_distr = count_occurences(gt), count_occurences(preds)
 
             info(f"gt:    {tl2s(gt_distr)}")
             info(f"preds: {tl2s(preds_distr)}")
+
+    def evaluate_baselines(self):
+        super().evaluate_baselines()
+
+        info("Evaluating majority baseline")
+        self.results["majority"] = {}
+        maj_preds = []
+        for i in range(len(self.predictions)):
+            _, gt = self.get_evaluation_input(i)
+            dc = DummyClassifier(strategy="prior")
+            dc.fit(gt, y=gt)
+            maj_preds.append(dc.predict(self.predictions[i]))
+        maj_preds = self.preprocess_predictions(maj_preds)
+        self.evaluate_predictions(maj_preds, "majority", override_tags_roles=("model", "maj-baseline"))
+
+
+
+
 
     def print_measure(self, measure, ddict, df=None):
         """Print measure results, aggregating over prediction iterations"""

@@ -118,6 +118,7 @@ class WordEmbedding(Embedding):
         for doc_dict in tqdm.tqdm(self.text.data.instances, total=len(self.text.data.instances), desc="Mapping word embeddings"):
             words = doc_dict['words']
             self.map_words(words, self.embeddings)
+        self.embeddings = np.vstack(self.embeddings)
 
     def map_words(self, words, embeddings):
         """Map input words to indexes of the read embeddings source"""

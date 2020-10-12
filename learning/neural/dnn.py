@@ -60,12 +60,14 @@ class DNN:
         return preds.cpu()
 
     def save_model(self):
-        """Model loading function for DNNs"""
-        path = self.get_current_model_path()
-        info("Saving model to {}".format(path))
-        torch.save(self.neural_model.state_dict(), path)
-        # save wrapper as well
-        self.save_model_wrapper()
+        """Model saving function for DNNs"""
+        for idx, model in enumerate(self.models):
+            self.model_index = idx
+            path = self.get_current_model_path()
+            info("Saving model to {}".format(path))
+            torch.save(model.state_dict(), path)
+            # save wrapper as well
+            self.save_model_wrapper()
 
     def load_model_weights(self, path):
         state_dict = torch.load(path)
@@ -166,6 +168,7 @@ class LabelledDNN(GenericSupervisedDNN, LabelledLearner):
         self.neural_model = self.neural_model_class(self.config, self.get_embedding_info(),
             output_dim=self.get_output_dim(), working_folder=self.config.folders.results, model_name=self.get_model_filename())
         # print(self.neural_model)
+
 
     def train_model(self):
         """Training function"""

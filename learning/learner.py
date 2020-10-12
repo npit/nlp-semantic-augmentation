@@ -44,6 +44,8 @@ class Learner(Serializable):
     prediction_tags = []
     prediction_roles = []
     prediction_indexes = []
+    prediction_model_indexes = []
+
     models = []
 
     def __init__(self, consumes=None):
@@ -169,10 +171,6 @@ class Learner(Serializable):
             smpl = Sampler()
             trainval_idx = smpl.sample()
 
-        # save the splits
-        makedirs(dirname(trainval_serialization_file), exist_ok=True)
-        write_pickled(trainval_serialization_file, trainval_idx)
-
         # handle indexes for multi-instance data
         if self.sequence_length > 1:
             self.validation.set_trainval_label_index(deepcopy(trainval_idx))
@@ -189,7 +187,6 @@ class Learner(Serializable):
                 model = self.train_model()
                 # create directories
                 makedirs(self.models_folder, exist_ok=True)
-                self.save_model()
             else:
                 info("Skipping training due to existing model successfully loaded.")
         return model
@@ -201,8 +198,8 @@ class Learner(Serializable):
     #     self.num_train, self.num_val, self.num_test = [len(x) for x in (self.train_index, self.val_index, self.test_index)]
 
     # perfrom a train-test loop
-    def do_traintest(self):
-        with tictoc("Learning run", do_print=self.do_folds, announce=False):
+    def execute_training(self):
+        with tictoc("Training run", do_print=self.do_folds, announce=False):
 
             # get training - validation instance indexes for building the model
             self.configure_trainval_indexes()
@@ -218,17 +215,12 @@ class Learner(Serializable):
                 # train and keep track of the model
                 self.model_index = iteration_index
                 model = self.acquire_trained_model()
-                self.models.append(model)
+                self.append_model_instance(model)
 
                 # self.conclude_validation_iteration()
 
-            # end of entire train-test loop
-            self.conclude_traintest()
-
-
-    def conclude_traintest(self):
-        """Perform concuding actions for the entire traintest loop"""
-        pass
+    def append_model_instance(self, model):
+        self.models.append(model)
 
     def get_current_model_path(self):
         if self.config.explicit_model_path is not None:
@@ -238,7 +230,7 @@ class Learner(Serializable):
 
     def get_model_filename(self, model_index=None):
         """Retrieve model filename"""
-        model_id = "" if self.model_index is None else ".{model_index}"
+        model_id = "" if self.model_index is None else f".model_{self.model_index}"
         return self.name + get_info_string(self.config) + model_id  + ".model"
 
     def get_results_folder(self):
@@ -282,17 +274,18 @@ class Learner(Serializable):
         if self.validation_exists and not len(self.test_embedding_index) > 0:
             self.validation.reserve_validation_for_testing()
         output_file = self.get_current_model_path() + ".trainval_idx"
-        self.validation.write(output_file)
+        self.validation.write_trainval(output_file)
         # self.attach_evaluator()
         self.configure_sampling()
         self.check_sanity()
         self.serialization_path_preprocessed = join(self.results_folder, "data")
-        self.do_traintest()
+        self.execute_training()
 
     def produce_outputs(self):
         # apply the learning model on the input data
         # produce pairing with ground truth for future evaluation
         # training data
+
         if self.validation is not None:
             train_indexes = self.validation.get_train_indexes()
             test_indexes = self.validation.get_test_indexes()
@@ -306,41 +299,25 @@ class Learner(Serializable):
             train_indexes = [self.train_embedding_index]
             test_indexes = [self.test_embedding_index]
 
-        for idx_group, role in zip([train_indexes, test_indexes], [defs.roles.train, defs.roles.test]):
-            if len(idx_group) > 1:
-                info(f"Applying {self.name} model on {len(idx_group)} {role} data")
-            for i, idxs in enumerate(idx_group):
-                if len(idxs) == 0:
-                    info(f"Skipping model application on{role} data since it has no instances.")
-                    continue
-                info(f"Applying {self.name} model on {len(idxs)} {role} data")
-                tag = role + f"{i+1}" if len(idx_group)>1 else role
-                self.apply_model(index=idxs, tag=tag)
-                self.prediction_roles.append(role)
-
-        # with tictoc(f"Applying the {self.name} on the training data."):
-        #     for i, train_idx in enumerate(train_indexes):
-        #         tag = f"train{i+1}" if len(test_indexes) > 0 else "train"
-        #         self.apply_model(index=train_idx, tag=tag)
-        # # test data
-        # with tictoc(f"Applying the {self.name} on the test data."):
-        #     for i, test_idx in enumerate(test_indexes):
-        #         tag = f"test{i+1}" if len(test_indexes) > 0 else "test"
-        #         self.apply_model(index=test_idx, tag=tag)
-
-        # self.test_index = self.test_embedding_index
-        # if self.test_index.size > 0:
-        #     self.num_test = len(self.test_embedding_index)
-        #     with tictoc(f"Testing run on {self.num_test} test data."):
-        #         self.do_test_evaluate(self.model)
+        # loop over the available models / data batches
+        num_models = len(self.models)
+        for model_index, model in enumerate(self.models):
+            self.model_index = model_index
+            train, test = train_indexes[model_index], test_indexes[model_index]
+            for (data, role) in zip([train, test], [defs.roles.train, defs.roles.test]):
+                if len(data) > 0:
+                    info(f"Evaluating model {model_index + 1}/{num_models} on {len(data)} {role} data")
+                    # tag = f"model_{self.model_index}_{role}"
+                    self.apply_model(model=model, index=data, tag=role)
 
     def get_model(self):
         return self.model
+
     # evaluate a model on the test set
     def apply_model(self, model=None, index=None, tag="test"):
         """Evaluate the model on the current test indexes"""
         if model is None:
-            model = self.get_model()
+            model = self.models[self.model_index]
         if index is not None:
             self.test_index = index
         if len(self.test_index) == 0:
@@ -348,8 +325,14 @@ class Learner(Serializable):
             return
         predictions = self.test_model(model)
 
+        # keep track of:
+        # output predictions and tags
         self.predictions.append(predictions)
-        self.prediction_tags.append(tag)
+        # self.prediction_tags.append(tag)
+        self.prediction_roles.append(tag)
+        # corresponding model
+        self.prediction_model_indexes.append(self.model_index)
+        # corresponding indexes to instance / label data
         self.prediction_indexes.append(self.test_index)
 
     def save_outputs(self):
@@ -361,6 +344,8 @@ class Learner(Serializable):
     def load_model_from_disk(self):
         """Load the component's model from disk"""
         model_loaded = self.load_model()
+        if model_loaded:
+            self.append_model_instance(self.get_model())
         return model_loaded
 
     def acquire_embedding_information(self):
@@ -378,7 +363,6 @@ class Learner(Serializable):
         self.train_index = np.arange(len(self.train_embedding_index))
         self.test_index = np.arange(len(self.test_embedding_index))
 
-
     def get_data_from_index(self, index, embeddings):
         """Get data index from the embedding matrix"""
         if np.squeeze(index).ndim > 1:
@@ -392,7 +376,9 @@ class Learner(Serializable):
         # predictions to output
         # predictions
         pred = Numeric(self.predictions)
-        pred = DataPack(pred, Predictions(self.prediction_indexes, roles=self.prediction_roles))
+        preds_usage = Predictions(self.prediction_indexes, roles=self.prediction_roles)
+        preds_usage.add_tags(self.prediction_model_indexes)
+        pred = DataPack(pred, preds_usage)
         self.data_pool.add_data_packs([pred], self.name)
 
     def load_model_wrapper(self):
@@ -402,7 +388,8 @@ class Learner(Serializable):
         pass        
 
     def save_model(self):
-        for m in self.models:
-            path = self.get_current_model_path(m)
-        super().save_model(path=path, model=self.models[m])
+        for m in range(len(self.models)):
+            self.model_index = m
+            path = self.get_current_model_path()
+            super().save_model(path=path, model=self.models[m])
 

@@ -89,7 +89,7 @@ class NaiveBayes(SKLClassifier):
         SKLClassifier.__init__(self)
 
     def make(self):
-        error("Cannot apply {} to multilabel data.".format(self.name), self.multilabel_input)
+        error("Cannot apply {} to multilabel data.".format(self.name), self.do_multilabel)
         SKLClassifier.make(self)
 
 
@@ -102,7 +102,7 @@ class Dummy(SKLClassifier):
         SKLClassifier.__init__(self)
 
     def make(self):
-        error("Cannot apply {} to multilabel data.".format(self.name), self.multilabel_input)
+        error("Cannot apply {} to multilabel data.".format(self.name), self.do_multilabel)
         SKLClassifier.make(self)
 
 

@@ -43,7 +43,7 @@ class LabelledLearner(SupervisedLearner):
             reference_labels = self.train_labels
         else:
             reference_labels = self.test_labels
-        self.evaluator.majority_label = count_label_occurences(reference_labels)[0][0]
+        self.evaluator.majority_label = count_occurences(reference_labels)[0][0]
 
     def check_sanity(self):
         super().check_sanity()
@@ -54,7 +54,7 @@ class LabelledLearner(SupervisedLearner):
 
     def configure_validation_setting(self):
         self.validation = ValidationSetting(self.config, self.train_embedding_index, self.test_embedding_index,
-        self.targets, self.labels_info, self.folds, self.validation_portion, self.seed)
+        self.targets.get_slice(self.train_embedding_index), self.labels_info, self.folds, self.validation_portion, self.seed)
         # self.validation.assign_data(self.embeddings, train_index=self.train_embedding_index, labels=self.targets, test_index=self.test_embedding_index)
 
     def configure_sampling(self):
@@ -62,7 +62,7 @@ class LabelledLearner(SupervisedLearner):
         if self.do_sampling:
             if type(self.sampling_ratios[0]) is not list:
                 self.sampling_ratios = [self.sampling_ratios]
-            freqs = count_label_occurences(
+            freqs = count_occurences(
                 [x for y in self.sampling_ratios for x in y[:2]])
             max_label_constraint_participation = max(freqs, key=lambda x: x[1])
             if self.num_labels > 2 and max_label_constraint_participation[1] > 1:
@@ -116,19 +116,6 @@ class LabelledLearner(SupervisedLearner):
         gt = super().get_ground_truth().instances
         gt = np.concatenate(gt)
         return gt
-    # def conclude_validation_iteration(self):
-    #     """Perform concluding actions for a single validation loop"""
-    #     super().conclude_validation_iteration()
-    #     if self.validation_exists and self.validation.use_for_testing:
-    #         self.test, self.test_labels, self.test_instance_indexes = [], [], None
-
-    def conclude_traintest(self):
-        """Perform concuding actions for the entire traintest loop"""
-        super().conclude_traintest()
-        # show label distribution, if desired
-        pass
-        # if self.config.print.label_distribution:
-        #     self.evaluator.show_reference_label_distribution()
 
 
     def save_model_wrapper(self):

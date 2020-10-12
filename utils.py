@@ -135,7 +135,11 @@ def equal_lengths(*args):
 def as_list(x):
     """Convert the input to a single-element list, if it's not a list
     """
-    return [x] if type(x) is not list else x
+    if type(x) is tuple:
+        return list(x)
+    if type(x) is not list:
+        return [x]
+    return x
 
 
 def is_multilabel(labels):

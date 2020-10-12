@@ -44,40 +44,53 @@ class Evaluator(Serializable):
             self.print_aggregations = ("mean", "std")
 
     def produce_outputs(self):
-        self.results = {"run":{}, "random": {}}
-        prediction_shape = self.predictions[0].shape
-        self.predictions = self.preprocess_predictions(self.predictions)
+        self.results = {"run":{}}
+
+        self.evaluate_baselines()
 
         info("Evaluating run")
+        self.predictions = self.preprocess_predictions(self.predictions)
         self.evaluate_predictions(self.predictions, "run")
-        # baselines
-        info("Evaluating random baseline")
-        rand_preds = [get_random_predictions(prediction_shape) for _ in range(self.num_eval_iterations)]
-        rand_preds = self.preprocess_predictions(rand_preds)
 
-        self.evaluate_predictions(rand_preds, "random")
+
+
         # info(json.dumps(self.results, indent=2))
         info("Displaying results")
         self.print_results()
 
+    def evaluate_baselines(self):
+        # baselines
+        prediction_shape = self.predictions[0].shape
+
+        info("Evaluating random baseline")
+        self.results["random"] = {}
+        rand_preds = [get_random_predictions(prediction_shape) for _ in range(self.num_eval_iterations)]
+        rand_preds = self.preprocess_predictions(rand_preds)
+        self.evaluate_predictions(rand_preds, "random", override_tags_roles=("model", "rand-baseline"))
+
+
     def print_results(self):
         for results_type in self.results:
             # info(f"{results_type} | {self.iterations_alias} {' '.join(self.iteration_aggregations)}:")
-            df = pd.DataFrame(columns=[self.iterations_alias] + list(self.iteration_aggregations))
-            for measure in self.results[results_type]:
-                self.print_measure(measure, self.results[results_type][measure], df=df)
+            for tag in self.results[results_type]:
+                for role in self.results[results_type][tag]:
+                    df = pd.DataFrame(columns=[self.iterations_alias] + list(self.iteration_aggregations))
+                    for measure in self.results[results_type][tag][role]:
+                        self.print_measure(measure, self.results[results_type][tag][role][measure], df=df)
 
-            # df.style.format('{:.4f}')
-            pd.options.display.max_rows = 999
-            pd.options.display.max_columns = 999
-            pd.options.display.precision = 3
+                    # display the result
+                    pd.options.display.max_rows = 999
+                    pd.options.display.max_columns = 999
+                    pd.options.display.precision = 3
 
-            df = self.set_printable_info(df)
-            info(f"{results_type}:")
-            info("-------------------------------")
-            for k in df.to_string().split("\n"):
-                info(k)
-            info("-------------------------------")
+                    df = self.set_printable_info(df)
+                    if df.size == 0:
+                        continue
+                    info(f"{results_type}-{tag}-{role}:")
+                    info("-------------------------------")
+                    for k in df.to_string().split("\n"):
+                        info(k)
+                    info("-------------------------------")
 
     def compute_additional_info(self):
         """Print additional information on the run"""
@@ -111,14 +124,46 @@ class Evaluator(Serializable):
             return [self.round(x) for x in val]
         return np.round(val, self.print_precision)
 
-    def evaluate_predictions(self, preds, key):
+    def evaluate_predictions(self, predictions, key, override_tags_roles=None):
         """Perform all evaluations on given predictions"""
         out_dict = self.results[key]
-        # iterate over all measures
-        for measure in self.available_measures:
-            result = self.evaluate_measure(preds,measure)
-            out_dict[measure] = result
-        self.compute_additional_info(preds, key)
+        if override_tags_roles is None:
+            tags, roles = self.tags, self.roles
+        else:
+            tags, roles = override_tags_roles
+            tags, roles = [tags], [roles]
+
+        # group by tag
+        for tag in set(tags):
+            tag_idx = [i for i, t in enumerate(tags) if t == tag]
+            out_dict[tag] = {}
+            # group by role
+            for role in set(roles):
+                idx = [i for i in tag_idx if roles[i] == role]
+                if not idx:
+                    continue
+                out_dict[tag][role] = {}
+
+                # iterate over all measures
+                for measure in self.available_measures:
+                    result = self.evaluate_measure(predictions, idx, measure)
+                    out_dict[tag][role][measure] = result
+                self.compute_additional_info(predictions, idx, f"{key}-{tag}-{role}")
+
+        if len(tags) > 1:
+            out_dict["all_tags"] = {}
+            self.aggregate_tags(tags, roles, out_dict)
+
+    def aggregate_tags(self, tags, roles, out_dict):
+        # perform an aggregation across all tags as well, if applicable
+        for role in set(roles):
+            out_dict["all_tags"][role] = {}
+            for measure in self.available_measures:
+                tag_values = [out_dict[t][role][measure][self.iterations_alias] for t in tags]
+                # flatten
+                tag_values = [x for v in tag_values for x in v]
+                out_dict["all_tags"][role][measure] = {self.iteration_alias: tag_values}
+                self.aggregate_iterations(out_dict["all_tags"][role][measure])
 
     def aggregate_iterations(self, ddict):
         """Aggregate multi-value entries"""
@@ -128,10 +173,10 @@ class Evaluator(Serializable):
             ddict[name] = func(values, axis=0)
         return ddict
 
-    def evaluate_measure(self, predictions, measure):
+    def evaluate_measure(self, predictions, index, measure):
         """Apply an evaluation measure"""
         try:
-            data = self.get_evaluation_input(predictions)
+            data = self.get_evaluation_input(predictions, index)
             return self.measure_funcs[measure](data)
         except KeyError:
             warning(f"Unavailable measure: {measure}")
@@ -152,7 +197,7 @@ class Evaluator(Serializable):
         """Fetch predictions"""
         if predictions is None:
             predictions = self.predictions
-        # get a batch of predictions
+        # get a batch of predictions according to the input index
         return predictions[prediction_index]
 
     def set_component_outputs(self):
@@ -160,9 +205,12 @@ class Evaluator(Serializable):
 
     def get_component_inputs(self):
         # fetch predictions
-        preds = self.data_pool.request_data(None, Predictions, usage_matching="exact", client=self.name)
-        self.predictions = preds.data.instances
-        self.reference_indexes = preds.get_usage(Predictions).instances
+        preds_datapack = self.data_pool.request_data(None, Predictions, usage_matching="exact", client=self.name)
+        self.predictions = preds_datapack.data.instances
+        self.reference_indexes = preds_datapack.get_usage(Predictions).instances
+
+        preds_usage = preds_datapack.get_usage(Predictions)
+        self.roles, self.tags = preds_usage.roles, preds_usage.tags
 
     def get_results(self):
         return self.results

@@ -27,7 +27,7 @@ from utils import info, one_hot
 def kfold_split(data, num_folds, seed, labels=None, label_info=None):
     """Do K-fold cross-validation"""
     num_data = len(data)
-    info("Splitting {num_data} input data to {num_folds} folds")
+    info(f"Splitting {num_data} input data to {num_folds} folds")
     if labels is None:
         return list(KFold(num_folds, shuffle=True, random_state=seed).split())
     else:
@@ -38,7 +38,7 @@ def kfold_split(data, num_folds, seed, labels=None, label_info=None):
             oh_labels = one_hot(labels, len(labelset), is_multilabel=True)
             return list(splitter.split(np.zeros(len(labels)), oh_labels))
         else:
-            return list(StratifiedKFold(num_folds, shuffle=True, random_state=seed).split())
+            return list(StratifiedKFold(num_folds, shuffle=True, random_state=seed).split(data, labels))
 
 
 

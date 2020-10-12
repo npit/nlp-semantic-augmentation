@@ -166,7 +166,7 @@ class Serializable(Component):
                 debug("Skipping deser. of {} since it's not allowed".format(self.data_paths[index]))
                 continue
             if (self.attempt_load(index)):
-                return index
+                return True
         # no data was found to load
         if not self.loaded():
             info("Failed to load {}".format(self.name))

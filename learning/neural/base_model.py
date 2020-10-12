@@ -97,18 +97,10 @@ class BaseModel(ptl.LightningModule):
                 period=self.save_interval
             )
 
-
-        self.callbacks.append(checkpoint_callback)
-
-
-
-
-
-
         # trainer = Trainer(val_check_interval=100)
         # self.callbacks.append(BaseModel.SmaugProgressBar())
         # trainer = Trainer(logger=logger, min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks)
-        trainer = Trainer(min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks)
+        trainer = Trainer(min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks, checkpoint_callback=checkpoint_callback)
         trainer.fit(self)
 
     def test_model(self):
@@ -158,8 +150,8 @@ class BaseModel(ptl.LightningModule):
     def val_dataloader(self):
         """Preparatory transformation actions for validation data"""
         if self.should_do_validation():
-            self.val_dataset = self.make_dataset_from_index(self.val_index, self.val_ground_truth)
-            return DataLoader(self.val_dataset, self.config.train.batch_size, num_workers=6, sampler=RandomSampler(self.val_dataset))
+            self.val_dataset = self.make_dataset_from_index(self.val_index, self.ground_truth)
+            return DataLoader(self.val_dataset, self.config.train.batch_size, num_workers=6, shuffle=False)
         return None
 
     def test_dataloader(self):

@@ -28,7 +28,7 @@ class ValidationSetting:
     def make_splits(self):
         """Produce validation splits, if defined"""
         if self.folds is not None:
-            self.trainval_idx = kfold_split(self.train_idx, self.folds, self.seed, self.labels.instances, self.label_info)
+            self.trainval_idx = kfold_split(self.train_idx, self.folds, self.seed, self.labels, self.label_info)
         elif self.portion is not None:
             self.trainval_idx = portion_split(self.train_idx, self.portion, self.seed, self.labels.instances, self.label_info)
         else:
@@ -36,6 +36,7 @@ class ValidationSetting:
     
     def reserve_validation_for_testing(self):
         """Use the validation indexes to test the model"""
+        info("Reserving validation data for testing.")
         if self.test_idx is not None and self.test_idx.size > 0:
             warning(f"Reserving validation for testing but {len(self.test_idx)} test index exists!")
             warning(f"Deleting existing test indexes")
@@ -55,10 +56,17 @@ class ValidationSetting:
         return [x[0] for x in self.trainval_idx]
     
     def get_test_indexes(self):
-        return self.test_idx
+        ti = [self.test_idx]
+        if self.folds is not None:
+            ti *= self.folds
+        return ti
 
     def get_info_string(self):
         return get_info_string(self.config)
+
+    def write_trainval(self, output_file):
+        write_pickled(output_file, (self.trainval_idx, self.test_idx), "validation trainval indexes") 
+
 
 def get_info_string(config):
     """Fetch validation-related information in a string"""
@@ -67,9 +75,6 @@ def get_info_string(config):
     elif config.train.validation_portion is not None:
         return "valportion_{}".format(config.train.validation_portion)
     return ""
-
-    def write_trainval(self, output_file):
-        write_pickled(output_file, (self.trainval_idx, self.test_index), "validation trainval indexes") 
 
 def load_trainval(path):
     dat = read_pickled(path)

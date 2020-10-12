@@ -43,7 +43,7 @@ class Bag:
         if ngram_range is None:
             ngram_range = (1, 1)
         self.ngram_range = ngram_range
-        self.model = CountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range, analyzer=self.analyzer)
+        self.model = CountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range, analyzer=self.analyzer, min_df=2)
 
     def get_vocabulary(self):
         return self.model.get_feature_names()

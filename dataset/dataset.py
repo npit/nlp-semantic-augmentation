@@ -33,6 +33,7 @@ class Dataset(Serializable):
 
     data, roles, indices = None, None, None
     labels, labelset, multilabel = None, None, None
+    targets = None
     num_labels = None
 
     data_names = ["data", "indices", "roles"]

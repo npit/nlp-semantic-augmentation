@@ -1,6 +1,6 @@
 from bundle.datatypes import *
 import numpy as np
-from utils import as_list
+from utils import as_list, warning
 
 class DataUsage:
     """Abstract class for types of data utilization"""
@@ -108,7 +108,11 @@ class Indices(DataUsage):
 class Predictions(Indices):
     """Usage for denoting learner predictions"""
     name = "predictions"
-    pass
+    tags = None
+    def add_tags(self, tags):
+        self.tags = tags
+        if len(self.tags) != len(self.instances):
+            warning(f"Added {len(self.tags)} tags on predictions composed of {len(self.instances)} instances.")
 
 class GroundTruth(DataUsage):
     """Class for abstract ground truth objects"""
