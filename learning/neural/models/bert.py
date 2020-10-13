@@ -8,13 +8,13 @@ class Bert(HuggingfaceSequenceClassifier):
     """Class for the BERT language model"""
     name = "bert"
     huggingface_model_class = BertForSequenceClassification
+    pretrained_id = "bert-base-uncased"
 
     def __init__(self, config, num_labels, use_pretrained=True):
         """Constructor"""
-        self.num_labels = num_labels
+        super().__init__(config, num_labels)
         self.use_pretrained = use_pretrained
         self.pretrained_id = "bert-base-uncased"
-        super().__init__(config)
         config_args = {"pretrained_model_name_or_path": self.pretrained_id, "num_labels": self.num_labels}
         # suspend logging
         lvl = logging.getLogger().level
@@ -29,9 +29,9 @@ class Bert(HuggingfaceSequenceClassifier):
         logging.getLogger().setLevel(lvl)
         self.model = model
 
-    def get_tokenizer(self):
-        if self.use_pretrained:
-            tokenizer = BertTokenizer.from_pretrained(self.pretrained_id)
+    def get_tokenizer(use_pretrained=True, pretrained_id=None):
+        if use_pretrained:
+            tokenizer = BertTokenizer.from_pretrained(Bert.pretrained_id)
         else:
             tokenizer = BertTokenizer(BertConfig(num_labels=self.num_labels))
         return tokenizer

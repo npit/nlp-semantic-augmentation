@@ -36,6 +36,7 @@ class Evaluator(Serializable):
 
     def __init__(self, config):
         self.config = config
+        Serializable.__init__(self, "")
         self.output_folder = join(config.folders.run, "results")
 
         self.print_measures = self.config.measures
@@ -51,8 +52,6 @@ class Evaluator(Serializable):
         info("Evaluating run")
         self.predictions = self.preprocess_predictions(self.predictions)
         self.evaluate_predictions(self.predictions, "run")
-
-
 
         # info(json.dumps(self.results, indent=2))
         info("Displaying results")

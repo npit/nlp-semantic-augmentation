@@ -9,7 +9,7 @@ class HuggingfaceSeq2seq(BaseModel):
 
     use_pretrained = True
     # specify the wrapper class name for huggingface models
-    wrapper_name = "huggingface_seq2seq_transformer_lm"
+    wrapper_name = "hf_seq2seq_transformer"
 
     masks = None
 

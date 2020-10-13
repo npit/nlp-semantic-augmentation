@@ -5,7 +5,7 @@ import defs
 import logging
 import torch
 from utils import error, info, one_hot, equal_lengths, warning, shapes_list, write_pickled
-from learning.neural.languagemodel.huggingface_transformer_lm import HuggingfaceTransformerLanguageModel
+from learning.neural.languagemodel.huggingface_transformer_lm import HuggingfaceTransformer
 from bundle.datatypes import *
 from bundle.datausages import *
 
@@ -15,10 +15,10 @@ from os.path import exists, dirname, join
 
 from transformers import EncoderDecoderConfig, EncoderDecoderModel
 
-class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageModel):
+class HuggingfaceSeq2Seq(HuggingfaceTransformer):
     """Wrapper class for seq2seqhuggingface transformer models"""
 
-    name = "huggingface_seq2seq_transformer_lm"
+    name = "hf_seq2seq_transformer"
     text_predictions = None
 
     def __init__(self, config):
@@ -29,20 +29,13 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
         self.config = config
         self.sequence_length = self.config.sequence_length
         self.text_predictions = []
-        HuggingfaceTransformerLanguageModel.__init__(self, config)
+        HuggingfaceTransformer.__init__(self, config)
 
 
     def get_model(self):
         return self.neural_model
         # return self.neural_model_class(self.config, sequence_length=self.config.sequence_length, use_pretrained=True)
 
-    # def fetch_language_model_inputs(self):
-    #     # obtain regular texts
-    #     super().fetch_language_model_inputs()
-    #     # obtain target texts as well
-          # MOVED TO SUP. LEARNER
-    #     # number of index groups have to match
-    #     error("Unequal indices for input and target texts", not equal_lengths(self.indices.instances, self.target_indices.instances))
     def get_ground_truth(self):
         """Ground truth retrieval function"""
         # fetch the gt textual gt token embeddings
@@ -50,14 +43,14 @@ class HuggingfaceSeq2SeqTransformerLanguageModel(HuggingfaceTransformerLanguageM
 
     def load_model(self):
         try:
-            # get neural model 
+            # get neural model
             info(f"Attempting load of prebuilt s2s LM: {self.get_full_name()}")
             model = self.neural_model_class.get_from_pretrained(self.get_model_path())
             self.neural_model = self.neural_model_class(self.config, sequence_length=self.config.sequence_length, pretrained_model=model)
             self.model = self.neural_model
         except Exception as ex:
             return False
-        return True 
+        return True
 
     def get_train_test_targets(self):
         test = self.target_embeddings[self.target_test_embedding_index] if self.target_test_embedding_index else None

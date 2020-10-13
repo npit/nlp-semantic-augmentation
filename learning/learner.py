@@ -97,7 +97,11 @@ class Learner(Serializable):
 
     def configure_validation_setting(self):
         """Initialize validation setting"""
-        self.validation = ValidationSetting(self.config, self.train_embedding_index, self.test_embedding_index, folds=self.folds, portion=self.validation_portion, seed=self.seed)
+        self.validation = ValidationSetting(self.config, self.train_embedding_index,
+                                            self.test_embedding_index,
+                                            folds=self.folds,
+                                            portion=self.validation_portion,
+                                            seed=self.seed)
 
     def configure_sampling(self):
         """No label-agnostic sampling"""
@@ -265,7 +269,6 @@ class Learner(Serializable):
     def build_model_from_inputs(self):
         self.make()
         self.configure_validation_setting()
-
 
         if self.validation_exists and not len(self.test_embedding_index) > 0:
             self.validation.reserve_validation_for_testing()

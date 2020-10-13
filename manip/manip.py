@@ -16,6 +16,9 @@ class Manipulation(Component):
     def __init__(self):
         pass
 
+    def set_serialization_params(self):
+        pass
+
     def configure_name(self):
         if type(self.source_name) in [list, tuple]:
             self.source_name = "_".join(self.source_name)

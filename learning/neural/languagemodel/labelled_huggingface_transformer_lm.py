@@ -4,16 +4,18 @@ import numpy as np
 import defs
 import torch
 from utils import error, info, one_hot
-from learning.neural.languagemodel.language_model import NeuralLanguageModel
+# from learning.neural.languagemodel.labelled_language_model import LabelledNLM
+from learning.neural.dnn import LabelledDNN
+from learning.neural.languagemodel.huggingface_transformer_lm import HuggingfaceTransformer
 
 from torch.utils.data import DataLoader
 from learning.neural.models import instantiator
 from os.path import exists, dirname
 
-class HuggingfaceTransformerLanguageModel(NeuralLanguageModel):
-    """Wrapper class for huggingface transformer models"""
+class LabelledHuggingfaceTransformer(HuggingfaceTransformer, LabelledDNN):
+    """Wrapper class for huggingface classifiers"""
 
-    name = "huggingface_labelled_transformer_lm"
+    name = "hf_labelled_transformer"
     use_pretrained = True
     model = None
 
@@ -23,11 +25,11 @@ class HuggingfaceTransformerLanguageModel(NeuralLanguageModel):
         config -- Configuration object
         """
         self.config = config
-        NeuralLanguageModel.__init__(self)
+        LabelledDNN.__init__(self, config)
+        HuggingfaceTransformer.__init__(self, config)
 
-    def configure_language_model(self, labelset):
-        self.num_labels = len(labelset)
-        super().configure_language_model()
+    def build_model(self):
+        self.neural_model = self.neural_model_class(self.config, self.num_labels)
 
     def get_model(self):
         return self.neural_model_class(self.config, self.num_labels, use_pretrained=True)

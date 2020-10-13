@@ -105,7 +105,7 @@ class Dataset(Serializable):
             # if the dataset's limited, check for the full version, else fail
             if not self.config.has_limit():
                 info(f"Dataset {self.name} not pre-defined and provided paths are not loadable/exist:{self.data_paths}")
-                error("Failed to acquire dataset")
+                error(f"Failed to acquire {self.name} dataset")
             # check for raw dataset. Suspend limit and setup paths
             self.name = Dataset.generate_name(self.config)
             self.set_serialization_params()

@@ -1,5 +1,5 @@
 from manip.fusion import Fusion
-from utils import shapes_list, error, data_summary, debug
+from utils import shapes_list, error, data_summary, debug, info
 import numpy as np
 
 """Vector concatenation manip
@@ -16,9 +16,6 @@ class Concatenation(Fusion):
         Fusion.__init__(self, config)
 
     def produce_outputs(self):
+        info(f"Manipulating {self.name} inputs: {shapes_list(self.vectors)}")
         self.outputs = np.concatenate(self.vectors, axis=1)
-        # dim = self.vectors[0].shape[-1]
-        # dtype = self.vectors[0].dtype
-        # self.output = np.ndarray((0, dim), dtype=dtype)
-        # for v in self.vectors:
-        #     self.output = np.append(self.output, v, axis=1)
+        info(f"Produced {self.name} outputs: {self.outputs.shape}")

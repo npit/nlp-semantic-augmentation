@@ -7,16 +7,19 @@ class HuggingfaceSequenceClassifier(BaseModel):
 
     use_pretrained = True
     # specify the wrapper class name for huggingface models
-    wrapper_name = "huggingface_labelled_transformer_lm"
+
+    wrapper_name = "hf_labelled_transformer"
 
     masks = None
 
-    def __init__(self, config):
+    def __init__(self, config, num_labels):
         """
         Keyword Arguments:
         config -- Configuration object
         """
+        self.num_labels = num_labels
         super().__init__(config, self.wrapper_name, config.folders.run, self.name)
+
 
     def configure_masking(self, masks):
         """Assign mask information to the model"""

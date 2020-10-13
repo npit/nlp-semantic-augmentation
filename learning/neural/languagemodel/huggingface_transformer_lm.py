@@ -4,16 +4,16 @@ import numpy as np
 import defs
 import torch
 from utils import error, info, one_hot
-from learning.neural.languagemodel.language_model import NeuralLanguageModel
+from learning.neural.languagemodel.language_model import NLM
 
 from torch.utils.data import DataLoader
 from learning.neural.models import instantiator
 from os.path import exists, dirname
 
-class HuggingfaceTransformerLanguageModel(NeuralLanguageModel):
+class HuggingfaceTransformer(NLM):
     """Wrapper class for huggingface transformer models"""
 
-    name = "huggingface_transformer_lm"
+    name = "hf_transformer"
     use_pretrained = True
     model = None
 
@@ -23,11 +23,11 @@ class HuggingfaceTransformerLanguageModel(NeuralLanguageModel):
         config -- Configuration object
         """
         self.config = config
-        NeuralLanguageModel.__init__(self)
+        NLM.__init__(self)
 
     def configure_language_model(self):
         # if not self.model_loaded:
-        #     self.neural_model = self.get_model()
+        # construct the hf tokenizer object for sequence token encoding
         self.tokenizer = self.neural_model_class.get_tokenizer(pretrained_id=self.neural_model_class.pretrained_id)
 
     def get_model(self):
@@ -48,9 +48,15 @@ class HuggingfaceTransformerLanguageModel(NeuralLanguageModel):
         """Process input text into tokenized elements"""
         super().map_text()
 
-    def produce_outputs(self):
-        # associate the attention masks with the model
+
+    def assign_embedding_data(self, model_instance):
+        # assign regular embedding data
+        super().assign_embedding_data(model_instance)
+        # assign masks
         self.neural_model.configure_masking(self.masks)
+
+
+    def produce_outputs(self):
         # produce the outputs
         super().produce_outputs()
 

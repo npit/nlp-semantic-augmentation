@@ -82,7 +82,8 @@ class BaseModel(ptl.LightningModule):
 
 
         model_savepath = join(self.working_folder, 'models')
-        if self.val_index is not None:
+
+        if self.val_index is not None and len(self.val_index) > 0:
             checkpoint_callback = ModelCheckpoint(
                 filepath= model_savepath,
                 verbose=True,
@@ -90,17 +91,18 @@ class BaseModel(ptl.LightningModule):
                 period=self.save_interval,
                 mode='min'
             )
+            trainer = Trainer(min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks, checkpoint_callback=checkpoint_callback)
         else:
             checkpoint_callback = ModelCheckpoint(
                 filepath=model_savepath,
                 verbose=True,
                 period=self.save_interval
             )
+            trainer = Trainer(min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks)
 
         # trainer = Trainer(val_check_interval=100)
         # self.callbacks.append(BaseModel.SmaugProgressBar())
         # trainer = Trainer(logger=logger, min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks)
-        trainer = Trainer(min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks, checkpoint_callback=checkpoint_callback)
         trainer.fit(self)
 
     def test_model(self):

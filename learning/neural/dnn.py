@@ -19,16 +19,19 @@ class DNN:
         """Constructor"""
         self.neural_model_class = instantiator.get_neural_model_class(self.config.name)
 
-    def assign_train_data(self, model_instance):
-        """Transfer input indexes to the nn model"""
+    def assign_embedding_data(self, model_instance):
         model_instance.embeddings = self.embeddings
 
+    def assign_train_data(self, model_instance):
+        """Transfer input indexes to the nn model"""
+
+        self.assign_embedding_data(model_instance)
         model_instance.train_index = torch.LongTensor(self.train_index)
         model_instance.val_index = torch.LongTensor(self.val_index)
 
     def assign_test_data(self, model_instance):
         """Transfer test input indexes to the nn model"""
-        model_instance.embeddings = self.embeddings
+        self.assign_embedding_data(model_instance)
         model_instance.test_index = torch.LongTensor(self.test_index)
 
     def get_model_filename(self):
@@ -138,7 +141,7 @@ class SupervisedDNN(GenericSupervisedDNN, SupervisedLearner):
         self.assign_train_data(self.neural_model)
         self.neural_model.train_model()
         return self.neural_model
-    
+
     def get_model(self):
         """Baseline model instantiation"""
         # instantiate the model
@@ -162,7 +165,7 @@ class LabelledDNN(GenericSupervisedDNN, LabelledLearner):
         return self.num_labels
 
     def build_model(self):
-        """Build the model"""
+        """Model building function for simple labelled DNNs"""
         self.num_labels = len(self.labels_info.labelset)
 
         self.neural_model = self.neural_model_class(self.config, self.get_embedding_info(),

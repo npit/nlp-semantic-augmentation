@@ -1,5 +1,5 @@
 """Module for the incorporation of pretrained language models"""
-from learning.neural.dnn import SupervisedDNN
+# from learning.neural.dnn import SupervisedDNN
 import defs
 from utils import error, info, one_hot
 import numpy as np
@@ -8,21 +8,19 @@ from bundle.datausages import *
 from tqdm import tqdm
 
 
-class NeuralLanguageModel(SupervisedDNN):
-    """Class to implement a neural language model that ingests text sequences"""
+class NLM:
+    """Class to implement a neural language model
+    The NLM ingests text sequence instead of numeric inputs"""
 
-    def __init__(self):
-        """
-        Constructor
-        """
-        super().__init__(self.config)
-
-    def build_model(self):
-        """In language models, the neural model is already built to generate embeddings from text"""
+    def configure_language_model(self):
+        """Do any preparatory actions specific to language models"""
+        # override this
         pass
 
     def acquire_embedding_information(self):
-        """Embedding acquisition for language models"""
+        """Embedding acquisition function for language models
+        This completely overrides the respective function which requests numeric data.
+        """
         # produce input token embeddings from input text instead;
         # initialize the model
         info("Preparing the language model.")
@@ -32,10 +30,12 @@ class NeuralLanguageModel(SupervisedDNN):
         self.fetch_language_model_inputs()
 
         # produce embeddings and/or masks
-        info(f"Tokenizing LM textual input data to tokens with a sequence length of {self.sequence_length}")
         self.map_text()
 
     def fetch_language_model_inputs(self):
+        """Read data necessary for language model operation
+        E.g. input texts, since LMs operate directly on text inputs
+        """
         # read input texts
         texts = self.data_pool.request_data(Text, Indices, usage_matching="subset", usage_exclude=GroundTruth, client=self.name)
         self.text = texts.data
@@ -57,12 +57,13 @@ class NeuralLanguageModel(SupervisedDNN):
 
         self.embeddings, self.masks, self.train_embedding_index, self.test_embedding_index = \
              self.map_text_collection(self.text, self.indices)
-        pass
 
     def map_text_collection(self, texts, indices):
         """Encode a collection of texts into tokens, masks and train/test indexes"""
         train_index, test_index = np.ndarray((0,), np.int32), np.ndarray((0,), np.int32)
-        tokens, masks = np.ndarray((0,self.sequence_length), np.int64), np.ndarray((0,self.sequence_length), np.int64)
+        # plus 1 for the special cls token
+        sql = self.sequence_length + 1
+        tokens, masks = np.ndarray((0, sql), np.int64), np.ndarray((0,sql), np.int64)
         for i in range(len(indices.instances)):
             idx = indices.instances[i]
             # role = indices.roles[i]
