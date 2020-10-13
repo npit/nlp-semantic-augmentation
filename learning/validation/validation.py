@@ -30,7 +30,7 @@ class ValidationSetting:
         if self.folds is not None:
             self.trainval_idx = kfold_split(self.train_idx, self.folds, self.seed, self.labels, self.label_info)
         elif self.portion is not None:
-            self.trainval_idx = portion_split(self.train_idx, self.portion, self.seed, self.labels.instances, self.label_info)
+            self.trainval_idx = portion_split(self.train_idx, self.portion, self.seed, self.labels, self.label_info)
         else:
             self.trainval_idx = [(self.train_idx, np.arange(0, dtype=np.int32))]
     
@@ -56,7 +56,9 @@ class ValidationSetting:
         return [x[0] for x in self.trainval_idx]
     
     def get_test_indexes(self):
-        ti = [self.test_idx]
+        ti = self.test_idx
+        if type(self.test_idx) is not list:
+            ti = [self.test_idx]
         if self.folds is not None:
             ti *= self.folds
         return ti

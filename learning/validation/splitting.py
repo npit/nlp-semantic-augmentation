@@ -29,7 +29,7 @@ def kfold_split(data, num_folds, seed, labels=None, label_info=None):
     num_data = len(data)
     info(f"Splitting {num_data} input data to {num_folds} folds")
     if labels is None:
-        return list(KFold(num_folds, shuffle=True, random_state=seed).split())
+        return list(KFold(num_folds, shuffle=True, random_state=seed).split(data))
     else:
         multilabel = label_info.multilabel
         labelset = label_info.labelset
@@ -47,7 +47,7 @@ def portion_split(data, portion, seed=1337, labels=None, label_info=None):
 
     if labels is None:
             info(f"Portion-splitting with input data: {len(data)} samples on a {portion} validation portion")
-            return list(ShuffleSplit( n_splits=1, test_size=validation_portion, random_state=seed).split())
+            return list(ShuffleSplit( n_splits=1, test_size=validation_portion, random_state=seed).split(data))
     else:
         multilabel = label_info.multilabel
         labelset = label_info.labelset
@@ -57,4 +57,4 @@ def portion_split(data, portion, seed=1337, labels=None, label_info=None):
             train_indexes, test_indexes = next(stratifier.split(np.zeros(len(data)), labels))
             return [(train_indexes, test_indexes)]
         else:
-            return list(StratifiedShuffleSplit(n_splits=1, test_size=portion, random_state=seed).split())
+            return list(StratifiedShuffleSplit(n_splits=1, test_size=portion, random_state=seed).split(data, labels))

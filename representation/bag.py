@@ -11,29 +11,26 @@ class Bag:
     weighting = None
     tokenizer = None
     vocabulary = None
-    threshold_type = None
-    threshold = None
+    min_counts = None
 
     model = None
 
-    def set_thresholds(self, threshold_type, threshold):
+    def set_min_features(self, threshold):
         """Populate thresholding"""
-        self.threshold_type = threshold_type
-        self.threshold = threshold
+        self.min_counts = threshold
 
     def apply_thresholds(self, vectors):
         """Apply resholding"""
-        sums = np.sum(vectors, axis=0)
-        if self.threshold_type == defs.limit.frequency:
-            term_idxs = np.where(sums > self.threshold)
-        elif self.threshold_type == defs.limit.top:
-            term_idxs = np.argsort(sums)[-self.threshold:]
+        if self.min_counts is not None:
+            sums = np.sum(vectors, axis=0)
+            term_idxs = np.where(sums > self.min_counts)
+            vectors = vectors.squeeze()[:, term_idxs]
         else:
-            error(f"Undefined bag thresholding type: {self.threshold_type}")
-        vectors = vectors.squeeze()[:, term_idxs]
+            # error(f"Undefined bag thresholding type: {self.threshold_type}")
+            pass
         return vectors
 
-    def __init__(self, weighting="counts", vocabulary=None, ngram_range=None, tokenizer_func=None, analyzer="word"):
+    def __init__(self, weighting="counts", vocabulary=None, ngram_range=None, tokenizer_func=None, analyzer="word", max_terms=None):
         if weighting not in "bag tfidf".split():
             error(f"Undefined weighting {weighting}")
         self.weighting = weighting
@@ -43,7 +40,10 @@ class Bag:
         if ngram_range is None:
             ngram_range = (1, 1)
         self.ngram_range = ngram_range
-        self.model = CountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range, analyzer=self.analyzer, min_df=2)
+        self.model = CountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range,
+                                     analyzer=self.analyzer, min_df=1, max_df=0.9, max_features=max_terms)
+
+        
 
     def get_vocabulary(self):
         return self.model.get_feature_names()
@@ -55,8 +55,7 @@ class Bag:
 
         if transform:
             vectors = self.model.transform(text_collection).toarray()
-            if self.threshold is not None:
-                vectors = self.apply_thresholds(vectors)
+            vectors = self.apply_thresholds(vectors)
             if len(vectors) == 0:
                 vectors = np.zeros((0, len(self.vocabulary)), dtype=np.int32)
             else:

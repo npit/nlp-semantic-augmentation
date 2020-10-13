@@ -15,11 +15,14 @@ class Wordnet(SemanticResource):
     name_to_synset_cache = {}
 
     def initialize_lookup(self):
+        if self.initialized:
+            return
         Wordnet.setup_nltk_resources(self.config)
+        self.initialized = True
 
     @staticmethod
     def get_wordnet_pos(config, treebank_tag):
-        Wordnet.setup_nltk_resources(config)
+        # Wordnet.setup_nltk_resources(config)
         if treebank_tag.startswith('J'):
             return wn.ADJ
         elif treebank_tag.startswith('V'):
@@ -43,6 +46,7 @@ class Wordnet(SemanticResource):
 
     def __init__(self, config):
         self.config = config
+        self.initialized = False
         SemanticResource.__init__(self)
 
     def setup_nltk_resources(config):

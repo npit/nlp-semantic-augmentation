@@ -100,7 +100,7 @@ class semantic_conf(Configuration):
         self.disambiguation = self.get_value("disambiguation", default=defs.disam.first)
         self.weights = self.get_value("weights", default=defs.weights.bag)
         self.ngram_range = self.get_value("weights", default=None)
-        self.limit = self.get_value("limit", base=config, default=[], expected_type=list)
+        self.max_terms = self.get_value("max_terms", base=config, default=[], expected_type=int)
         # context file only relevant on semantic embedding disamgibuation
         self.context_file = self.get_value("context_file", base=config)
         self.context_aggregation = self.get_value("context_aggregation", base=config)

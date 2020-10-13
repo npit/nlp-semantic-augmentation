@@ -57,31 +57,32 @@ class SemanticResource(Serializable):
     #     self.read_functions.insert(0, read_pickled)
     #     self.handler_functions.insert(0, self.handle_vectorized)
 
-    def set_multiple_config_names(self):
-        return
-        semantic_names = []
-        # + no filtering, if filtered is specified
-        filter_vals = [defs.limit.none]
-        if not is_none(self.config.limit):
-            filter_vals.append(self.config.limit)
-        # any combo of weights, since local and global freqs are stored
-        weight_vals = defs.weights.avail
+    # def set_multiple_config_names(self):
+    #     return
+    #     semantic_names = []
+    #     # + no filtering, if filtered is specified
+    #     if not is_none(self.config.max_terms):
+    #     filter_vals = [defs.limit.none]
+    #     if not is_none(self.config.limit):
+    #         filter_vals.append(self.config.limit)
+    #     # any combo of weights, since local and global freqs are stored
+    #     weight_vals = defs.weights.avail
 
-        for w in weight_vals:
-            for f in filter_vals:
-                conf = self.config.get_copy()
-                conf.weights = w
-                conf.limit = f
-                candidate_name = self.generate_name(conf, self.source_name)
-                debug("Semantic config candidate: {}".format(candidate_name))
-                semantic_names.append(candidate_name)
-        self.multiple_config_names = semantic_names
+    #     for w in weight_vals:
+    #         for f in filter_vals:
+    #             conf = self.config.get_copy()
+    #             conf.weights = w
+    #             conf.limit = f
+    #             candidate_name = self.generate_name(conf, self.source_name)
+    #             debug("Semantic config candidate: {}".format(candidate_name))
+    #             semantic_names.append(candidate_name)
+    #     self.multiple_config_names = semantic_names
 
     def __init__(self):
         self.base_name = self.name
+        Serializable.__init__(self, self.dir_name)
 
     def populate(self):
-        Serializable.__init__(self, self.dir_name)
         self.set_parameters()
         self.set_serialization_params()
         self.acquire_data()
@@ -197,9 +198,6 @@ class SemanticResource(Serializable):
         error("Attempted to lookup from the base class")
 
     def set_parameters(self):
-        if not is_none(self.config.limit):
-            self.limit_type, self.limit_number = self.config.limit
-
         self.semantic_weights = self.config.weights
 
         self.disambiguation = self.config.disambiguation.lower()
@@ -214,7 +212,7 @@ class SemanticResource(Serializable):
     def generate_name(config, input_name=None):
         name_components = [config.name,
                            "w{}".format(config.weights),
-                           "" if is_none(config.limit) else "".join(map(str, config.limit)),
+                           "" if is_none(config.max_terms) else f"max{config.max_terms}",
                            "" if is_none(config.disambiguation) else "disam{}".format(config.disambiguation),
                            "" if is_none(config.spreading_activation) else "spread{}".format("-".join(map(str, config.spreading_activation)))
                            ]
@@ -262,6 +260,9 @@ class SemanticResource(Serializable):
     def load_semantic_cache(self):
         if not self.do_cache:
             return None
+        if len(self.lookup_cache) >0:
+            # already loaded
+            return
         # direct cache
         cache_path = self.get_cache_path()
         if exists(cache_path):
@@ -289,21 +290,23 @@ class SemanticResource(Serializable):
         # read the semantic resource input-concept cache , if it exists
         self.load_semantic_cache()
 
+
         train_idx = self.indices.get_train_instances()
         words = Text.get_words(self.text.data.get_slice(train_idx))
         info(f"Building {self.name} model")
         bagger.map_collection(words, fit=True, transform=False)
         self.vocabulary = bagger.get_vocabulary()
         self.model = self.vocabulary
+        info(f"Built a semantic bag model with {len(self.vocabulary)} concepts.")
         del bagger
 
     def get_bagger(self):
         """Retrieve a bag class instance"""
-        bagger = Bag(weighting=self.semantic_weights, vocabulary=self.vocabulary, ngram_range=self.config.ngram_range, analyzer=self.analyze)
+        bagger = Bag(weighting=self.semantic_weights, vocabulary=self.vocabulary, ngram_range=self.config.ngram_range, analyzer=self.analyze, max_terms=self.config.max_terms)
         return bagger
 
     # function to map words to wordnet concepts
-    def map_text(self):
+    def produce_outputs(self):
         info(f"Producing {self.name} semantic outputs")
         self.initialize_lookup()
         # read the semantic resource input-concept cache , if it exists
@@ -316,12 +319,7 @@ class SemanticResource(Serializable):
             vecs = bagger.map_collection(texts, fit=False, transform=True)
             self.embeddings = np.append(self.embeddings, vecs, axis=0)
             del texts
-
         del bagger
-
-        # write results
-        info("Writing semantic assignment results to {}.".format(self.serialization_path_preprocessed))
-        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
         # store the cache
         self.write_semantic_cache()
@@ -348,9 +346,9 @@ class SemanticResource(Serializable):
     def load_outputs_from_disk(self):
         return self.populate()
 
-    def produce_outputs(self):
-        self.map_text()
-        # self.generate_vectors()
+    # def produce_outputs(self):
+    #     self.map_text()
+    #     # self.generate_vectors()
 
     def set_component_outputs(self):
         # self.data_pool.set_vectors(Numeric(vecs=self.semantic_document_vectors))

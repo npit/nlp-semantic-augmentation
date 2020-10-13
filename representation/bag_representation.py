@@ -49,6 +49,7 @@ class BagRepresentation(Representation):
         """
         Declare which configurations match the current one as suitable to be loaded
         """
+        return
         names = []
         # + no filtering, if filtered is specified
         filter_vals = [defs.limit.none]
@@ -128,19 +129,29 @@ class BagRepresentation(Representation):
         """Build the bag model"""
         if self.term_list is None:
             # no supplied token list -- use vocabulary of the training dataset
-            self.term_list = self.vocabulary
-            info("Setting bag dimension to {} from input vocabulary.".format(len(self.term_list)))
-        self.dimension = self.limit_number if self.do_limit else len(self.term_list)
-        self.config.dimension = self.dimension
+            # self.term_list = self.vocabulary
+            # info("Setting bag dimension to {} from input vocabulary.".format(len(self.term_list)))
+            # will generate the vocabulary from the input
+            pass
 
-        bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range)
+        bagger = None
         if self.do_limit:
-            bagger.set_thresholds(self.limit_type, self.limit_number)
+            if self.limit_type == defs.limit.top:
+                bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range, max_terms=self.limit_number)
+            elif self.limit_type == defs.limit.freq:
+                bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range)
+                bagger.set_min_features(self.limit_number)
+        else:
+            bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range)
 
         train_idx = self.indices.get_train_instances()
         texts = Text.get_strings(self.text.data.get_slice(train_idx))
         bagger.map_collection(texts, fit=True, transform=False)
         self.term_list = bagger.get_vocabulary()
+
+        self.dimension = self.limit_number if self.do_limit else len(self.term_list)
+        self.config.dimension = self.dimension
+
 
 
     def produce_outputs(self):

@@ -19,11 +19,6 @@ class LabelledLearner(SupervisedLearner):
     def __init__(self):
         SupervisedLearner.__init__(self, consumes=[Numeric.name, Labels.name])
 
-    def count_samples(self):
-        """Sample counter that includes the label samples"""
-        super().count_samples()
-        self.num_train_labels, self.num_test_labels = map(len, [self.train_embedding_index, self.test_embedding_index])
-
     # def make(self):
     #     super().make()
     #     self.do_multilabel = is_multilabel(self.train_labels)
