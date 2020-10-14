@@ -47,6 +47,8 @@ class Representation(Serializable):
             # Component.configure_name(self)
             # self.check_params()
             info("Restored representation name to {}".format(self.name))
+        if loaded:
+            info(f"Loaded embeddings of shape: {self.embeddings.shape}.")
         return loaded
 
     # region # serializable overrides

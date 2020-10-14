@@ -187,13 +187,14 @@ class DataPool:
                 warning("Examined current inputs for client {client}:")
                 for c in curr_inputs:
                     warning(str(c))
+                warning(f"Feeder chains/components: {self.feeder_chains}/{self.feeder_components}")
                 error(on_error_message + f" Requested: {data_type}/{usage}/, matches: {len(res)} candidates but requested a singleton.")
             res = res[0]
         else:
             # else keep all and drop empty ones
             res = drop_empty_datapacks(res)
         return res
-            
+
     def summarize_contents(self):
         for dat in self.data:
             info(dat)

@@ -14,7 +14,6 @@ from bundle.datatypes import Text
 class BagRepresentation(Representation):
     name = "bag"
     term_list = None
-    do_limit = None
     ngram_range = None
 
     data_names = Representation.data_names + ["term_list"]
@@ -26,11 +25,6 @@ class BagRepresentation(Representation):
         Representation.__init__(self)
 
     def set_params(self):
-        # bag term limiting
-        self.do_limit = False
-        if not is_none(self.config.limit):
-            self.do_limit = True
-            self.limit_type, self.limit_number = self.config.limit
         if self.config.ngram_range is not None:
             self.ngram_range = self.config.ngram_range
         self.compatible_aggregations = [defs.alias.none]
@@ -40,32 +34,33 @@ class BagRepresentation(Representation):
     @staticmethod
     def generate_name(config, input_name):
         name = Representation.generate_name(config, input_name)
-        name_components = []
-        if config.limit is not defs.limit.none:
-            name_components.append("".join(map(str, config.limit)))
-        return name + "_".join(name_components)
+        if config.dimension is not None:
+            if config.max_terms is not None:
+                name += str(config.max_terms)
+        return name
 
-    def set_multiple_config_names(self):
-        """
-        Declare which configurations match the current one as suitable to be loaded
-        """
-        return
-        names = []
-        # + no filtering, if filtered is specified
-        filter_vals = [defs.limit.none]
-        if self.do_limit:
-            filter_vals.append(self.config.limit)
-        # any combo of weights, since they're all stored
-        weight_vals = defs.weights.avail
-        for w in weight_vals:
-            for f in filter_vals:
-                conf = copy.deepcopy(self.config)
-                conf.name = w
-                conf.limit = f
-                candidate_name = self.generate_name(conf, self.source_name)
-                names.append(candidate_name)
-                debug("Bag config candidate: {}".format(candidate_name))
-        self.multiple_config_names = names
+    # def set_multiple_config_names(self):
+    #     """
+    #     Declare which configurations match the current one as suitable to be loaded
+    #     """
+    #     return
+    #     names = []
+    #     # + no filtering, if filtered is specified
+    #     filter_vals = [defs.limit.none]
+    #     if self.do_limit:
+    #         filter_vals.append(self.config.limit)
+    #     # any combo of weights, since they're all stored
+    #     weight_vals = defs.weights.avail
+    #     for w in weight_vals:
+    #         for f in filter_vals:
+    #             conf = copy.deepcopy(self.config)
+    #             conf.name = w
+    #             conf.limit = f
+    #             candidate_name = self.generate_name(conf, self.source_name)
+    #             names.append(candidate_name)
+    #             debug("Bag config candidate: {}".format(candidate_name))
+    #     self.multiple_config_names = names
+
 
     def set_name(self):
         # disable the dimension
@@ -73,8 +68,14 @@ class BagRepresentation(Representation):
         # if external term list, add its length to the name
         if self.config.term_list is not None:
             self.name += "_tok_{}".format(basename(self.config.term_list))
-        if not defs.is_none(self.config.limit):
-            self.name += "".join(map(str, self.config.limit))
+        if self.config.dimension is None:
+            # get max-terms name info if not already defined the dim
+            if self.config.max_terms is not None:
+                self.name += str(self.config.max_terms)
+        else:
+            # make sure dim and max-terms number match
+            if self.config.dimension != self.config.max_terms:
+                error(f"Specified different dimension and max terms: {self.config.dimension}, {self.config.max_terms}")
 
     def set_resources(self):
         if self.config.term_list is not None:
@@ -133,14 +134,10 @@ class BagRepresentation(Representation):
             # info("Setting bag dimension to {} from input vocabulary.".format(len(self.term_list)))
             # will generate the vocabulary from the input
             pass
-
+        info(f"Building {self.name} model")
         bagger = None
-        if self.do_limit:
-            if self.limit_type == defs.limit.top:
-                bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range, max_terms=self.limit_number)
-            elif self.limit_type == defs.limit.freq:
-                bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range)
-                bagger.set_min_features(self.limit_number)
+        if self.config.max_terms is not None:
+            bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range, max_terms=self.config.max_terms)
         else:
             bagger = Bag(vocabulary=self.term_list, weighting=self.base_name, ngram_range=self.ngram_range)
 
@@ -149,7 +146,7 @@ class BagRepresentation(Representation):
         bagger.map_collection(texts, fit=True, transform=False)
         self.term_list = bagger.get_vocabulary()
 
-        self.dimension = self.limit_number if self.do_limit else len(self.term_list)
+        self.dimension = len(self.term_list)
         self.config.dimension = self.dimension
 
 

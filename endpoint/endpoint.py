@@ -43,6 +43,8 @@ class IOEndpoint(Trigger):
                 # return "Cannot JSON decode"
                 return {"status": 500, "message": "Malformed inputs."}
             info(f"Got {len(data)} test instances:")
+            if len(data) == 0:
+                return {"status": 500, "message": "Malformed inputs."}
             info(json.dumps(data))
             self.insert_to_data_buffer(data)
             results = self.fire()

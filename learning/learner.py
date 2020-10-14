@@ -33,7 +33,6 @@ class Learner(Serializable):
     test_instance_indexes = None
     validation = None
 
-    allow_model_loading = None
     allow_prediction_loading = None
 
     train_embedding = None
@@ -61,8 +60,6 @@ class Learner(Serializable):
     def read_config_variables(self):
         """Shortcut function for readding a load of config variables"""
         self.allow_prediction_loading = self.config.allow_prediction_loading
-        self.allow_model_loading = self.config.misc.allow_model_loading
-
 
         self.sequence_length = self.config.sequence_length
 
@@ -181,8 +178,8 @@ class Learner(Serializable):
         with tictoc("Training run [{}] on {} training and {} val data.".format(get_info_string(self.config), len(self.train_index), len(self.val_index) if self.val_index is not None else "[none]")):
             model = None
             # check if a trained model already exists
-            if self.allow_model_loading:
-                model = self.load_model()
+            # if self.config.misc.allow_model_deserialization:
+            #     model = self.load_model()
             if not model:
                 model = self.train_model()
                 # create directories

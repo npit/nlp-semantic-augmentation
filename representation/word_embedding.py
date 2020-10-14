@@ -110,6 +110,9 @@ class WordEmbedding(Embedding):
 
         # make index to position map to speed up location finder
         self.key2pos_map = {}
+        # stats
+        self.num_texts_unmapped = 0
+        self.all_idxs = []
         counter = collections.Counter()
         for ind in tqdm.tqdm(self.embeddings_source.index, total=len(self.embeddings_source), desc="Buildilng key index map"):
             self.key2pos_map[ind] = len(self.key2pos_map)
@@ -119,6 +122,11 @@ class WordEmbedding(Embedding):
             words = doc_dict['words']
             self.map_words(words, self.embeddings)
         self.embeddings = np.vstack(self.embeddings)
+
+        # stats
+        num_unknown = len([x for x in self.all_idxs if x == self.key2pos_map[self.unknown_word_token]])
+        info(f"{self.num_texts_unmapped / len(self.text.data.instances) * 100} % completely unmapped.")
+        info(f"{num_unknown / len(self.all_idxs) * 100} % of tokens unknown.")
 
     def map_words(self, words, embeddings):
         """Map input words to indexes of the read embeddings source"""
@@ -130,6 +138,8 @@ class WordEmbedding(Embedding):
         idxs = [self.key2pos_map[w] if w in self.key2pos_map else self.key2pos_map[self.unknown_word_token] for w in words]
         if not idxs:
             idxs = [self.key2pos_map[self.unknown_word_token]]
+            self.num_texts_unmapped += 1
+        self.all_idxs.extend(idxs)
         # self.embeddings = np.ndarray((0, self.dimension), dtype=np.float32)
         self.elements_per_instance.append(len(idxs))
 

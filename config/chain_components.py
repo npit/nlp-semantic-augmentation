@@ -62,6 +62,7 @@ class representation_conf(Configuration):
         self.name = config["name"]
         self.aggregation = self.get_value("aggregation", base=config, default=defs.alias.none)
         self.dimension = self.get_value("dimension", base=config, default=None)
+        self.max_terms = self.get_value("max_terms", base=config, default=None)
         self.sequence_length = self.get_value("sequence_length", default=1, base=config)
         self.missing_words = self.get_value("unknown_words", default="unk", base=config)
         self.term_list = self.get_value("term_list", base=config)
@@ -100,7 +101,7 @@ class semantic_conf(Configuration):
         self.disambiguation = self.get_value("disambiguation", default=defs.disam.first)
         self.weights = self.get_value("weights", default=defs.weights.bag)
         self.ngram_range = self.get_value("weights", default=None)
-        self.max_terms = self.get_value("max_terms", base=config, default=[], expected_type=int)
+        self.max_terms = self.get_value("max_terms", base=config, default=None, expected_type=int)
         # context file only relevant on semantic embedding disamgibuation
         self.context_file = self.get_value("context_file", base=config)
         self.context_aggregation = self.get_value("context_aggregation", base=config)

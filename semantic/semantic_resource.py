@@ -285,6 +285,8 @@ class SemanticResource(Serializable):
         write_pickled(cache_path, self.lookup_cache)
 
     def build_model_from_inputs(self):
+
+        info(f"Building {self.name} model")
         bagger = self.get_bagger()
         self.initialize_lookup()
         # read the semantic resource input-concept cache , if it exists

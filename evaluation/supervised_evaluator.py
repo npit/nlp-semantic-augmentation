@@ -15,7 +15,7 @@ class SupervisedEvaluator(Evaluator):
 
     name = "supervised_evaluator"
     consumes = [Numeric.name, GroundTruth.name]
-    available_measures = ("rouge", "f1", "accuracy")
+    available_measures = ("rouge", "f1", "accuracy", "precision", "recall")
 
     labels_info = None
     label_aggregations = ["micro", "macro", "weighted", "none"]
@@ -24,8 +24,10 @@ class SupervisedEvaluator(Evaluator):
         self.config = config
         super().__init__(config)
         self.measure_funcs = {"rouge": self.compute_rouge,
-            "f1": self.compute_f1,
-            "accuracy": self.compute_accuracy
+                              "f1": self.compute_f1,
+                              "accuracy": self.compute_accuracy,
+                              "precision": self.compute_precision,
+                              "recall": self.compute_recall
         }
         self.print_label_aggregations = self.config.label_aggregations
         if self.print_measures is None:
@@ -99,7 +101,7 @@ class SupervisedEvaluator(Evaluator):
 
             for i in indexes:
                 gt, preds = self.get_evaluation_input(i, predictions=predictions)
-                score = self.measure_funcs[measure](gt, preds, lbl_aggr)
+                score = self.measure_funcs[measure](gt, preds, lbl_aggr if lbl_aggr is not "none" else None)
                 iter_values.append(score)
             # compute aggregation of the multiple-iterations
             res[lbl_aggr] = self.aggregate_iterations(res[lbl_aggr])
@@ -149,18 +151,19 @@ class SupervisedEvaluator(Evaluator):
         self.evaluate_predictions(maj_preds, "majority", override_tags_roles=("model", "maj-baseline"))
 
 
-
-
-
     def print_measure(self, measure, ddict, df=None):
         """Print measure results, aggregating over prediction iterations"""
         for lbl_agg in self.label_aggregations:
             super().print_measure(measure, ddict[lbl_agg], print_override=f"{measure} {lbl_agg}", df=df)
 
     def compute_f1(self, gt, preds, lbl_aggr):
-        if lbl_aggr == "none":
-            lbl_aggr = None
         return metrics.f1_score(gt, preds, average=lbl_aggr)
+
+    def compute_precision(self, gt, preds, lbl_aggr):
+        return metrics.precision_score(gt, preds, average=lbl_aggr)
+
+    def compute_recall(self, gt, preds, lbl_aggr):
+        return metrics.recall_score(gt, preds, average=lbl_aggr)
 
     def compute_accuracy(self, gt, preds, lbl_aggr):
         return metrics.accuracy_score(gt, preds)

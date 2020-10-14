@@ -140,7 +140,6 @@ class Serializable(Component):
             # debug("Reading path {} with func {} and handler {}".format(path, reader, handler))
             self.successfully_loaded_path = path
             handler(data)
-            self.load_flags[index] = True
             return True
         else:
             # debug("Failed to load {} from path {}".format(self.name, path))
@@ -165,7 +164,9 @@ class Serializable(Component):
             if not self.deserialization_allowed and index < len(self.data_paths) - 1:
                 debug("Skipping deser. of {} since it's not allowed".format(self.data_paths[index]))
                 continue
-            if (self.attempt_load(index)):
+            res = self.attempt_load(index)
+            self.load_flags[index] = res
+            if res:
                 return True
         # no data was found to load
         if not self.loaded():
