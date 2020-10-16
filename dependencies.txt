@@ -1,7 +1,5 @@
 # ML & DNNs
 torch
-keras
-tensorflow
 sklearn
 scikit-multilearn
 gensim
@@ -16,8 +14,4 @@ numpy
 tqdm
 flask==1.1.2
 tensorboard
-# ngg
-networkx
 # pygraphviz
-statsmodels
-py-rouge
