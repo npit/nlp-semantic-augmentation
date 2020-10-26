@@ -75,7 +75,7 @@ class Wordnet(SemanticResource):
         """Default model loading function, via pickled object deserializaLoad the model"""
         if super().load_model():
             # map vocab to synset objects
-            info("Mapping semantic vocabulary to wordnet synsets")
+            info("Mapping semantic vocabulary strings to wordnet synset objects")
             self.vocabulary = [wn.synset(t) for t in self.vocabulary]
         return self.model_loaded
 

@@ -73,6 +73,7 @@ class folders_conf(Configuration):
         self.results = join(self.run, "results")
         self.serialization = self.get_value("serialization", base=config, default="serialization")
         self.raw_data = self.get_value("raw_data", base=config, default="raw_data")
+
         nltk_data_path = self.get_value("nltk", base=config, default=join(self.raw_data, "nltk"))
         # set nltk data folder
         nltk.data.path = [nltk_data_path]

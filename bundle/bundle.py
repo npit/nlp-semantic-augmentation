@@ -96,7 +96,6 @@ class DataPool:
         res = self.request_data(None, Predictions, "data_pool", usage_matching="subset", reference_data=self.data, must_be_single=False)
         output = {}
         for dp in res:
-            output[dp.get_id()] = {}
             output[dp.get_id()] = dp.to_json()
         return output
 
