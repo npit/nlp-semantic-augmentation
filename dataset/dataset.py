@@ -180,7 +180,7 @@ class Dataset(Serializable):
 
     def is_labelled(self):
         """Boolean for labelling"""
-        return self.labels is not None and self.labels[0] is not None
+        return self.labels is not None and len(self.labels) > 0
 
     def get_num_labels(self):
         """Number of labels getter"""
@@ -332,7 +332,7 @@ class Dataset(Serializable):
                     ret_voc.update(word_data)
                 num_words.append(len(word_data))
         stats = [x(num_words) for x in [np.mean, np.var, np.std]]
-        info("Words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
+        info(f"Vocab size: {len(ret_voc)}" + " words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
         return ret_words_pos, ret_voc, discarded_indexes
 
     # preprocess raw texts into word list

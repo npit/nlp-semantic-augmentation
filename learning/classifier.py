@@ -112,7 +112,7 @@ class LogisticRegression(SKLClassifier):
 
     def __init__(self, config):
         self.config = config
-        self.model_class = sk_LogReg
+        self.model_class = sk_LogReg(max_iter=config.epochs)
         self.args = {"solver": "lbfgs"}
         SKLClassifier.__init__(self)
 
