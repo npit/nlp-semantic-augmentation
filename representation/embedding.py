@@ -68,14 +68,20 @@ class Embedding(Representation):
             pass
 
         # word - vector correspondence
-        try:
-            self.embeddings_source = pd.read_csv(path, sep=self.config.misc.csv_separator, header=None, index_col=0)
-            info(f"Read embeddings of shape {self.embeddings_source.shape} using csv [separator]: [{self.config.misc.csv_separator}]")
-        except ParserError as pe:
-            warning(str(pe))
-            error("Failed to read [{}]-delimited raw embedding from {}".format(self.config.misc.csv_separator, path), pe)
-        except FileNotFoundError:
-            error(f"Could not find embedding mapping file: {path}")
+        if not self.data_pool.has_resource(path):
+            try:
+                self.embeddings_source = pd.read_csv(path, sep=self.config.misc.csv_separator, header=None, index_col=0)
+                info(f"Read embeddings of shape {self.embeddings_source.shape} using csv [separator]: [{self.config.misc.csv_separator}]")
+                self.data_pool.add_resource(path, self.embeddings_source)
+                info(f"Storing resource")
+            except ParserError as pe:
+                warning(str(pe))
+                error("Failed to read [{}]-delimited raw embedding from {}".format(self.config.misc.csv_separator, path), pe)
+            except FileNotFoundError:
+                error(f"Could not find embedding mapping file: {path}")
+        else:
+            self.embeddings_source = self.data_pool.get_resource(path)
+            info(f"Read embeddings of shape {self.embeddings_source.shape} from already-loaded resource.")
         # sanity check on defined dimension
         csv_dimension = self.embeddings_source.shape[-1]
         if self.dimension is not None and csv_dimension != self.dimension:

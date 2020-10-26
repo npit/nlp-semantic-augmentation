@@ -44,18 +44,24 @@ class Serializable(Component):
     # corresponding processing functions to call on loaded data
     handler_functions = []
     # load flags
-    load_flags = []
+    load_flags = None
 
     # paths to load necessary resources required to compute data from scratch
     resource_paths = []
     # corresponding reader and hanlder functions
-    resource_read_functions = []
-    resource_handler_functions = []
-    resource_always_load_flag = []
+    resource_read_functions = None
+    resource_handler_functions = None
+    resource_always_load_flag = None
 
     successfully_loaded_path = None
 
     def __init__(self, dir_name):
+        self.load_flags = []
+        self.resource_paths = []
+        self.resource_read_functions = []
+        self.resource_handler_functions = []
+        self.resource_always_load_flag = []
+
         self.serialization_dir = join(self.config.folders.serialization, dir_name)
         self.raw_data_dir = join(self.config.folders.raw_data, dir_name)
         self.loaded_raw_serialized = False

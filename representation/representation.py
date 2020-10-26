@@ -55,7 +55,7 @@ class Representation(Serializable):
 
     def get_all_preprocessed(self):
         res = {}
-        for k, v in zip(self.data_names, [self.elements_per_instance, self.embeddings, self.indices, self.roles]):
+        for k, v in zip(self.data_names, [self.elements_per_instance, self.embeddings, self.indices.instances, self.roles]):
             res[k] = v
         return res
 

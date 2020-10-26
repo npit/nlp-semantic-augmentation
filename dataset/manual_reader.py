@@ -113,7 +113,7 @@ class ManualDatasetReader:
         # read metadata
         try:
             self.language = json_data["language"]
-        except KeyError:
+        except (TypeError, KeyError):
             # default to english
             self.language = "english"
 

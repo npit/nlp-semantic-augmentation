@@ -61,6 +61,16 @@ class DataPool:
 
     reference_data = None
 
+    # storage for persisting resources utilized by identical copies of components
+    resources = {}
+
+    def add_resource(self, name, res):
+        self.resources[name] = res
+    def has_resource(self, name):
+        return name in self.resources
+    def get_resource(self, name):
+        return self.resources[name]
+
     def clear_data(self):
         self.data = []
         self.feeder_chains = []
@@ -70,7 +80,6 @@ class DataPool:
         # self.data_per_type = defaultdict(list)
         # self.data_per_usage = defaultdict(list)
         # self.data_per_chain = defaultdict(list)
-
 
     def add_data_packs(self, datapack_list, source_name):
         for dp in datapack_list:
@@ -184,9 +193,12 @@ class DataPool:
                 res.append(data)
         if must_be_single:
             if len(res) != 1:
-                warning("Examined current inputs for client {client}:")
-                for c in curr_inputs:
-                    warning(str(c))
+                if len(curr_inputs) == 0:
+                    warning("No available current inputs to fetch requrested data from! Did you omit a cross-chain linkage?")
+                else:
+                    warning("Examined current inputs for client {client}:")
+                    for c in curr_inputs:
+                        warning(str(c))
                 warning(f"Feeder chains/components: {self.feeder_chains}/{self.feeder_components}")
                 error(on_error_message + f" Requested: {data_type}/{usage}/, matches: {len(res)} candidates but requested a singleton.")
             res = res[0]
