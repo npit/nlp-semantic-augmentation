@@ -175,7 +175,7 @@ class Learner(Serializable):
 
     def acquire_trained_model(self):
         """Trains the learning model or load an existing instance from a persisted file."""
-        with tictoc("Training run [{}] on {} training and {} val data.".format(get_info_string(self.config), len(self.train_index), len(self.val_index) if self.val_index is not None else "[none]")):
+        with tictoc("Training run [{}] - {} on {} training and {} val data.".format(get_info_string(self.config), self.model_index, len(self.train_index), len(self.val_index) if self.val_index is not None else "[none]")):
             model = None
             # check if a trained model already exists
             # if self.config.misc.allow_model_deserialization:

@@ -63,7 +63,7 @@ class Representation(Serializable):
         self.loaded_preprocessed = True
         self.elements_per_instance, self.embeddings, self.indices, self.roles = [preprocessed[n] for n in Representation.data_names]
 
-        # self.indices = Indices(self.indices, self.elements_per_instance, self.roles)
+        self.indices = Indices(self.indices, self.elements_per_instance, self.roles)
         # debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.indices.instances)))
 
     # add exra representations-specific serialization paths

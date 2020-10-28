@@ -33,7 +33,7 @@ class ValidationSetting:
             self.trainval_idx = portion_split(self.train_idx, self.portion, self.seed, self.labels, self.label_info)
         else:
             self.trainval_idx = [(self.train_idx, np.arange(0, dtype=np.int32))]
-    
+
     def reserve_validation_for_testing(self):
         """Use the validation indexes to test the model"""
         info("Reserving validation data for testing.")
@@ -54,7 +54,7 @@ class ValidationSetting:
 
     def get_train_indexes(self):
         return [x[0] for x in self.trainval_idx]
-    
+
     def get_test_indexes(self):
         ti = self.test_idx
         if type(self.test_idx) is not list:
