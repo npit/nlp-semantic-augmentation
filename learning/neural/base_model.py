@@ -4,7 +4,7 @@ import pytorch_lightning as ptl
 from utils import error, info
 
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks.progress import ProgressBar
+# from pytorch_lightning.callbacks.progress import ProgressBar
 from torch.utils.data import DataLoader, RandomSampler
 
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -36,10 +36,10 @@ class BaseModel(ptl.LightningModule):
         else:
             self.device_name = "cpu"
 
-    class SmaugProgressBar(ProgressBar):
-        def on_epoch_start(trainer, pl_module):
-            print()
-            super().on_epoch_start(trainer, pl_module)
+    # class SmaugProgressBar(ProgressBar):
+    #     def on_epoch_start(trainer, pl_module):
+    #         print()
+    #         super().on_epoch_start(trainer, pl_module)
 
     class Dataset:
         """Dataset class to construct the required dataloaders"""

@@ -88,6 +88,11 @@ class Embedding(Representation):
             error(f"Specified embedding dimension of {self.dimension} but read csv embeddings are {csv_dimension}-dimensional.")
         self.dimension = csv_dimension
 
+        # check data types
+        nonfloat_idx = [i for (i,x) in enumerate(self.embeddings_source.dtypes) if x != np.float]
+        if nonfloat_idx:
+            error(f"Column(s): {nonfloat_idx} have invalid dtype(s) {self.embeddings_source.dtypes[nonfloat_idx]}")
+
     def __init__(self):
         Representation.__init__(self)
 
