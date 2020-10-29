@@ -244,6 +244,8 @@ class Serializable(Component):
             path = self.get_model_path()
         if model is None:
             model = self.get_model()
+        if path is None or model is None:
+            return
         # write intermmediate folders
         makedirs(dirname(path), exist_ok=True)
         write_pickled(path, model, msg=f"{self.get_full_name()} model" )

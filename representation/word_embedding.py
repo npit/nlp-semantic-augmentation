@@ -126,7 +126,7 @@ class WordEmbedding(Embedding):
         # stats
         num_unknown = len([x for x in self.all_idxs if x == self.key2pos_map[self.unknown_word_token]])
         info(f"{self.num_texts_unmapped / len(self.text.data.instances) * 100} % completely unmapped.")
-        info(f"{num_unknown / len(self.all_idxs) * 100} % of tokens unknown.")
+        info(f"{num_unknown / len(self.all_idxs) * 100:.3f} % of tokens unknown.")
 
     def map_words(self, words, embeddings):
         """Map input words to indexes of the read embeddings source"""

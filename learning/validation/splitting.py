@@ -38,4 +38,5 @@ def portion_split(data, portion, seed=1337, labels=None, label_info=None):
             train_indexes, test_indexes = next(stratifier.split(np.zeros(len(data)), labels))
             return [(train_indexes, test_indexes)]
         else:
+            breakpoint()
             return list(StratifiedShuffleSplit(n_splits=1, test_size=portion, random_state=seed).split(data, labels))

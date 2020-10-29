@@ -35,6 +35,28 @@ class Indices(DataUsage):
             res["roles"].append(role)
         return res
 
+    def apply_mask(surviving, drop_allowed=True):
+        """Apply a boolean mask and realign all indexes
+
+        Args:
+            surviving (ndarray): Surviving indexes to which to align
+            reference_container (ndarray): Container the indexes refer to
+        """
+        # make deletion mask within the deletion range
+        del_mask = np.ones(len(surviving))
+        del_mask[surviving] = 0
+
+        for i, inst in enumerate(self.instances):
+            # drop non-surviving
+            if drop_allowed:
+                inst = [x for x in inst if x in surviving]
+            # rebuild indexes: remove dangling
+            surviving_inst = [i for i in inst if i in surviving]
+            del_mask = [int(i not in surviving) for i in inst]
+            # cumsum deleted regions
+            realigned_idx = [k-sum(not_mask[:k+1]) for k in new_idx]
+
+
     def __init__(self, instances, epi=None, roles=None):
         # only numbers
         super().__init__([Numeric])

@@ -21,17 +21,6 @@ class Embedding(Representation):
     undefined_element_index = None
 
     # region # serializable overrides
-    def set_resources(self):
-        csv_mapping_name = "{}/{}.csv".format(self.raw_data_dir, self.base_name)
-        self.resource_paths.append(csv_mapping_name)
-        self.resource_read_functions.append(self.read_raw_embedding_mapping)
-        self.resource_handler_functions.append(lambda x: x)
-
-        # need the raw embeddings even if processed embedding data is available
-        # if self.config.has_semantic() and self.config.name == "context":
-        #     # need the raw embeddings even if processed embedding data is available
-        #     self.resource_always_load_flag.append(True)
-        #     info("Forcing raw embeddings loading for semantic context embedding disambiguations.")
 
     def get_all_preprocessed(self):
         res = super().get_all_preprocessed()
@@ -51,7 +40,9 @@ class Embedding(Representation):
         self.model_loaded = True
         return True
 
-
+    def build_model_from_inputs(self):
+        embeddings_path = join(self.raw_data_dir, self.config.name) + ".csv"
+        self.read_raw_embedding_mapping(embeddings_path)
 
     def read_raw_embedding_mapping(self, path):
         # check if there's a vocabulary file and map token to its position in the embedding list

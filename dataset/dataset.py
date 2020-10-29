@@ -103,6 +103,12 @@ class Dataset(Serializable):
         # for datasets, equivalent to loading the preprocessed dataset
         return self.attempt_load(0)
 
+    def build_model_from_inputs(self):
+        # load from disk from the last load
+        # that correpsonds to raw data
+        raw_data_idx = len(self.data_paths)-1
+        return self.attempt_load(raw_data_idx)
+
     # def load_outputs_from_disk(self):
     #     # set serialization params here, after name's been configured
     #     import ipdb; ipdb.set_trace()
@@ -332,11 +338,12 @@ class Dataset(Serializable):
                     ret_voc.update(word_data)
                 num_words.append(len(word_data))
         stats = [x(num_words) for x in [np.mean, np.var, np.std]]
-        info(f"Vocab size: {len(ret_voc)}" + " words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
+        info(f"Text vocab size: {len(ret_voc)}" + ", stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
         return ret_words_pos, ret_voc, discarded_indexes
 
     # preprocess raw texts into word list
     def produce_outputs(self):
+        """Apply preprocessing"""
 
         self.setup_nltk_resources()
         # make indices object -- this filters down non-existent (with no instances) roles
