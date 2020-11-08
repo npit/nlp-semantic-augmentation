@@ -2,8 +2,8 @@ from component.component import Component
 import json
 from flask import Flask, request
 from threading import Lock
-from bundle.datausages import *
-from bundle.datatypes import *
+from bundle.datausages import Indices, DataPack
+from bundle.datatypes import Text, Numeric, Dictionary
 import numpy as np
 import defs
 from utils import info, datetime_str
@@ -34,18 +34,14 @@ class IOEndpoint(Trigger):
 
         @self.app.route("/test")
         def ingest():
-            try:
-                if request.data:
-                    data = json.loads(request.data)
-                else:
-                    data = list(request.args.keys())
-            except (json.JSONDecodeError, TypeError):
-                # return "Cannot JSON decode"
-                return {"status": 500, "message": "Malformed inputs."}
-            info(f"Got {len(data)} test instances:")
-            if len(data) == 0:
-                return {"status": 500, "message": "Malformed inputs."}
-            info(json.dumps(data))
+
+            if request.data:
+                data, msg = self.parse_json_input(request.data)
+                if data is None:
+                    return {"status": 500, "message": msg}
+            else:
+                data = list(request.args.keys())
+
             self.insert_to_data_buffer(data)
             results = self.fire()
             return json.dumps(results, ensure_ascii=False)
@@ -57,7 +53,6 @@ class IOEndpoint(Trigger):
     def insert_to_data_buffer(self, data):
         with self.buffer_lock:
             self.data_buffer.append(data)
-
 
     def arm(self):
         """Prime the trigger to be able to fire"""
@@ -81,16 +76,22 @@ class IOEndpoint(Trigger):
     def package_data(self, data):
         """Add received data to the data pool, to make available to the pipeline.
         Runs within the execution lock
+
         """
-        num = len(data)
-        txt = Text(data)
-        # all test
-        ind = Indices(np.arange(num), np.ones((num,),np.int32), [defs.roles.test])
-        dp = DataPack(txt, ind)
-        dp.chain = self.name
-        # set source dependent on timestamp to prevent deserializations
-        dp.source = f"{self.name}_{datetime_str()}"
-        self.data_pool.add_data(dp)
+        for key, value in data.items():
+            if key == Text.name:
+                # package input text data
+                txt = Text(value)
+                # all test
+                ind = Indices(np.arange(len(value)), [defs.roles.test])
+                dp = DataPack(txt, ind)
+            elif key == Dictionary.name:
+                dat = Dictionary(value)
+                dp = DataPack(dat)
+            dp.chain = self.name
+            # set source dependent on timestamp to prevent deserializations
+            dp.source = f"{self.name}_{datetime_str()}"
+            self.data_pool.add_data(dp)
 
     def clean_up_data(self):
         """Restore to data contents prior to arming"""

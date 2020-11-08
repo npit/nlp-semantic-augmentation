@@ -17,7 +17,6 @@ class Representation(Serializable):
 
     data_names = ["elements_per_instance", "embeddings", "indices", "roles"]
 
-
     consumes = Text.name
     produces = Numeric.name
 
@@ -60,7 +59,7 @@ class Representation(Serializable):
         self.loaded_preprocessed = True
         self.elements_per_instance, self.embeddings, self.indices, self.roles = [preprocessed[n] for n in Representation.data_names]
 
-        self.indices = Indices(self.indices, self.elements_per_instance, self.roles)
+        self.indices = Indices(self.indices, self.roles, epi=self.elements_per_instance)
         # debug("Read preprocessed dataset embeddings shapes: {}".format(shapes_list(self.indices.instances)))
 
     # add exra representations-specific serialization paths
@@ -159,10 +158,10 @@ class Representation(Serializable):
         # if self.loaded_aggregated or self.loaded_preprocessed:
         #     return
         error("{} requires a text input.".format(self.name), not self.data_pool.has_text())
-        self.text = self.data_pool.request_data(Text.name, Indices.name, self.name)
+        self.text = self.data_pool.request_data(Text.name, Indices.name, self.name, "subset")
         self.vocabulary = self.text.data.vocabulary
         self.indices = self.text.get_usage(Indices.name)
-        self.roles = self.indices.roles
+        self.roles = self.indices.tags
 
     def check_model_building_resources(self):
         """Check model building resources are sufficient"""

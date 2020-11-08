@@ -165,7 +165,7 @@ class Dataset(Serializable):
         info(self.get_info())
         self.loaded_raw_serialized = False
         self.loaded_preprocessed = True
-        self.indices = Indices(self.indices, roles=self.roles)
+        self.indices = Indices(self.indices, tags=self.roles)
         self.language = data['language']
 
     # region getters
@@ -219,6 +219,20 @@ class Dataset(Serializable):
     def get_text(data):
         """Get text from the dataset outputs"""
         return " ".join([item["words"] for item in data])
+
+    @staticmethod
+    def get_words(data):
+        """Get text from the dataset outputs"""
+        return data["words"]
+    @staticmethod
+    def get_instance_from_words(data):
+        """Return expected dataset instace from word list"""
+        inst = Dataset.get_instance_template()
+        inst["words"] = data
+        return inst
+    @staticmethod
+    def get_instance_template():
+        return {"words": [], "pos": []}
 
     def handle_raw_serialized(self, deserialized_data):
         self.data, self.indices, self.roles = [deserialized_data[n] for n in self.data_names]
@@ -347,10 +361,10 @@ class Dataset(Serializable):
 
         self.setup_nltk_resources()
         # make indices object -- this filters down non-existent (with no instances) roles
-        self.indices = Indices(self.indices, roles=self.roles)
-        self.roles = self.indices.roles
+        self.indices = Indices(self.indices, tags=self.roles)
+        self.roles = self.indices.tags
         train_idx, test_idx = self.indices.get_train_test()
-        test_idx = self.indices.get_role_instances(defs.roles.test, must_exist=False)
+        test_idx = self.indices.get_tag_instances(defs.roles.test, must_exist=False)
         error("Neither train or test indices found to process dataset", not (train_idx.size > 0 or test_idx.size > 0))
         preproc_data = []
         preproc_targets = []
@@ -431,9 +445,6 @@ class Dataset(Serializable):
     def set_component_outputs(self):
         """Set text data to the output bundle"""
         outputs = []
-        # indices = [np.arange(len(x)) for x in self.get_data()]
-        # indices = Indices(instances=indices, roles=self.roles)
-
 
         text = Text(self.get_data(), self.vocabulary)
         dp = DataPack(text, usage=self.indices)

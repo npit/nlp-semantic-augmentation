@@ -132,19 +132,6 @@ class Learner(Serializable):
             tag += "."
         return join(self.get_results_folder(),  self.get_model_filename() + "." + tag + "predictions.pkl")
 
-    # def get_existing_trainval_indexes(self):
-    #     """Check if the current training run is already completed."""
-    #     trainval_file = self.get_trainval_serialization_file()
-    #     if exists(trainval_file):
-    #         info("Training {} with input data: {} samples on LOADED existing {}" .format(self.name, self.num_train, self.validation))
-    #         idx = read_pickled(trainval_file)
-    #         self.validation.check_indexes(idx)
-    #         max_idx = max([np.max(x) for tup in idx for x in tup])
-    #         if max_idx >= self.num_train:
-    #             error(
-    #                 "Mismatch between max instances in training data ({}) and loaded max index ({})."
-    #                 .format(self.num_train, max_idx))
-
     def get_existing_model_path(self):
         path = self.get_current_model_path()
         return path if exists(path) else None
@@ -291,15 +278,15 @@ class Learner(Serializable):
             train_indexes = self.validation.get_train_indexes()
             test_indexes = self.validation.get_test_indexes()
         else:
-            idxs_file = self.get_current_model_path() + ".trainval_idx"
-            try:
-                train_indexes, _, test_indexes = load_trainval(idxs_file)
-                info(f"Restored train/test splits from saved indexes: {idxs_file}")
-            except FileNotFoundError:
-                pass
-            except IndexError:
-                warning(f"Attempted to load existing train/val indexes from {idxs_file} but failed.")
-                pass
+            # idxs_file = self.get_current_model_path() + ".trainval_idx"
+            # try:
+            #     train_indexes, _, test_indexes = load_trainval(idxs_file)
+            #     info(f"Restored train/test splits from saved indexes: {idxs_file}")
+            # except FileNotFoundError:
+            #     pass
+            # except IndexError:
+            #     warning(f"Attempted to load existing train/val indexes from {idxs_file} but failed.")
+            #     pass
             train_indexes = [self.train_embedding_index]
             test_indexes = [self.test_embedding_index]
 
@@ -383,8 +370,8 @@ class Learner(Serializable):
         self.data_pool.add_data_packs([pred], self.name)
 
     def get_predictions_datapack(self):
-        pred = Numeric(self.predictions)
-        preds_usage = Predictions(self.prediction_indexes, roles=self.prediction_roles)
+        pred = Numeric(np.concatenate(self.predictions))
+        preds_usage = Predictions(self.prediction_indexes, tags=self.prediction_roles)
         preds_usage.add_tags(self.prediction_model_indexes)
         pred = DataPack(pred, preds_usage)
         return pred

@@ -236,6 +236,7 @@ class Serializable(Component):
             self.model = read_pickled(self.get_model_path(), msg=f"{self.get_full_name()} model")
             return True
         except FileNotFoundError:
+            debug(f"Model file not found: {self.get_model_path()}")
             return False
 
     def save_model(self, path=None, model=None):

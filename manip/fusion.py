@@ -18,26 +18,12 @@ class Fusion(Manipulation):
     def fuse(self):
         error("Attempted to call abstract fuse() from component {}".format(self.name))
 
-    def produce_outputs(self):
-
-        info("{self.name} fusion order:")
-        for i, vecs in enumerate(self.vectors):
-            output_vectors = self.fuse(vecs.instances)
-            info(f"Applied {self.component_name} fusion {i+1}/{len(self.vectors)} with inputs: {vecs.instances.shape}, shape now: {output_vectors.shape}")
-        self.outputs.set_vectors(Numeric(vecs=output_vectors))
-        # set the first index
-        self.outputs.set_indices(self.indices)
-
-
-        # # fuse existing vectors
-        # self.vectors = list(filter(lambda x: x is not None, self.vectors))
-        # num_vector_collections = list(map(len, self.vectors))
-        # error("Inconsistent number of vector collections to fuse: {}".format(num_vector_collections), len(set(num_vector_collections)) != 1)
-        # error("Inconsistent number of vector collections to fuse: {}".format(num_vector_collections), len(set(num_vector_collections)) != 1)
-        # self.vectors = list(zip(*self.vectors))
-        # for v, vecs in enumerate(self.vectors):
-        #     msg = "Fusing input collection {}/{} with shapes: {} to".format(v + 1, len(self.vectors), shapes_list(vecs))
-        #     self.vectors[v] = self.fuse(vecs)
-        #     info(msg + " {}".format(self.vectors[v].shape))
-
-        # self.outputs.set_vectors(Numeric(vecs=self.vectors, epi=[np.ones(len(vecs), np.int32) * self.num_elements_per_instance for vecs in self.vectors]))
+    def get_component_inputs(self):
+        super().get_component_inputs()
+        error(f"Specified {self.name} component but number of input numerics found is {len(self.inputs)} -- need at least 2", len(self.inputs) < 2)
+        # same indexes required
+        if not all(x.equals(self.indices[0]) for x in self.indices):
+            for x in self.indices:
+                warning(str(x))
+            error(f"{self.name} inputs are annotated with dfferent indices: {self.indices}")
+        self.indices = self.indices[0]

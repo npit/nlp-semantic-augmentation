@@ -1,5 +1,6 @@
 from utils import error, warning, info
 from threading import Lock
+import json
 
 class Trigger:
     pipelines = None
@@ -25,6 +26,32 @@ class Trigger:
     def setup(self):
         """Prepare the trigger to be firable"""
         pass
+
+    def parse_json_input(self, data):
+        """Parse json input"""
+        # read inputs
+        # inputs = []
+        try:
+            data = json.loads(data)
+            # inputs = data["texts"]
+            # info(f"Got {len(inputs)} text instances:")
+        # except KeyError:
+        #     pass
+        except (json.JSONDecodeError, TypeError):
+            # return "Cannot JSON decode"
+            return None, "Malformed inputs."
+        return data, ""
+        # if len(inputs) == 0:
+        #     return None, "Malformed inputs."
+        # # config
+        # config = {}
+        # try:
+        #     config = data["config"]
+        # except KeyError:
+        #     pass
+        # info(json.dumps(data))
+        # return [data, config], ""
+
     
     def arm(self):
         """Prime the trigger to be able to fire"""

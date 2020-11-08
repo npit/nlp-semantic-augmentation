@@ -34,8 +34,8 @@ class UnsupervisedEvaluator(Evaluator):
         self.indices = dp.get_usage(Indices.name).instances
         self.data = dp.data.instances
 
-        # train_idx = self.indices.get_role_instances(defs.roles.train)
-        # test_idx = self.indices.get_role_instances(defs.roles.test)
+        # train_idx = self.indices.get_tag_instances(defs.roles.train)
+        # test_idx = self.indices.get_tag_instances(defs.roles.test)
         # # fetch learner train, test and prediction data
         # test = data.get_instances(test_idx)
         # if test:

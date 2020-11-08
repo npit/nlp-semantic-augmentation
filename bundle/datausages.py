@@ -1,6 +1,6 @@
 from bundle.datatypes import *
 import numpy as np
-from utils import as_list, warning
+from utils import as_list, warning, align_index
 
 class DataUsage:
     """Abstract class for types of data utilization"""
@@ -24,107 +24,106 @@ class Indices(DataUsage):
     # how many objects each "instance" is composed of
     elements_per_instance = None
     # train/test roles
-    roles = None
     instances = None
+    tags = None
+
+    def add_tags(self, tags):
+        """Add tag metadata"""
+        self.tags = tags
+        if len(self.tags) != len(self.instances):
+            warning(f"Added {len(self.tags)} tags on indexes composed of {len(self.instances)} instances.")
 
     def to_json(self):
-        res = {"instances":[], "roles":[]}
+        res = {"instances":[], "tags":[]}
         for inst in self.instances:
             res["instances"].append(inst.tolist())
-        for role in self.roles:
-            res["roles"].append(role)
         return res
 
-    def apply_mask(surviving, drop_allowed=True):
-        """Apply a boolean mask and realign all indexes
-
-        Args:
-            surviving (ndarray): Surviving indexes to which to align
-            reference_container (ndarray): Container the indexes refer to
+    def apply_mask(self, surviving):
+        """Apply a boolean deletion mask and realign all indexes
         """
-        # make deletion mask within the deletion range
-        del_mask = np.ones(len(surviving))
-        del_mask[surviving] = 0
-
-        for i, inst in enumerate(self.instances):
-            # drop non-surviving
-            if drop_allowed:
-                inst = [x for x in inst if x in surviving]
-            # rebuild indexes: remove dangling
-            surviving_inst = [i for i in inst if i in surviving]
-            del_mask = [int(i not in surviving) for i in inst]
-            # cumsum deleted regions
-            realigned_idx = [k-sum(not_mask[:k+1]) for k in new_idx]
+        output = []
+        for inst in self.instances:
+            binary_mask = [i in surviving for i in inst]
+            ind  = align_index(inst, binary_mask, mask_shows_deletion=False)
+            output.append(ind)
+        return self.__class__(output, self.tags)
 
 
-    def __init__(self, instances, epi=None, roles=None):
+    def __init__(self, instances, tags, epi=None):
         # only numbers
         super().__init__([Numeric])
+        instances = as_list(instances)
+        tags = as_list(tags)
         if epi is None:
             epi = [np.ones((len(ind),), np.int32) for ind in instances]
         self.elements_per_instance = epi 
 
         self.instances = []
-        self.roles = []
-        instances = as_list(instances)
-        if roles is None:
-            roles = []
-        roles = as_list(roles)
+        self.tags = []
         for i in range(len(instances)):
-            try:
-                role = roles[i]
-            except IndexError:
-                role = None
-
             inst = instances[i]
             if len(inst) == 0:
                 continue
-            self.instances.append(inst)
-            if role is not None:
-                self.roles.append(role)
+            self.instances.append(np.asarray(inst))
+            try:
+                tag = tags[i]
+                self.tags.append(tag)
+            except (TypeError, IndexError):
+                pass
 
     def get_train_test(self):
         """Get train/test indexes"""
         train, test = np.ndarray((0,), np.int32), np.ndarray((0,), np.int32)
         for i in range(len(self.instances)):
-            if self.roles[i] == defs.roles.train:
+            if self.tags[i] == defs.roles.train:
                 train = np.append(train, self.instances[i])
-            elif self.roles[i] == defs.roles.test:
+            elif self.tags[i] == defs.roles.test:
                 test = np.append(test, self.instances[i])
         return train, test
 
-
     def summarize_content(self):
         """Print a summary of the data"""
-        return f"{self.name} {len(self.instances)} instances, {self.roles} roles"
+        return f"{self.name} {len(self.instances)} instances, {self.tags} tags"
 
     def has_role(self, role):
         """Checks for the existence of a role in the avail. instances"""
-        if not self.roles:
+        if not self.tags:
             return False
-        return role in self.roles
+        return role in self.tags
 
     def get_train_instances(self):
-        return self.get_role_instances(defs.roles.train)
+        return self.get_tag_instances(defs.roles.train)
     def get_test_instances(self):
-        return self.get_role_instances(defs.roles.test)
+        return self.get_tag_instances(defs.roles.test)
 
-    def get_role_instances(self, role, must_be_single=True, must_exist=True):
+    def get_overlapping(self, input_idx, input_tag):
+        """Fetch indexes and usages overlapping with the input indexes
+        """
+        out_inst, out_tag = [], []
+        for i in range(len(self.instances)):
+            inst, tag = self.instances[i], self.tags[i]
+            # skip identical tag
+            if tag == input_tag:
+                continue
+            # get overlap
+            overlap = np.intersect1d(input_idx, inst)
+            if len(overlap) > 0:
+                out_inst.append(overlap)
+                out_tag.append(tag)
+        return out_inst, out_tag
+
+    def get_tag_instances(self, role, must_be_single=True, must_exist=True):
         """Retrieve instances associated with the input role"""
         if not self.has_role(role):
-            error(f"Required role {role} not found in indices!", must_exist)
+            error(f"Required tag {role} not found in indices! Available: {self.tags}", must_exist)
             return np.ndarray((0,), dtype=np.int32)
-        role_idx = [i for i in range(len(self.roles)) if self.roles[i] == role]
+        role_idx = [i for i in range(len(self.tags)) if self.tags[i] == role]
         inst = [self.instances[i] for i in role_idx]
         if must_be_single:
             error(f"Found {len(inst)} but require a single set of instances with role {role}", len(inst) != 1)
             inst = inst[0]
         return inst
-
-    def append_index(self, idx, role=None):
-        """Add another set of indices"""
-        self.instances.append(idx)
-        self.roles.append(role)
 
     def equals(self, other):
         if not len(self.instances) == len(other.instances):
@@ -135,17 +134,21 @@ class Indices(DataUsage):
         return True
 
 
+    def add_instance(self, idx, tag):
+        self.instances.append(idx)
+        self.tags.append(tag)
+        error(f"Adding role {tag} to index with non-equal instances: {len(self.instances)} and tags {len(self.tags)}", len(self.instances) != len(self.tags))
+
+    def __str__(self):
+        dat = "|".join([f"{x.shape} : {t}" for (x, t) in zip(self.instances, self.tags)])
+        return f"idx: [{dat}]" 
+    def __repr__(self):
+        return self.__str__()
+
 class Predictions(Indices):
     """Usage for denoting learner predictions"""
     name = "predictions"
-    tags = None
     labelset = None
-
-    def add_tags(self, tags):
-        """Add tag metadata"""
-        self.tags = tags
-        if len(self.tags) != len(self.instances):
-            warning(f"Added {len(self.tags)} tags on predictions composed of {len(self.instances)} instances.")
 
     def add_ground_truth(self, labelset):
         self.labelset = labelset
@@ -214,7 +217,8 @@ class DataPack:
         self.data = data
         self.usages = []
         if usage is not None:
-            self.usages.append(usage)
+            usage = as_list(usage)
+            self.usages.extend(usage)
         if source is not None:
             self.source = source
         if chain is not None:
@@ -230,21 +234,25 @@ class DataPack:
     def get_id(self):
         return self.data.name + "|" + self.usage()
 
-    def type(self):
+    def get_datatype(self):
         """Get type of data"""
         return self.data.name
 
     def get_usage_names(self):
         return [x.name for x in self.usages]
 
-    def get_usage(self, usage_name):
+    def get_usage(self, usage_name, allow_multiple=False):
         if type(usage_name) is not str and issubclass(usage_name, DataUsage):
             usage_name = usage_name.name
+        res = []
 
         for u in self.usages:
             if u.name == usage_name:
-                return u
-        return None
+                res.append(u)
+        error(f"Requested single usage of type {usage_name} but {len(res)} were found", len(res) > 1 and not allow_multiple)
+        if not allow_multiple:
+            res = res[0]
+        return res
 
 
     @staticmethod
@@ -256,7 +264,7 @@ class DataPack:
         return dp
 
     def __str__(self):
-        return f"{self.type()}|{self.usage()}|{self.source}|{self.chain}"
+        return f"{self.get_datatype()}|{self.usage()}|{self.source}|{self.chain}"
     def __repr__(self):
         return str(self)
 

@@ -66,9 +66,8 @@ class NLM:
         tokens, masks = np.ndarray((0, sql), np.int64), np.ndarray((0,sql), np.int64)
         for i in range(len(indices.instances)):
             idx = indices.instances[i]
-            # role = indices.roles[i]
             # offset = len(tokens)
-            for doc_idx in tqdm(idx, total=len(idx), desc=f"Encoding role: {indices.roles[i]}"):
+            for doc_idx in tqdm(idx, total=len(idx), desc=f"Encoding role: {indices.tags[i]}"):
                 doc_data = texts.instances[doc_idx]
                 words = doc_data["words"]
                 text = " ".join(words)

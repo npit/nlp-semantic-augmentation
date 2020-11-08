@@ -192,7 +192,7 @@ class SemanticResource(Serializable):
             }
 
     def get_all_preprocessed(self):
-        return {"weights": self.embeddings, "indices": self.indices.instances, "roles": self.indices.roles}
+        return {"weights": self.embeddings, "indices": self.indices.instances, "roles": self.indices.tags}
 
     def lookup(self, candidate):
         error("Attempted to lookup from the base class")
@@ -333,7 +333,7 @@ class SemanticResource(Serializable):
         self.loaded_preprocessed = True
         # single item
         self.embeddings, ind, self.roles = [preprocessed[x] for x in self.data_names]
-        self.indices = Indices(instances=ind, roles=self.roles)
+        self.indices = Indices(instances=ind, tags=self.roles)
         debug("Read preprocessed concept docs shapes: {}".format(str(self.embeddings.shape)))
 
     def get_term_delineation(self, document_text):

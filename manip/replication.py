@@ -36,10 +36,3 @@ class Replication(Manipulation):
             self.vectors[v] = vec
         self.outputs.set_vectors(Numeric(vecs=self.vectors, epi=[np.ones(len(vec), np.int32) * self.replicate_times for vec in self.vectors]))
         # self.outputs.set_source_name(self.name)
-
-    # def process_component_inputs(self):
-    #     # input is a bundle
-    #     Manipulation.process_component_inputs(self)
-    #     self.vectors = self.vectors[0]
-    #     error("Passed a bundle list to replicate.", len(self.vectors) != 1)
-

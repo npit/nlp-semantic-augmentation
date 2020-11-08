@@ -106,7 +106,6 @@ class Dummy(SKLClassifier):
         error("Cannot apply {} to multilabel data.".format(self.name), self.do_multilabel)
         SKLClassifier.make(self)
 
-
 class LogisticRegression(SKLClassifier):
     name = "logreg"
 

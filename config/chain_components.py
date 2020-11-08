@@ -15,6 +15,11 @@ class manip_conf(Configuration):
         super().__init__(config)
         self.name = config["name"]
         self.times = self.get_value("times", base=config, default=None)
+        self.function = self.get_value("func", base=config, default=None)
+        self.alters_index = self.get_value("alters_index", base=config, default=False)
+        self.size =  self.get_value("size", base=config, default=None)
+        self.tag = self.get_value("tag", base=config, default=None)
+        self.params = self.get_value("params", base=config, default=None)
 
 
 class dataset_conf(Configuration):
@@ -177,18 +182,20 @@ class trigger_receptor(Configuration):
     conf_key_name = "triggered"
 
 class link_conf(Configuration):
-    """Dummy configuration, linking chains with each other"""
+    """Defines chains to be passed as input to the current 
+    Should be always be the first chain component"""
     conf_key_name = "link"
 
     def __init__(self, config):
         super().__init__(config)
         if config is None:
             return
-        # pass the linking value
+        # pass the linking value(s)
         self.links = as_list(config)
 
     def get_links(self):
         return self.links
+
 
 class evaluator_conf(Configuration):
     """Component for evaluating"""
@@ -217,4 +224,7 @@ class endpoint_conf(Configuration):
         self.port = self.get_value("port", default="9999")
         self.endpoint_name = self.get_value("endpoint_name", default="smaug")
 
-chain_component_classes = [manip_conf, dataset_conf, representation_conf, transform_conf, semantic_conf, learner_conf, link_conf, evaluator_conf, endpoint_conf, trigger_receptor]
+def get_chain_component_classes():
+    res = [manip_conf, dataset_conf, representation_conf, semantic_conf, learner_conf]
+    res += [link_conf, evaluator_conf, endpoint_conf, trigger_receptor]
+    return res

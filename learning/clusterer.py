@@ -37,7 +37,7 @@ class Clusterer(Learner):
         # self.validation.get_inputs_base_object(), self.validation.get_current_evaluation_indices()
         # pass the input data, and the indexes denoting on which of these the clusterer used to generate its predictions
         # (e.g. useful if validation occurred)
-        dat = DataPack(Numeric(self.embeddings), Indices(self.prediction_indexes))
+        dat = DataPack(Numeric(self.embeddings), Indices(self.prediction_indexes, "predictions"))
         self.data_pool.add_data_packs([dat], self.name)
 
 class KMeansClusterer(Clusterer):

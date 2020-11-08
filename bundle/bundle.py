@@ -75,11 +75,6 @@ class DataPool:
         self.data = []
         self.feeder_chains = []
         self.feeder_components = []
-        # self.supply = defaultdict()
-        # self.requests = defaultdict()
-        # self.data_per_type = defaultdict(list)
-        # self.data_per_usage = defaultdict(list)
-        # self.data_per_chain = defaultdict(list)
 
     def add_data_packs(self, datapack_list, source_name):
         for dp in datapack_list:
@@ -113,7 +108,7 @@ class DataPool:
             if i in self.reference_data:
                 res.append(dat)
         self.data = res
-        debug("Data pool fallback complete -- contents now:")
+        debug(f"Data pool fallback complete -- {len(self.data)} data items now:")
         for x in self.data:
             info(str(x))
 
@@ -121,7 +116,7 @@ class DataPool:
         """Add a data pack to the pool"""
         # organize data by type
         data.chain = self.current_running_chain
-        self.data_per_type[data.type()].append(data)
+        self.data_per_type[data.get_datatype()].append(data)
         self.data_per_usage[data.usage()].append(data)
         self.data_per_chain[data.chain].append(data)
         self.log_data_supply(data)
@@ -129,9 +124,14 @@ class DataPool:
 
     def log_data_supply(self, data):
         """Log chain data dependencies"""
-        self.supply[(data.type(), data.usage(), data.source, data.chain)].append(data)
+        self.supply[(data.get_datatype(), data.usage(), data.source, data.chain)].append(data)
 
     def match_usage(self, candidate_usage, usage_requested, usage_matching, usage_exclude=None):
+        """Match candidate usage with the requested usage type
+        """
+        # no matching
+        if len(usage_requested) == 1 and usage_requested[0] == "ignore":
+            return True
         candidate_usage = as_list(candidate_usage)
         if usage_matching != "all":
             usage_requested = as_list(usage_requested)
@@ -158,7 +158,7 @@ class DataPool:
         Args:
             data_type (str): Name of datatype
             usage (str): Name or class of usage
-            usage_matching (str): How to match the usage, candidates are "exact", "any", "all", "subset". Defaults to "exact"
+            usage_matching (str): How to match the usage, candidates are "exact", "any", "all", "subset", "ignore". Defaults to "exact"
             client ([type]): [description]
             must_be_single (bool, optional): Singleton enforcer. Defaults to True.
             on_error_message (str, optional): What to print on error. Defaults to "Data request failed:".
@@ -188,7 +188,7 @@ class DataPool:
             usage_exclude = [x.name if type(x) is not str and issubclass(x, DataUsage) else x for x in usage_exclude]
         for data in curr_inputs:
             matches_usage = self.match_usage(data.get_usage_names(), usage, usage_matching, usage_exclude)
-            if matches_usage and (data_type is None or data.type() in data_type):
+            if matches_usage and (data_type is None or data.get_datatype() in data_type):
                 res.append(data)
         if must_be_single:
             if len(res) != 1:
@@ -196,10 +196,10 @@ class DataPool:
                     warning("No available current inputs to fetch requrested data from! Did you omit a cross-chain linkage?")
                 else:
                     warning("Examined current inputs for client {client}:")
-                    for c in curr_inputs:
-                        warning(str(c))
+                    for i, c in enumerate(curr_inputs):
+                        warning(f"{i+1}/{len(curr_inputs)}: {str(c)}")
                 warning(f"Feeder chains/components: {self.feeder_chains}/{self.feeder_components}")
-                error(on_error_message + f" Requested: {data_type}/{usage}/, matches: {len(res)} candidates but requested a singleton.")
+                error(on_error_message + f" Requested: {data_type}, {'/'.join(usage)}. matches: {len(res)} candidates but requested a singleton.")
             res = res[0]
         else:
             # else keep all and drop empty ones
@@ -213,9 +213,9 @@ class DataPool:
         """Fetch datapacks currently available from supplying chains / components"""
         res = []
         for dat in self.data:
-            if dat.chain in self.feeder_chains:
-                if not self.feeder_components or dat.source in self.feeder_components:
-                    res.append(dat)
+            # datum is relevant if chain or component are feeders
+            if dat.source  in self.feeder_components or dat.chain in self.feeder_chains:
+                res.append(dat)
         return res
 
     def log_data_production(self, productions):
@@ -256,9 +256,11 @@ class DataPool:
     def add_feeders(self, chain_names, component_names):
         """Add feeders"""
         if chain_names is not None:
+            chain_names = as_list(chain_names)
             for chain_name in chain_names:
                 self.feeder_chains.append(chain_name)
         if component_names is not None:
+            component_names = as_list(component_names)
             for component_name in component_names:
                 self.feeder_components.append(component_name)
 

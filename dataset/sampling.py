@@ -4,7 +4,7 @@ import random
 import numpy as np
 from sklearn.model_selection import StratifiedShuffleSplit
 
-from utils import align_index, debug, error, info, warning, get_labelset
+from utils import reset_index, debug, error, info, warning, get_labelset
 
 
 class Sampler:
@@ -82,7 +82,7 @@ class Sampler:
         labelset = None
         if is_labelled and handle_labelset:
             labelset = get_labelset(labels)
-            labels = align_index(labels, labelset)
+            labels = reset_index(labels, labelset)
         return data, labels, targets, labelset
 
 
@@ -152,8 +152,8 @@ class Sampler:
             num_labels = len(retained_classes)
             error("Zero labels after limiting.", not num_labels)
             # remap retained classes to indexes starting from 0
-            train_labels = align_index(train_labels, retained_classes)
-            test_labels = align_index(test_labels, retained_classes)
+            train_labels = reset_index(train_labels, retained_classes)
+            test_labels = reset_index(test_labels, retained_classes)
             # fix the label names
             label_names = [label_names[rc] for rc in retained_classes]
             labelset = list(range(len(retained_classes)))

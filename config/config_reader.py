@@ -6,7 +6,7 @@ import utils
 from component.chain import Chain
 from component.pipeline import Pipeline
 from component.trigger_instantiator import TriggerInstantiator as trigger_inst
-from config.chain_components import chain_component_classes
+from config.chain_components import get_chain_component_classes
 from config.global_components import global_component_classes
 from config.global_config import GlobalConfig
 from utils import debug, error
@@ -110,13 +110,14 @@ class ConfigReader:
         """Read configuration for a single chain
         """
         components, component_names = [], []
-        valid_component_names = [c.conf_key_name for c in chain_component_classes]
+        component_classes = get_chain_component_classes()
+        valid_component_names = [c.conf_key_name for c in component_classes]
         for component_name, component_dict in chain_config.items():
             if component_name not in valid_component_names:
                 error(f"Undefined component name {component_name}. Available are {valid_component_names}")
 
             # valid component key encountered; create it
-            component_class = chain_component_classes[valid_component_names.index(component_name)]
+            component_class = component_classes[valid_component_names.index(component_name)]
             debug(f"Read configuration for chain component {component_name}")
             component_config = component_class(component_dict)
 

@@ -45,7 +45,7 @@ class SupervisedLearner(Learner):
             self.target_indices = targets.get_usage(Indices.name)
         else:
             self.targets = Numeric([])
-            self.target_indices = Indices([])
+            self.target_indices = Indices([], [])
 
     # def attach_evaluator(self):
     #     super().attach_evaluator()

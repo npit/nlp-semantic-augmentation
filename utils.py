@@ -11,6 +11,34 @@ import yaml
 
 num_warnings = 0
 
+def align_index(wanted_idx, mask, mask_shows_deletion=True):
+    """
+    Function to align a set of indexes collection indexes wrt a deletion mask
+    mask (list): Binary mask
+    """
+    mask = [int(m) for m in mask]
+    not_mask = [int(not m) for m in mask]
+    if mask_shows_deletion:
+        mask_del = mask
+        mask_keep = not_mask
+    else:
+        mask_del = not_mask
+        mask_keep = mask
+
+    # rebuild indexes: remove dangling
+    new_idx = [idx for (i, idx) in enumerate(wanted_idx) if mask_keep[idx]]
+    # cumsum deleted regions
+    realigned_idx = [k-sum(mask_del[:k+1]) for k in new_idx]
+    return realigned_idx
+
+
+def make_indexes(sizes):
+    """Build indexes to container sizes"""
+    cs = [0] + np.cumsum(sizes).tolist()
+    # make tuple ranges
+    res = [list(range(cs[k], cs[k+1])) for k in range(len(cs)-1)]
+    return res
+
 
 def realign_embedding_index(data_indexes, all_indexes):
     """Check for non-mapped indexes, drop them and realign"""
@@ -286,7 +314,7 @@ def flatten(llist):
 
 # converts elements of l to the index they appear in the reference
 # flattens, if necessary
-def align_index(input_list, reference):
+def reset_index(input_list, reference):
     output = []
     for l in input_list:
         try:

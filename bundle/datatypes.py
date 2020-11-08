@@ -75,8 +75,15 @@ class Numeric(Datatype):
     def __init__(self, inst):
         super().__init__(inst)
 
+class Dictionary(Datatype):
+    name = "config"
+    def __init__(self, inst):
+        super().__init__(inst)
 
 def get_data_class(inputs):
+    # input is already a datatype
+    if issubclass(type(inputs), Datatype):
+        return type(inputs)
     # text info dict
     if type(inputs) in [dict, OrderedDict] and "words" in inputs:
         return Text
