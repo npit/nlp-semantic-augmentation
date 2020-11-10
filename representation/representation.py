@@ -160,7 +160,7 @@ class Representation(Serializable):
         error("{} requires a text input.".format(self.name), not self.data_pool.has_text())
         self.text = self.data_pool.request_data(Text.name, Indices.name, self.name, "subset")
         self.vocabulary = self.text.data.vocabulary
-        self.indices = self.text.get_usage(Indices.name)
+        self.indices = self.text.get_usage(Indices)
         self.roles = self.indices.tags
 
     def check_model_building_resources(self):

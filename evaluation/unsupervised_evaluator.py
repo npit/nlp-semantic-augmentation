@@ -31,7 +31,7 @@ class UnsupervisedEvaluator(Evaluator):
         # get learner inputs
         dp = self.data_pool.request_data(None, Indices, usage_matching="subset", client=self.name, usage_exclude=[GroundTruth, Predictions])
 
-        self.indices = dp.get_usage(Indices.name).instances
+        self.indices = dp.get_usage(Indices).instances
         self.data = dp.data.instances
 
         # train_idx = self.indices.get_tag_instances(defs.roles.train)

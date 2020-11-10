@@ -91,11 +91,11 @@ class LabelledLearner(SupervisedLearner):
     def process_ground_truth_input(self):
         super().process_ground_truth_input()
         # labels = self.data_pool.request_data(Numeric.name, Labels, usage_matching="subset", client=self.name, on_error_message=f"{self.name} learner needs label information.")
-        # indices = labels.get_usage(Indices.name)
+        # indices = labels.get_usage(Indices)
         # train_idx, test_idx = indices.get_train_test()
         # # TODO fix labels as embeddings
         if self.targets_data:
-            self.labels_info = self.targets_data.get_usage(Labels.name)
+            self.labels_info = self.targets_data.get_usage(Labels)
             error(f"Learner {self.name} requires numeric label information.", self.labels_info is None)
             self.process_label_information(self.labels_info)
 

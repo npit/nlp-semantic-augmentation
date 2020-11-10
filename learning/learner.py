@@ -38,20 +38,26 @@ class Learner(Serializable):
     train_embedding = None
     model_index = None
 
-    # store information pertaining to the learning run(s) executed
-    predictions = []
-    prediction_tags = []
-    prediction_roles = []
-    prediction_indexes = []
-    prediction_model_indexes = []
+    # # store information pertaining to the learning run(s) executed
+    # predictions = []
+    # prediction_tags = []
+    # prediction_roles = []
+    # prediction_indexes = []
+    # prediction_model_indexes = []
 
-    models = []
+    # models = None
 
     def __init__(self, consumes=None):
         """Generic learning constructor
         """
         # initialize evaluation
         Serializable.__init__(self, "")
+        self.models = []
+        self.predictions = []
+        self.prediction_tags = []
+        self.prediction_roles = []
+        self.prediction_indexes = []
+        self.prediction_model_indexes = []
 
     # input preproc
     def process_input(self, data):
@@ -164,9 +170,6 @@ class Learner(Serializable):
         """Trains the learning model or load an existing instance from a persisted file."""
         with tictoc("Training run [{}] - {} on {} training and {} val data.".format(get_info_string(self.config), self.model_index, len(self.train_index), len(self.val_index) if self.val_index is not None else "[none]")):
             model = None
-            # check if a trained model already exists
-            # if self.config.misc.allow_model_deserialization:
-            #     model = self.load_model()
             if not model:
                 model = self.train_model()
                 # create directories
@@ -278,20 +281,17 @@ class Learner(Serializable):
             train_indexes = self.validation.get_train_indexes()
             test_indexes = self.validation.get_test_indexes()
         else:
-            # idxs_file = self.get_current_model_path() + ".trainval_idx"
-            # try:
-            #     train_indexes, _, test_indexes = load_trainval(idxs_file)
-            #     info(f"Restored train/test splits from saved indexes: {idxs_file}")
-            # except FileNotFoundError:
-            #     pass
-            # except IndexError:
-            #     warning(f"Attempted to load existing train/val indexes from {idxs_file} but failed.")
-            #     pass
             train_indexes = [self.train_embedding_index]
             test_indexes = [self.test_embedding_index]
 
         # loop over the available models / data batches
         num_models = len(self.models)
+        if num_models > 0:
+            if len(train_indexes) == 1:
+                # single indexes, multiple models: duplicate
+                train_indexes *= num_models
+                test_indexes *= num_models
+
         for model_index, model in enumerate(self.models):
             self.model_index = model_index
             train, test = train_indexes[model_index], test_indexes[model_index]

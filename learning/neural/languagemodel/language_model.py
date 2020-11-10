@@ -39,7 +39,7 @@ class NLM:
         # read input texts
         texts = self.data_pool.request_data(Text, Indices, usage_matching="subset", usage_exclude=GroundTruth, client=self.name)
         self.text = texts.data
-        self.indices = texts.get_usage(Indices.name)
+        self.indices = texts.get_usage(Indices)
 
     # def encode_text(self, text):
     #     """Encode text into a sequence of tokens"""

@@ -10,15 +10,12 @@ Vector concatenation manipulation component
 class Filter(Manipulation):
     # column-wise concatenation
     name = "filter"
-    axis = 1
-
     func = None
 
     def __init__(self, config):
         Manipulation.__init__(self)
         self.config = config
         self.params = config.params
-        self.alters_index = config.alters_index
         try:
             self.func = eval(config.function)
         except KeyError:
@@ -33,23 +30,16 @@ class Filter(Manipulation):
         self.outputs = []
         info(f"Applying filter: {self.func}")
         for i, dp in enumerate(self.input_dps):
-            func_output = self.apply_operation(dp.data.instances)
-            # usage handling
-            if self.alters_index:
-                # get post-filtering indexes
-                mask = func_output
-                output_usages = []
-                for u in dp.usages:
-                    if issubclass(type(u), Indices):
-                        u = u.apply_mask(mask)
-                    output_usages.append(u)
-                output_instances = dp.data.get_slice(mask)
-            else:
-                output_instances = func_output
-                output_usages = dp.usages
+            mask = self.apply_operation(dp.data.instances)
+            # add filtered index and tag
+            output_usages = [Indices(mask, [self.config.produce_index_tag])]
+            # modify (align) existing indexes, post-filtering
+            for u in dp.usages:
+                if issubclass(type(u), Indices):
+                    u = u.apply_mask(mask)
+                output_usages.append(u)
 
-            data_cls = get_data_class(dp.data)
-            new_dp = DataPack(data_cls(output_instances), output_usages)
+            new_dp = DataPack(DummyData(), output_usages)
             self.outputs.append(new_dp)
             info(f"Filtering {i+1}/{len(self.input_dps)} input data pack")
 
@@ -59,6 +49,7 @@ class Filter(Manipulation):
     def get_component_inputs(self):
         # filter component can get any type inputs fed to it
         self.input_dps = self.data_pool.get_current_inputs()
+        error(f"No inputs available for {self.name}", len(self.input_dps) == 0)
         # get config
         if self.params == "input":
             self.params = self.data_pool.request_data(Dictionary, usage="ignore", client=self.name, reference_data=self.data_pool.data)

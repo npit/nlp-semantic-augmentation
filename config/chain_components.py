@@ -16,7 +16,7 @@ class manip_conf(Configuration):
         self.name = config["name"]
         self.times = self.get_value("times", base=config, default=None)
         self.function = self.get_value("func", base=config, default=None)
-        self.alters_index = self.get_value("alters_index", base=config, default=False)
+        self.produce_index_tag = self.get_value("produce_index_tag", base=config, default=None, expected_type=str)
         self.size =  self.get_value("size", base=config, default=None)
         self.tag = self.get_value("tag", base=config, default=None)
         self.params = self.get_value("params", base=config, default=None)
@@ -163,19 +163,20 @@ class learner_conf(Configuration):
 
         # training parameters
         self.train = learner_conf.train()
-        config = config["train"]
-        self.train.epochs = config["epochs"]
-        self.train.train_embedding = self.get_value("train_embedding", default=False, base=config)
-        self.train.optimizer = self.get_value("optimizer", default="sgd", base=config)
-        self.train.lr_scheduler = self.get_value("lr_scheduler", base=config)
-        self.train.base_lr = self.get_value("base_lr", base=config, default=0.01)
-        self.train.folds = self.get_value("folds", default=None, base=config)
-        self.train.validation_portion = self.get_value("validation_portion", default=None, base=config)
-        self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=config)
-        self.train.batch_size = config["batch_size"]
-        self.train.sampling_method = self.get_value("sampling_method", default=None, base=config)
-        self.train.sampling_ratios = self.get_value("sampling_ratios", default=None, base=config, expected_type=list)
-        self.save_interval =  self.get_value("save_interval", default=1, base=config)
+        if "train" in config:
+            config = config["train"]
+            self.train.epochs = config["epochs"]
+            self.train.train_embedding = self.get_value("train_embedding", default=False, base=config)
+            self.train.optimizer = self.get_value("optimizer", default="sgd", base=config)
+            self.train.lr_scheduler = self.get_value("lr_scheduler", base=config)
+            self.train.base_lr = self.get_value("base_lr", base=config, default=0.01)
+            self.train.folds = self.get_value("folds", default=None, base=config)
+            self.train.validation_portion = self.get_value("validation_portion", default=None, base=config)
+            self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=config)
+            self.train.batch_size = config["batch_size"]
+            self.train.sampling_method = self.get_value("sampling_method", default=None, base=config)
+            self.train.sampling_ratios = self.get_value("sampling_ratios", default=None, base=config, expected_type=list)
+            self.save_interval =  self.get_value("save_interval", default=1, base=config)
 
 
 class trigger_receptor(Configuration):

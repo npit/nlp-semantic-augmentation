@@ -42,7 +42,7 @@ class SupervisedLearner(Learner):
         self.targets_data = targets
         if targets:
             self.targets = targets.data
-            self.target_indices = targets.get_usage(Indices.name)
+            self.target_indices = targets.get_usage(Indices)
         else:
             self.targets = Numeric([])
             self.target_indices = Indices([], [])

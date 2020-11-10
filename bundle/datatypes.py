@@ -80,7 +80,16 @@ class Dictionary(Datatype):
     def __init__(self, inst):
         super().__init__(inst)
 
+class DummyData(Datatype):
+    name = "dummy"
+    def __init__(self):
+        super().__init__([])
+
+
 def get_data_class(inputs):
+    """
+    Get datatype class of the input
+    """
     # input is already a datatype
     if issubclass(type(inputs), Datatype):
         return type(inputs)

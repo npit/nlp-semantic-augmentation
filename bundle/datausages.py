@@ -141,7 +141,7 @@ class Indices(DataUsage):
 
     def __str__(self):
         dat = "|".join([f"{x.shape} : {t}" for (x, t) in zip(self.instances, self.tags)])
-        return f"idx: [{dat}]" 
+        return f"{self.name} : [{dat}]" 
     def __repr__(self):
         return self.__str__()
 
@@ -241,17 +241,16 @@ class DataPack:
     def get_usage_names(self):
         return [x.name for x in self.usages]
 
-    def get_usage(self, usage_name, allow_multiple=False):
-        if type(usage_name) is not str and issubclass(usage_name, DataUsage):
-            usage_name = usage_name.name
+    def get_usage(self, desired_usage, allow_multiple=False, allow_superclasses=True):
         res = []
-
+        matches = lambda x, desired_usage: x == desired_usage or (allow_superclasses and issubclass(x, desired_usage))
         for u in self.usages:
-            if u.name == usage_name:
+            if matches(type(u), desired_usage):
                 res.append(u)
-        error(f"Requested single usage of type {usage_name} but {len(res)} were found", len(res) > 1 and not allow_multiple)
-        if not allow_multiple:
-            res = res[0]
+        if res:
+            if not allow_multiple:
+                error(f"Requested single usage of type {desired_usage} but {len(res)} were found", len(res) > 1)
+                res = res[0]
         return res
 
 
@@ -271,11 +270,15 @@ class DataPack:
 def drop_empty_datapacks(dps):
     res = []
     for dp in dps:
-        retain = False
-        inst =  dp.data.instances
-        for x in inst:
-            if len(x) >0:
-                retain = True
-        if retain:
+        # exempt dummy data
+        if type(dp.data) is DummyData:
             res.append(dp)
+        else:
+            retain = False
+            inst =  dp.data.instances
+            for x in inst:
+                if len(x) >0:
+                    retain = True
+            if retain:
+                res.append(dp)
     return res

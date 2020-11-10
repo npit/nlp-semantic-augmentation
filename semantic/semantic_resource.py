@@ -365,7 +365,7 @@ class SemanticResource(Serializable):
     def get_component_inputs(self):
         """Get text input data pack """
         self.text = self.data_pool.request_data(Text, Indices, usage_matching="subset",client=self.name)
-        self.indices = self.text.get_usage(Indices.name)
+        self.indices = self.text.get_usage(Indices)
 
     def load_model(self):
         """Load semantic model"""
