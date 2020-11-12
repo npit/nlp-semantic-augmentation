@@ -31,9 +31,12 @@ class NGram(Manipulation):
         out_train, out_test = [], []
         train, test = self.indices.get_train_test()
         global_idx = -1
+        # keep track to which instance each center word belongs to
+        instance_level_index = []
         # produce ngrams
         for s, sequence in enumerate(inputs):
             sequence = Dataset.get_words(sequence)
+            instance_level_index.extend([s] * len(sequence))
             for i in range(len(sequence)):
                 global_idx += 1
                 # get and filter indices for fefore - after contexts
@@ -59,6 +62,18 @@ class NGram(Manipulation):
         expand_idx = lambda idx: idx + [x + k* len(center) for k in (1, 2) for x in idx]
         all_idxs = [expand_idx(out_train), expand_idx(out_test)] 
         all_idxs.extend(make_indexes([len(x) for x in (center, before, after)]))
+
+        # add the word2instance indexes:
+        inst_idx_dict = {}
+        # duplicate for context
+        instance_level_index *= 3
+        for inst in set(instance_level_index):
+            idx = [i for (i, idx) in enumerate(instance_level_index) if idx == inst]
+            all_tags.append(f"ngram_inst_{inst}")
+            all_idxs.append(idx)
+        # all_idxs.append(instance_level_index)
+        # all_tags.append("ngram")
+
         self.indexes = Indices(all_idxs, tags=all_tags)
         self.output = Text(data)
 

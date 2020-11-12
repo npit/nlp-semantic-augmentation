@@ -76,9 +76,12 @@ class Numeric(Datatype):
         super().__init__(inst)
 
 class Dictionary(Datatype):
-    name = "config"
+    name = "dict"
     def __init__(self, inst):
         super().__init__(inst)
+
+    def to_json(self):
+        return self.instances
 
 class DummyData(Datatype):
     name = "dummy"

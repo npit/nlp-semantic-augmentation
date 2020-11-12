@@ -1,6 +1,6 @@
 from bundle.bundle import DataPool
 from evaluation.evaluator import Evaluator
-import rouge
+# import rouge
 from bundle.datatypes import *
 from bundle.datausages import *
 from collections import defaultdict
@@ -171,13 +171,13 @@ class SupervisedEvaluator(Evaluator):
     def compute_rouge(self, gt, preds, lbl_aggr):
         """Compute rouge"""
         return -1
-        gt, preds = data
-        preds = np.argmax(preds, axis=1)
-        maxlen = preds.shape[-1]
-        evaluator = rouge.Rouge(metrics=['rouge-n', 'rouge-l', 'rouge-w'], max_n=4, limit_length=True, length_limit=maxlen, 
-                length_limit_type='words',
-                apply_avg=True,
-                alpha=0.5, # Default F1_score
-                weight_factor=1.2, stemming=True)
-        scores = evaluator.get_scores(gt, preds)
-        return scores
+        # gt, preds = data
+        # preds = np.argmax(preds, axis=1)
+        # maxlen = preds.shape[-1]
+        # evaluator = rouge.Rouge(metrics=['rouge-n', 'rouge-l', 'rouge-w'], max_n=4, limit_length=True, length_limit=maxlen, 
+        #         length_limit_type='words',
+        #         apply_avg=True,
+        #         alpha=0.5, # Default F1_score
+        #         weight_factor=1.2, stemming=True)
+        # scores = evaluator.get_scores(gt, preds)
+        # return scores

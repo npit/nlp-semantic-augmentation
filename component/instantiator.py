@@ -5,6 +5,7 @@ from transform.instantiator import Instantiator as tra_instantiator
 from learning.instantiator import Instantiator as lrn_instantiator
 from manip.instantiator import Instantiator as manip_instantiator
 from evaluation.instantiator import Instantiator as eval_instantiator
+from report.instantiator import Instantiator as report_instantiator
 
 from utils import error
 
@@ -26,4 +27,6 @@ def create(component_name, component_params):
         return manip_instantiator.create(component_params)
     if component_name == eval_instantiator.component_name:
         return eval_instantiator.create(component_params)
+    if component_name == report_instantiator.component_name:
+        return report_instantiator.create(component_params)
     error("Undefined component type: {}".format(component_name))

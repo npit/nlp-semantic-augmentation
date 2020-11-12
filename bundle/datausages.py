@@ -100,6 +100,7 @@ class Indices(DataUsage):
     def get_overlapping(self, input_idx, input_tag):
         """Fetch indexes and usages overlapping with the input indexes
         """
+        error(f"Requested overlap between unequal numbers of indexes and tags", len(self.instances) != len(self.tags))
         out_inst, out_tag = [], []
         for i in range(len(self.instances)):
             inst, tag = self.instances[i], self.tags[i]
@@ -140,8 +141,8 @@ class Indices(DataUsage):
         error(f"Adding role {tag} to index with non-equal instances: {len(self.instances)} and tags {len(self.tags)}", len(self.instances) != len(self.tags))
 
     def __str__(self):
-        dat = "|".join([f"{x.shape} : {t}" for (x, t) in zip(self.instances, self.tags)])
-        return f"{self.name} : [{dat}]" 
+        dat = ", ".join([f"{t}: {len(x)}" for (x, t) in zip(self.instances, self.tags)])
+        return f"{self.name}: <{dat}>" 
     def __repr__(self):
         return self.__str__()
 
@@ -232,7 +233,12 @@ class DataPack:
         return "_".join([x.name for x in self.usages])
 
     def get_id(self):
-        return self.data.name + "|" + self.usage()
+        if self.id == "NO_ID":
+            self.make_id()
+        return self.id
+
+    def make_id(self):
+        self.id = self.data.name + "|" + self.usage()
 
     def get_datatype(self):
         """Get type of data"""
@@ -240,6 +246,10 @@ class DataPack:
 
     def get_usage_names(self):
         return [x.name for x in self.usages]
+
+    def has_usage(self, desired_usage, allow_superclasses=True):
+        matches = lambda x, desired_usage: x == desired_usage or (allow_superclasses and issubclass(x, desired_usage))
+        return any(matches(type(u), desired_usage) for u in self.usages)
 
     def get_usage(self, desired_usage, allow_multiple=False, allow_superclasses=True):
         res = []

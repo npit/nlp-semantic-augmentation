@@ -25,5 +25,5 @@ class Fusion(Manipulation):
         if not all(x.equals(self.indices[0]) for x in self.indices):
             for x in self.indices:
                 warning(str(x))
-            error(f"{self.name} inputs are annotated with dfferent indices: {self.indices}")
+            error(f"{self.name} inputs are annotated with different indices: {self.indices}")
         self.indices = self.indices[0]

@@ -75,10 +75,11 @@ class SKLClassifier(Classifier):
         model, scaler = model
         test_data = self.get_data_from_index(self.test_index, self.embeddings)
         test_data = scaler.transform(test_data)
-        predictions = model.predict(test_data)
-        # convert back to one-hot
-        predictions = one_hot(predictions, self.num_labels, self.do_multilabel)
+        predictions = model.predict_proba(test_data)
+        # # convert back to one-hot
+        # predictions = one_hot(predictions, self.num_labels, self.do_multilabel)
         return predictions
+
 
 
 class NaiveBayes(SKLClassifier):

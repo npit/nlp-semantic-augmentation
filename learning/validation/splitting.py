@@ -2,7 +2,7 @@ from sklearn.model_selection import KFold, StratifiedKFold, ShuffleSplit, Strati
 from skmultilearn.model_selection import IterativeStratification, iterative_train_test_split
 import numpy as np
 
-from utils import info, one_hot
+from utils import info, one_hot, warning
 """Module for validation splits"""
 
 def kfold_split(data, num_folds, seed, labels=None, label_info=None):
@@ -19,7 +19,11 @@ def kfold_split(data, num_folds, seed, labels=None, label_info=None):
             oh_labels = one_hot(labels, len(labelset), is_multilabel=True)
             return list(splitter.split(np.zeros(len(labels)), oh_labels))
         else:
-            return list(StratifiedKFold(num_folds, shuffle=True, random_state=seed).split(data, labels))
+            try:
+                return list(StratifiedKFold(num_folds, shuffle=True, random_state=seed).split(data, labels))
+            except ValueError as ve:
+                warning(f"Unable to complete a stratified fold split: {ve}")
+                return kfold_split(data, num_folds, seed, labels=None, label_info=None)
 
 
 
@@ -38,5 +42,8 @@ def portion_split(data, portion, seed=1337, labels=None, label_info=None):
             train_indexes, test_indexes = next(stratifier.split(np.zeros(len(data)), labels))
             return [(train_indexes, test_indexes)]
         else:
-            breakpoint()
-            return list(StratifiedShuffleSplit(n_splits=1, test_size=portion, random_state=seed).split(data, labels))
+            try:
+                return list(StratifiedShuffleSplit(n_splits=1, test_size=portion, random_state=seed).split(data, labels))
+            except ValueError as ve:
+                warning(f"Unable to complete a stratified split: {ve}")
+                return portion_split(data, portion, seed, labels=None, label_info=None)

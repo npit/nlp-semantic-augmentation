@@ -85,7 +85,7 @@ class IOEndpoint(Trigger):
                 # all test
                 ind = Indices(np.arange(len(value)), [defs.roles.test])
                 dp = DataPack(txt, ind)
-            elif key == Dictionary.name:
+            elif key in [Dictionary.name, "config"]:
                 dat = Dictionary(value)
                 dp = DataPack(dat)
             dp.chain = self.name

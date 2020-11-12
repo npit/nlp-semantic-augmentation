@@ -107,6 +107,8 @@ class Component:
         self.set_component_outputs()
 
     # abstracts / defaults
+    def set_serialization_params(self):
+        pass
     def get_component_inputs(self):
         error("Attempted to get inputs via abstract function.")
 

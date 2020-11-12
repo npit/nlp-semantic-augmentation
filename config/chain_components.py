@@ -165,7 +165,8 @@ class learner_conf(Configuration):
         self.train = learner_conf.train()
         if "train" in config:
             config = config["train"]
-            self.train.epochs = config["epochs"]
+            self.train.epochs = self.get_value("epochs", default=50)
+            self.train.epochs = self.get_value("batch_size", default=50)
             self.train.train_embedding = self.get_value("train_embedding", default=False, base=config)
             self.train.optimizer = self.get_value("optimizer", default="sgd", base=config)
             self.train.lr_scheduler = self.get_value("lr_scheduler", base=config)
@@ -173,11 +174,16 @@ class learner_conf(Configuration):
             self.train.folds = self.get_value("folds", default=None, base=config)
             self.train.validation_portion = self.get_value("validation_portion", default=None, base=config)
             self.train.early_stopping_patience = self.get_value("early_stopping_patience", default=None, base=config)
-            self.train.batch_size = config["batch_size"]
             self.train.sampling_method = self.get_value("sampling_method", default=None, base=config)
             self.train.sampling_ratios = self.get_value("sampling_ratios", default=None, base=config, expected_type=list)
             self.save_interval =  self.get_value("save_interval", default=1, base=config)
 
+class report_conf(Configuration):
+    conf_key_name = "report"
+    def __init__(self, config):
+        super().__init__(config)
+        self.name = config["name"]
+        self.params = self.get_value("params", default={})
 
 class trigger_receptor(Configuration):
     conf_key_name = "triggered"
@@ -228,4 +234,5 @@ class endpoint_conf(Configuration):
 def get_chain_component_classes():
     res = [manip_conf, dataset_conf, representation_conf, semantic_conf, learner_conf]
     res += [link_conf, evaluator_conf, endpoint_conf, trigger_receptor]
+    res += [report_conf]
     return res

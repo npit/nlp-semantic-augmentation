@@ -64,6 +64,13 @@ class DataPool:
     # storage for persisting resources utilized by identical copies of components
     resources = {}
 
+    def __init__(self):
+        self.demand = {}
+        self.explicit_outputs = []
+
+    def add_explicit_output(self, src):
+        self.explicit_outputs.append(src)
+
     def add_resource(self, name, res):
         self.resources[name] = res
     def has_resource(self, name):
@@ -80,18 +87,27 @@ class DataPool:
         for dp in datapack_list:
             dp.chain = self.current_running_chain
             dp.source = source_name
-            dp.id = self.make_datapack_id(self.current_running_chain, source_name)
+            dp.make_id()
             self.add_data(dp)
 
-    def make_datapack_id(self, chain, source):
-        return chain
-
     def get_outputs(self):
-        # get global matches
-        res = self.request_data(None, Predictions, "data_pool", usage_matching="subset", reference_data=self.data, must_be_single=False)
+        # if report data exists, return just them
         output = {}
-        for dp in res:
-            output[dp.get_id()] = dp.to_json()
+        do_explicit_outputs = False
+        if len(self.explicit_outputs) > 0:
+            matches = lambda x: x.source in self.explicit_outputs
+            do_explicit_outputs = True
+        else:
+            matches = lambda x: x.has_usage(Predictions, allow_superclasses=False) or type(x.data) is Dictionary
+        for dp in self.data:
+            # by default, return dictionaries and predictions
+            if matches(dp):
+                if not do_explicit_outputs:
+                    # add each output full datapack dict
+                    output[dp.get_id()] = dp.to_json()
+                else:
+                    # use the explcit output data only
+                    output[dp.get_id()] = dp.to_json()["data"]
         return output
 
     def mark_as_reference_data(self):
@@ -283,9 +299,6 @@ class DataPool:
     def __repr__(self):
         return self.__str__()
 
-    def __init__(self):
-        self.demand = {}
-
     def remove_fulfilled_demand(self, chain, component):
         """Delete unneeded data
         chain: the chain that just used the bundle
@@ -351,19 +364,6 @@ class DataPool:
             # move along the chain
             if self.has_next():
                 self.next().summarize_content(msg)
-
-    # region: getters
-
-    # @staticmethod
-    # def append_request_bundle(bundle, client_name, tail_bundle):
-    #     """Append a bundle to a client request linked list"""
-    #     current_bundle = bundle
-    #     while client_name in current_bundle.linkage and current_bundle.linkage[client_name] is not None:
-    #         current_bundle = current_bundle.linkage[client_name]
-    #     current_bundle.linkage[client_name] = tail_bundle
-    #     # add dummy linkage on the tail bundle
-    #     Bundle.add_dummy_client_linkage(tail_bundle, client_name)
-    #     return bundle
 
     # endregion
 

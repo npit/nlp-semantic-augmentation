@@ -5,7 +5,6 @@ from bundle.datausages import *
 from utils import error, warning
 from evaluation.evaluator import Evaluator, get_random_predictions
 import numpy as np
-import rouge
 from sklearn import metrics
 import defs
 

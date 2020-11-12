@@ -55,7 +55,7 @@ class Slice(Manipulation):
         self.input_dps = self.data_pool.request_data(None, usage=[Indices, Predictions], usage_matching="any", client=self.name, must_be_single=False)
         # fetch any input dummy data that's 
         self.dummy_data = [x for x in self.input_dps if type(x.data) == DummyData]
-        error("Non-unit dummy data in slicing", len(self.dummy_data) > 1)
+        error("Multiple dummy data in slicing", len(self.dummy_data) > 1)
         self.input_dps = [x for x in self.input_dps if x not in self.dummy_data]
         if self.dummy_data:
             self.dummy_data = self.dummy_data[0]

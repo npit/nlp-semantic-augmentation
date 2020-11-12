@@ -29,7 +29,7 @@ def align_index(wanted_idx, mask, mask_shows_deletion=True):
     new_idx = [idx for (i, idx) in enumerate(wanted_idx) if mask_keep[idx]]
     # cumsum deleted regions
     realigned_idx = [k-sum(mask_del[:k+1]) for k in new_idx]
-    return realigned_idx
+    return np.asarray(realigned_idx, dtype=np.int64)
 
 
 def make_indexes(sizes):
