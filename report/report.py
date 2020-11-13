@@ -22,6 +22,12 @@ class MultistageClassificationReport(Report):
         self.params = to_namedtuple(self.config.params, "params")
     
     def produce_outputs(self):
+        # get input configuration data
+        self.topk = None
+        self.messages = []
+        self.input_parameters_dict = [dp for dp in self.data_pool.data if type(dp.data) == Dictionary][0].data.instances
+        self.input_parameters = to_namedtuple(self.input_parameters_dict, "input_parameters")
+
         # get reference data by chain name output
         self.label_mapping = []
         for mapping in self.params.label_mappings:
@@ -60,8 +66,9 @@ class MultistageClassificationReport(Report):
         ngram_tags = sorted([x for x in datapack.usages[0].tags if x.startswith("ngram_inst")])
         for n, ngram_tag in enumerate(ngram_tags):
             original_instance_idx = datapack.usages[0].get_tag_instances(ngram_tag)
-            obj = {"instance": ngram_tag, "data": [data[i] for i in original_instance_idx], "predictions": []}
+            obj = {"instance": n, "data": [data[i] for i in original_instance_idx], "predictions": []}
             preds_obj = {}
+            total_survivors = []
             for i in range(len(predictions)):
                 debug(f"Creating report for instance {n+1}/{len(ngram_tags)}, prediction {i+1}/{len(predictions)}")
                 preds_obj = {"step": i}
@@ -72,6 +79,7 @@ class MultistageClassificationReport(Report):
                 # get *thresholded* predictions relevant to the current original instance
                 surv_instance_idx = np.intersect1d(original_instance_idx, all_surviving_idx)
                 preds_obj["survivors"] = [i for (i, idx) in enumerate(original_instance_idx) if idx in surv_instance_idx]
+                total_survivors.append(preds_obj["survivors"])
 
                 # sort descending, get top k
                 # for completeness, get the topK preds for all instances, surviving or not
@@ -95,29 +103,47 @@ class MultistageClassificationReport(Report):
 
                 # append the predictions for the instance
                 obj["predictions"].append(preds_obj)
-
+            obj["total_survivors"] = self.get_threshold_survivors(total_survivors, datapack.usages[0].get_tag_instances(ngram_tag).tolist())
+            obj["total_topk_preds"] = [top_k_preds[i] for i in preds_obj["survivors"]]
+            obj["total_topk_classes"] = [top_k_predicted_classes[i] for i in preds_obj["survivors"]]
             res.append(obj)
-        # add input configuration data
-        pars = [dp for dp in self.data_pool.data if type(dp.data) == Dictionary][0]
-        self.result = {"results": res, "params": pars.data.instances}
+        self.result = {"results": res, "input_params": self.input_parameters_dict, "messages": self.messages}
+    def get_threshold_survivors(self, total_survivors, original_idx):
+        # total surviving tokens in reversed order
+        survivors_per_step = total_survivors[-2::-1] + [original_idx]
+        current = total_survivors[-1]
+        for surv in survivors_per_step:
+            if not surv or not current:
+                current = []
+                break
+            current = [surv[i] for i in current]
+        return current
 
     def get_topK_preds(self, predictions, label_mapping):
         """
         Return topK predictions and predicted classes from a predictions matrix and index label mapping dict
         """
+        # get top k from input / static parameters, or revert to default
+        if self.topk is None:
+            try:
+                self.topk = self.input_parameters.top_k
+            except KeyError:
+                self.topk = self.params.top_k
+            except AttributeError:
+                self.topk = 5
+                self.messages.append(f"Defaulted to top_k of {self.topk}")
+
         if predictions.size == 0:
             top_k_preds = []
             top_k_predicted_classes = []
         else:
             # argsort the column prediction probas descending, get top k
-            top_k_idxs = np.argsort(predictions, axis=1)[:,::-1][:, :self.params.top_k]
+            top_k_idxs = np.argsort(predictions, axis=1)[:,::-1][:, :self.topk]
             # make a reordered probs container
             top_k_preds = [row[top_k_idxs[row_idx]].tolist() for row_idx, row in enumerate(predictions)]
             # take the classses corresponding to the argsorted indexes probs
             top_k_predicted_classes = [[label_mapping[ix] for ix in idxs] for idxs in top_k_idxs]
         return top_k_preds, top_k_predicted_classes
-
-
 
     def set_component_outputs(self):
         super().set_component_outputs()
@@ -126,6 +152,7 @@ class MultistageClassificationReport(Report):
         self.data_pool.add_data_packs([res], self.name)
 
     def get_component_inputs(self):
+        # will handle in produce outputs
         # orig_data = self.data_pool.get_current_inputs()[0]
         # classification_results = self.data_pool.current_inputs()[1:] 
         pass

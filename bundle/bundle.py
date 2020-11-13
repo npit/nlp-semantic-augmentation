@@ -87,7 +87,7 @@ class DataPool:
         for dp in datapack_list:
             dp.chain = self.current_running_chain
             dp.source = source_name
-            dp.make_id()
+            dp.generate_id(override_existing=False)
             self.add_data(dp)
 
     def get_outputs(self):

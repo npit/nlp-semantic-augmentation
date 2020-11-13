@@ -233,11 +233,12 @@ class DataPack:
         return "_".join([x.name for x in self.usages])
 
     def get_id(self):
-        if self.id == "NO_ID":
-            self.make_id()
+        self.generate_id(override_existing=False)
         return self.id
 
-    def make_id(self):
+    def generate_id(self, override_existing=True):
+        if not override_existing and self.id != "NO_ID":
+            return
         self.id = self.data.name + "|" + self.usage()
 
     def get_datatype(self):

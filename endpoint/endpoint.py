@@ -32,9 +32,8 @@ class IOEndpoint(Trigger):
         self.buffer_lock = Lock() 
         self.app = Flask(config.name)
 
-        @self.app.route("/test")
+        @self.app.route("/test", methods=["POST"])
         def ingest():
-
             if request.data:
                 data, msg = self.parse_json_input(request.data)
                 if data is None:
@@ -85,7 +84,7 @@ class IOEndpoint(Trigger):
                 # all test
                 ind = Indices(np.arange(len(value)), [defs.roles.test])
                 dp = DataPack(txt, ind)
-            elif key in [Dictionary.name, "config"]:
+            elif key in [Dictionary.name, "params"]:
                 dat = Dictionary(value)
                 dp = DataPack(dat)
             dp.chain = self.name

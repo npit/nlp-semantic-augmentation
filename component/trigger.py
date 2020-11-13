@@ -37,9 +37,9 @@ class Trigger:
             # info(f"Got {len(inputs)} text instances:")
         # except KeyError:
         #     pass
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError) as je:
             # return "Cannot JSON decode"
-            return None, "Malformed inputs."
+            return None, f"Malformed inputs: {je}."
         return data, ""
         # if len(inputs) == 0:
         #     return None, "Malformed inputs."
@@ -70,10 +70,13 @@ class Trigger:
                 for pipeline in self.pipelines:
                     res = pipeline.run()
                     outputs.append(res)
+
+                # squeeze
+                if len(outputs) == 1:
+                    outputs = outputs[0]
             except Exception as ex:
                 warning(str(ex))
                 outputs = {"ERROR": str(ex)}
-                raise ex
             self.clean_up_data()
 
         return outputs
