@@ -1,0 +1,112 @@
+# run identifier - if not specified will be autogen'd wrt to current datetime
+
+# execution trigger
+##########################
+triggers:
+  endpoint:
+    name: rest-io
+    url: localhost
+    port: 9998
+
+# the computational graph
+##########################
+
+chains:
+  data: {dataset: {name: string, prepro: null, filter_stopwords: False}}
+
+# ngram unpacking the input data
+  ngramize: {link: data, manip: { name: ngram, window: [3,3] }}
+
+  # map to embeddings
+  rep: {link: ngramize, representation: {name: greek_word2vec, aggregation: avg}}
+
+  # slice the center, before, after portions, concatenate
+  sliceb: {link: rep, manip: {name: slice, tag: before}}
+  slicea: {link: rep, manip: {name: slice, tag: after}}
+  slicec: {link: rep, manip: {name: slice, tag: center}}
+  concat: {link: [slicec, sliceb, slicea], manip: {name: concat}}
+
+  # binary classifier
+  lrn_binary:
+    link: [concat]
+    learner:
+      name: logreg
+      model_path: binary.model
+
+  # binary prediction thresholding
+  binary_thresh:
+    link: [lrn_binary]
+    manip:
+      name: filter
+      # positive prediction above thresh
+      func: "lambda x, params: np.where(x[:,1] > params.binary_threshold)[0]"
+      produce_index_tag: "binary_thresh"
+      params: "input"
+
+  # take mapped ngrams that survived the binary thresholding
+  # slice the concatenated vectors with the produced indexes
+  slicebin: {link: [concat, binary_thresh], manip: {name: slice, tag: binary_thresh}}
+
+  # multiclass classification and thresholding
+  lrn_multiclass:
+    link: [slicebin]
+    learner:
+      name: logreg
+      model_path: multiclass.model
+
+  multiclass_thresh:
+    link: [lrn_multiclass]
+    manip:
+      name: filter
+      # any prediction above thresh
+      func: "lambda x, params: np.unique(np.where(x > params.multiclass_threshold)[0])"
+      produce_index_tag: "multiclass_thresh"
+      params: "input"
+
+  slicemulti:
+    link: [lrn_multiclass, multiclass_thresh]
+    manip:
+      name: slice
+      tag: multiclass_thresh
+
+  # get all the center words
+  center_words:
+    link: [ngramize]
+    manip: { name: slice, tag: center }
+
+  reporting:
+    link: [center_words, lrn_binary, lrn_multiclass]
+    report:
+      name: "multistageclassif"
+      params:
+        # data
+        data_chain: center_words
+        # classification outputs
+        pred_chains: [lrn_binary, lrn_multiclass]
+        # threshold application indexes
+        idx_tags: [binary_thresh, multiclass_thresh]
+        label_mappings: [["keep", "replace"], "/home/nik/work/nomiki-vivliothiki/word-level-transcription-classification/ngram-data/labelmapping_nocontext_drop_context_3_3_lowered_nodiacritics_truncate_mc-data-and-annotation.json"]
+        top_k: 5
+
+# global settings
+##################
+
+print:
+  log_level: debug
+  log_dir: logs
+
+folders:
+  # run folder
+  run: nv-two-stage
+  # run: keras_20ng_embonly_notrain
+  # folder to store serialization results
+  serialization: "serialization"
+  # folder to supply raw data, where applicable
+  raw_data: raw_data
+
+misc:
+  csv_separator: " "
+  seed: 1337
+  keys:
+    googleapi: my-google-api-key 
+  allow_output_deserialization: False
