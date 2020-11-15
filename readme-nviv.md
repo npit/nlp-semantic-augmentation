@@ -29,8 +29,8 @@ sudo apt -y install tar gzip wget
 wget "http://archive.aueb.gr:8085/files/grcorpus_def.vec.gz" -O embeddings.gz && gunzip -c embeddings.gz > embeddings.csv && rm embeddings.gz
 # Remove problematic entries (trailing whitespace and problematic tokens)
  sed -i "s/ $//g" embeddings.csv
- sed -i "s/[\!(]//g" embeddings.csv
- sed -i "s/^[ ]//g" embeddings.csv
+ sed -i "s/[\!()\#]//g" embeddings.csv
+ sed -i "/^ /d" embeddings.csv
 # Remove header and rename
 tail -n +2 embeddings.csv > greek_word2vec.csv
 rm embeddings.csv
