@@ -53,13 +53,19 @@ cp nv-ngram-twostage.yml.example nv-ngram-twostage.yml
 ```
 ## Execution
 Run the API via:
-`python3 main.py nv-twostage.yml`
+
+```
+python3 main.py nv-twostage.yml
+```
+
 ## Rest call examples
 For API invokation examples and explanation, `rest-examples.sh`
 
 ## Codebase update
 Just update the branch via git:
-`git pull origin nviv`
+```
+git pull origin nviv
+```
 
 ## Changing pretrained models
 
@@ -73,21 +79,16 @@ The pretrained embeddings basename should be set to the configuration field sequ
 The pretrained classifier files should be set in the configuration file under the following two field sequencies:
 - `chains` - `lrn_binary` - `model_path`
 - `chains` - `lrn_multiclass` - `model_path`
-Use just the path to the `.model` file, making sure the corresponding `.model.wrapper` lies in the same directory.
 
 ### Data & info
-The data used for classifier training:
+The data used to build the pretrained classifiers were generated using [the tools in this repository](https://gitlab.com/npit/word-level-transcription-classification), using parameters are as below:
 - Texts: 14117 instances of transcriptions - ground truth pairs
-- Binary Preproc:
-   - before/after context of 3 tokens, discarding of data with no available context
-   - lowercase, punctuation removal
-   - truncation of longer sequence in trasncription / gt pairs
+- Preprocessing:
+   - Data were split to ngrams, using a before/after context (around each word) of 3 tokens max, discarding data with no available context (i.e. single-word instances).
+   - Lowercasing & punctuation removal
+   - Sequence alignment: Truncation of longer sequence in trasncription / gt pairs
 - Word embeddings: Greek word2vec (http://archive.aueb.gr:7000/resources/). Concatenation of before-context, center and after-context portions of the data.
 - Classifiers: Logistic regresion for both binary and multiclass classification.
 
 ### Rest
-See `rest-examples.sh`
-
-- look into swagger (documentation gia REST apis)
-- REST codes, inject swagger
-
+See `rest-examples.sh`. Will provide swagger-based documentation in the future.
