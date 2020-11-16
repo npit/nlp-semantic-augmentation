@@ -21,10 +21,28 @@ Install the package dependencies stored in `package-dependencies.txt`.
 sudo apt update && sudo apt install -y $(cat package-dependencies.txt)
 ```
 
+### Python 3.8
+To install the latest python environment for older systems:
+Install the package:
+```
+sudo apt install software-tools curl
+sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt update
+sudo apt install python3.8 python3.8-distutils
+```
+Get up-to-date pip:
+```
+sudo apt remove python3-pip
+curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+python3.8 get-pip.py
+python3.8 -m pip install --upgrade pip
+
+```
+Use `python3.8` in all following commands (and/or use aliasing).
+
 ### Python Packages
 Install the python3 package dependencies stored in `dependencies.txt`:
 ```
-pip3 install --user -r dependencies.txt
+python3 -m pip install --user -r dependencies.txt
 ```
 
 
