@@ -18,7 +18,7 @@ chains:
   ngramize: {link: data, manip: { name: ngram, window: [3,3] }}
 
   # map to embeddings
-  rep: {link: ngramize, representation: {name: greek.small, aggregation: avg}}
+  rep: {link: ngramize, representation: {name: greek_word2vec, aggregation: avg}}
 
   # slice the center, before, after portions, concatenate
   sliceb: {link: rep, manip: {name: slice, tag: before}}
@@ -31,7 +31,7 @@ chains:
     link: [concat]
     learner:
       name: logreg
-      model_path: "/home/nik/work/nomiki-vivliothiki/model-building/nv-binary/results/models/logregvalportion_0.2.model_0.model"
+      model_path: binary.model
 
   # binary prediction thresholding
   binary_thresh:
@@ -52,7 +52,7 @@ chains:
     link: [slicebin]
     learner:
       name: logreg
-      model_path: "/home/nik/work/nomiki-vivliothiki/model-building/nv-multiclass/results/models/logregvalportion_0.2.model_0.model"
+      model_path: multiclass.model
 
   multiclass_thresh:
     link: [lrn_multiclass]
@@ -85,7 +85,7 @@ chains:
         pred_chains: [lrn_binary, lrn_multiclass]
         # threshold application indexes
         idx_tags: [binary_thresh, multiclass_thresh]
-        label_mappings: [["keep", "replace"], "/home/nik/work/nomiki-vivliothiki/word-level-transcription-classification/ngram-data/labelmapping_nocontext_drop_context_3_3_lowered_nodiacritics_truncate_mc-data-and-annotation.json"]
+        label_mappings: [["keep", "replace"], "labelmapping.json"]
         top_k: 5
 
 # global settings

@@ -61,8 +61,9 @@ class Embedding(Representation):
         # word - vector correspondence
         if not self.data_pool.has_resource(path):
             try:
+                info(f"Reading embedding mapping file {path}...")
                 self.embeddings_source = pd.read_csv(path, sep=self.config.misc.csv_separator, header=None, index_col=0)
-                info(f"Read embeddings of shape {self.embeddings_source.shape} using csv [separator]: [{self.config.misc.csv_separator}]")
+                info(f"Read embedding mapping file of shape {self.embeddings_source.shape} using csv [separator]: [{self.config.misc.csv_separator}]")
                 self.data_pool.add_resource(path, self.embeddings_source)
                 info(f"Storing resource")
             except ParserError as pe:
