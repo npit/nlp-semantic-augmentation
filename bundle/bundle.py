@@ -214,8 +214,8 @@ class DataPool:
                     warning("Examined current inputs for client {client}:")
                     for i, c in enumerate(curr_inputs):
                         warning(f"{i+1}/{len(curr_inputs)}: {str(c)}")
-                warning(f"Feeder chains/components: {self.feeder_chains}/{self.feeder_components}")
-                error(on_error_message + f" Requested: {data_type}, {'/'.join(usage)}. matches: {len(res)} candidates but requested a singleton.")
+                warning(f"Feeder chains: {self.feeder_chains}, components:{self.feeder_components}")
+                error(on_error_message + f" Requested: type: {data_type}, usages: {'/'.join(usage)}, usage-matching: {usage_matching}. \n num matches: {len(res)}.")
             res = res[0]
         else:
             # else keep all and drop empty ones
@@ -388,3 +388,7 @@ class DataPool:
     def set_chain_name(self, name):
         self.chain_name = name
     # endregion
+
+    def __str__(self):
+        return "\n".join(str(dat) for dat in self.data)
+
