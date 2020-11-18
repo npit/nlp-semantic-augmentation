@@ -211,7 +211,7 @@ class DataPool:
                 if len(curr_inputs) == 0:
                     warning("No available current inputs to fetch requrested data from! Did you omit a cross-chain linkage?")
                 else:
-                    warning("Examined current inputs for client {client}:")
+                    warning(f"Examined current inputs for requesting client {client}:")
                     for i, c in enumerate(curr_inputs):
                         warning(f"{i+1}/{len(curr_inputs)}: {str(c)}")
                 warning(f"Feeder chains: {self.feeder_chains}, components:{self.feeder_components}")

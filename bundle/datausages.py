@@ -135,10 +135,19 @@ class Indices(DataUsage):
         return True
 
 
-    def add_instance(self, idx, tag):
-        self.instances.append(idx)
-        self.tags.append(tag)
-        error(f"Adding role {tag} to index with non-equal instances: {len(self.instances)} and tags {len(self.tags)}", len(self.instances) != len(self.tags))
+    def add_instance(self, new_idx, new_tag):
+        if new_tag in self.tags:
+            # merge the instances
+            instance_idx = self.tags.index(new_tag)
+            inst = self.instances[instance_idx]
+            # diffs = np.concatenate([np.setdiff1d(inst, new_idx), np.setdiff1d(new_idx, inst)])
+            new_idx = np.setdiff1d(new_idx, inst)
+            inst = np.append(inst, new_idx, axis=0)
+            self.instances[instance_idx] = inst
+            return
+        self.instances.append(new_idx)
+        self.tags.append(new_tag)
+        error(f"Adding role {new_tag} to index with non-equal instances: {len(self.instances)} and tags {len(self.tags)}", len(self.instances) != len(self.tags))
 
     def __str__(self):
         dat = ", ".join([f"{t}: {len(x)}" for (x, t) in zip(self.instances, self.tags)])

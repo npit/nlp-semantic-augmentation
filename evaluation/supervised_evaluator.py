@@ -54,35 +54,30 @@ class SupervisedEvaluator(Evaluator):
         # df.index.name = "measure_label-aggr"
         return df
 
-    def get_evaluation_input(self, prediction_index, predictions=None):
+    def get_evaluation_input(self, predictions, indexes):
         """Retrieve input data to evaluation function(s)
 
         For supervised evaluation, retrieve ground truth and predictions
         """
-        if predictions is None:
-            predictions = self.predictions
-        # fetch predictions instance
-        preds = super().get_evaluation_input(prediction_index, predictions)
-        # fetch the indices to the labels the prediction batch corresponds to
-        idx = self.reference_indexes[prediction_index]
-        # fetch the labels wrt. the indices
-        labels = self.labels.get_slice(idx)
+        # # fetch predictions instance
+        # preds = super().get_evaluation_input(prediction_index, predictions)
+        # # fetch the indices to the labels the prediction batch corresponds to
+        # idx = self.reference_indexes[prediction_index]
+        # compute the argmax
+        # # fetch the labels wrt. the indices
+        labels = self.labels.get_slice(indexes)
 
         # preds = self.preprocess_predictions(preds)
         # labels = self.preprocess_ground_truth(labels)
-        return (labels, preds)
+        return (labels, predictions)
 
 
     # measure functions
 
     def preprocess_predictions(self, predictions):
-        return predictions
-
-        for i in range(len(predictions)):
-            preds = predictions[i]
-            if preds.ndim == 1:
-                preds = np.expand_dims(preds, axis=0)
-            predictions[i] = np.argmax(preds, axis=1)
+        if predictions.ndim == 1:
+            predictions = np.expand_dims(predictions, axis=0)
+        predictions = np.argmax(predictions, axis=1)
         return predictions
 
     def preprocess_ground_truth(self, gt):
@@ -101,12 +96,11 @@ class SupervisedEvaluator(Evaluator):
             res[lbl_aggr] = {self.iterations_alias:[]}
             iter_values = res[lbl_aggr][self.iterations_alias]
 
-            for i in indexes:
-                gt, preds = self.get_evaluation_input(i, predictions=predictions)
-                score = self.measure_funcs[measure](gt, preds, lbl_aggr if lbl_aggr != "none" else None)
-                iter_values.append(score)
-            # compute aggregation of the multiple-iterations
-            res[lbl_aggr] = self.aggregate_iterations(res[lbl_aggr])
+            gt, preds = self.get_evaluation_input(predictions, indexes)
+            score = self.measure_funcs[measure](gt, preds, lbl_aggr if lbl_aggr != "none" else None)
+            iter_values.append(score)
+            # # compute aggregation of the multiple-iterations
+            # res[lbl_aggr] = self.aggregate_iterations(res[lbl_aggr])
         return res
 
 
@@ -125,18 +119,17 @@ class SupervisedEvaluator(Evaluator):
                     self.aggregate_iterations(out_dict["all_tags"][role][measure][laggr])
 
 
-    def compute_additional_info(self, predictions, index, key):
+    def compute_additional_info(self, predictions, indexes, key):
         # compute label distributions
         # tuplelist to string
         tl2s = lambda tlist: ", ".join(f"({x}: {y})" for (x,y) in tlist)
 
-        for i in index:
-            gt, preds = self.get_evaluation_input(i, predictions=predictions)
-            info(f"{key} | predictions batch #{i+1} ({len(preds)} instances) Label distros:")
-            gt_distr, preds_distr = count_occurences(gt), count_occurences(preds)
+        gt, preds = self.get_evaluation_input(predictions, indexes)
+        info(f"{key} | predictions ({len(preds)} instances) Label distros:")
+        gt_distr, preds_distr = count_occurences(gt), count_occurences(preds)
 
-            info(f"gt:    {tl2s(gt_distr)}")
-            info(f"preds: {tl2s(preds_distr)}")
+        info(f"gt:    {tl2s(gt_distr)}")
+        info(f"preds: {tl2s(preds_distr)}")
 
     def evaluate_baselines(self):
         super().evaluate_baselines()

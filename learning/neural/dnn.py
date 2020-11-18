@@ -34,9 +34,9 @@ class DNN:
         self.assign_embedding_data(model_instance)
         model_instance.test_index = torch.LongTensor(self.test_index)
 
-    def get_model_filename(self):
+    def get_model_filename(self, model_index=None):
         """Get model base filename"""
-        return self.neural_model_class.name + super().get_model_filename()
+        return self.neural_model_class.name + super().get_model_filename(model_index)
 
     def test_model(self, model_instance):
         """Testing function"""
