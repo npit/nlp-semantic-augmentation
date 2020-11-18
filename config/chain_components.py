@@ -162,21 +162,21 @@ class learner_conf(Configuration):
 
         # training parameters
         self.train = learner_conf.train()
-        if "train" in config:
-            config = config["train"]
-            getval = lambda x, y, et=None: self.get_value(x, default=y, base=config["train"], expected_type=et)
-            self.train.epochs = getval("epochs", 50)
-            self.train.batch_size = getval("batch_size", 50)
-            self.train.train_embedding = getval("train_embedding", False)
-            self.train.optimizer = getval("optimizer", "sgd")
-            self.train.lr_scheduler = getval("lr_scheduler", None)
-            self.train.base_lr = getval("base_lr", 0.01)
-            self.train.folds = getval("folds", None)
-            self.train.validation_portion = getval("validation_portion", None)
-            self.train.early_stopping_patience = getval("early_stopping_patience", None)
-            self.train.sampling_method = getval("sampling_method", None)
-            self.train.sampling_ratios = getval("sampling_ratios", None, list)
-            self.save_interval =  getval("save_interval", 1)
+        trconf = config["train"] if "train" in config else {}
+
+        getval = lambda x, y, et=None: self.get_value(x, default=y, base=trconf, expected_type=et)
+        self.train.epochs = getval("epochs", 50)
+        self.train.batch_size = getval("batch_size", 50)
+        self.train.train_embedding = getval("train_embedding", False)
+        self.train.optimizer = getval("optimizer", "sgd")
+        self.train.lr_scheduler = getval("lr_scheduler", None)
+        self.train.base_lr = getval("base_lr", 0.01)
+        self.train.folds = getval("folds", None)
+        self.train.validation_portion = getval("validation_portion", None)
+        self.train.early_stopping_patience = getval("early_stopping_patience", None)
+        self.train.sampling_method = getval("sampling_method", None)
+        self.train.sampling_ratios = getval("sampling_ratios", None, list)
+        self.save_interval =  getval("save_interval", 1)
 
 class report_conf(Configuration):
     conf_key_name = "report"
@@ -184,9 +184,6 @@ class report_conf(Configuration):
         super().__init__(config)
         self.name = config["name"]
         self.params = self.get_value("params", default={})
-
-class trigger_receptor(Configuration):
-    conf_key_name = "triggered"
 
 class link_conf(Configuration):
     """Defines chains to be passed as input to the current 
@@ -208,16 +205,17 @@ class evaluator_conf(Configuration):
     """Component for evaluating"""
     conf_key_name = "evaluator"
 
-    def __init__(self, config):
+    def __init__(self, config=None):
         super().__init__(config)
         if config is None:
-            return
+            config = {}
         self.baselines = self.get_value("baselines", base=config)
         self.averages = self.get_value("averages", base=config, default=True)
         self.top_k = self.get_value("top_k", base=config, default=3, expected_type=int)
         self.iter_aggregations = self.get_value("iter_aggregations", base=config)
         self.label_aggregations = self.get_value("label_aggregations", base=config)
-        self.measures = self.get_value("measures", base=config)
+        self.measures = self.get_value("measures", default=["f1"], base=config)
+        self.measures = as_list(self.measures)
         self.label_distribution = self.get_value("show_label_distributions", base=config, default="logs")
 
 class endpoint_conf(Configuration):
@@ -233,6 +231,6 @@ class endpoint_conf(Configuration):
 
 def get_chain_component_classes():
     res = [manip_conf, dataset_conf, representation_conf, semantic_conf, learner_conf]
-    res += [link_conf, evaluator_conf, endpoint_conf, trigger_receptor]
+    res += [link_conf, evaluator_conf, endpoint_conf]
     res += [report_conf]
     return res

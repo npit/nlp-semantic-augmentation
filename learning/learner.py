@@ -38,15 +38,6 @@ class Learner(Serializable):
     train_embedding = None
     model_index = None
 
-    # # store information pertaining to the learning run(s) executed
-    # predictions = []
-    # prediction_tags = []
-    # prediction_roles = []
-    # prediction_indexes = []
-    # prediction_model_indexes = []
-
-    # models = None
-
     def __init__(self, consumes=None):
         """Generic learning constructor
         """
@@ -54,7 +45,6 @@ class Learner(Serializable):
         Serializable.__init__(self, "")
         self.models = []
         self.predictions = []
-        self.prediction_tags = []
         self.prediction_roles = []
         self.prediction_indexes = []
         self.prediction_model_indexes = []
@@ -112,7 +102,7 @@ class Learner(Serializable):
         pass
 
     def get_all_preprocessed(self):
-        return (self.predictions, self.prediction_tags, self.prediction_indexes)
+        return (self.predictions, self.output_usage.to_json())
 
     def make(self):
         # get handy variables
@@ -146,15 +136,8 @@ class Learner(Serializable):
     # function to retrieve training data as per the existing configuration
     def configure_trainval_indexes(self):
         """Retrieve training/validation instance indexes
-
-        :returns: 
-        :rtype: 
-
         """
         trainval_idx = self.validation.get_trainval_indexes()
-
-        # get train/val splits
-        trainval_serialization_file = join(self.config.folders.run, self.get_trainval_serialization_file())
 
         # do sampling 
         if self.do_sampling:
@@ -271,8 +254,7 @@ class Learner(Serializable):
         # apply the learning model on the input data
         # produce pairing with ground truth for future evaluation
         # training data
-        self.predictions = []
-        self.prediction_tags = []
+        self.predictions = None
         self.prediction_indexes = []
         self.prediction_model_indexes = []
         self.prediction_roles = []
@@ -292,6 +274,8 @@ class Learner(Serializable):
                 train_indexes *= num_models
                 test_indexes *= num_models
 
+        # make the output usage object
+        self.output_usage = None
         for model_index, model in enumerate(self.models):
             self.model_index = model_index
             train, test = train_indexes[model_index], test_indexes[model_index]
@@ -314,23 +298,34 @@ class Learner(Serializable):
         if len(self.test_index) == 0:
             warning(f"Attempted to apply {self.name} model on empty indexes!")
             return
+
+        # generate predictions
         predictions = self.test_model(model)
 
-        # keep track of:
-        # output predictions and tags
-        self.predictions.append(predictions)
-        # self.prediction_tags.append(tag)
-        self.prediction_roles.append(tag)
-        # corresponding model
-        self.prediction_model_indexes.append(f"model_{self.model_index}")
-        # corresponding indexes to instance / label data
-        self.prediction_indexes.append(self.test_index)
+        pred_idx = np.arange(len(predictions))
+        # keep track output predictions and tags
+        if self.predictions is None:
+            self.predictions = predictions
+        else:
+            pred_idx += len(self.predictions)
+            self.predictions = np.append(self.predictions, predictions, axis=0)
+        
+        # mark the model
+        model_id = f"model_{self.model_index}"
+        if self.output_usage is None:
+            self.output_usage = Predictions(pred_idx, model_id)
+        else:
+            self.output_usage.add_instance(pred_idx, model_id)
+
+        # mark the tag
+        self.output_usage.add_instance(pred_idx, tag)
+        # mark the correspondence to the input instances
+        self.output_usage.add_instance(self.test_index, defs.roles.inputs)
 
     def save_outputs(self):
         """Save produced predictions"""
-        for m in range(len(self.predictions)):
-            predictions_file = self.get_predictions_file(m) 
-            write_pickled(predictions_file, [self.predictions[m], self.prediction_indexes[m]])
+        predictions_file = self.get_predictions_file() 
+        write_pickled(predictions_file, [self.predictions, self.output_usage.instances, self.output_usage.tags])
 
     def load_model_from_disk(self):
         """Load the component's model from disk"""
@@ -370,10 +365,7 @@ class Learner(Serializable):
         self.data_pool.add_data_packs([pred], self.name)
 
     def get_predictions_datapack(self):
-        pred = Numeric(np.concatenate(self.predictions))
-        preds_usage = Predictions(self.prediction_indexes, tags=self.prediction_roles)
-        preds_usage.add_tags(self.prediction_model_indexes)
-        pred = DataPack(pred, preds_usage)
+        pred = DataPack(Numeric(self.predictions), self.output_usage)
         return pred
 
     def load_model_wrapper(self):

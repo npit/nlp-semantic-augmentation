@@ -5,11 +5,9 @@ from utils import debug, error, info, warning
 class Pipeline:
     """A collection of execution chains"""
     chains = None
-    trigger_recipient_chains = None
 
     def __init__(self):
         """Constructor"""
-        self.trigger_recipient_chains = []
         self.chains = {}
         self.data_pool = DataPool()
 
@@ -165,8 +163,6 @@ class Pipeline:
     def add_chain(self, chain):
         """Add a chain to the pipeline"""
         chain_name = chain.get_name()
-        if chain.triggered:
-            self.trigger_recipient_chains.append(chain)
         error("Duplicate chain: {}".format(chain_name), chain_name in self.chains)
         self.chains[chain_name] = chain
 

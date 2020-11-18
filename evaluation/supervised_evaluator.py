@@ -76,6 +76,8 @@ class SupervisedEvaluator(Evaluator):
     # measure functions
 
     def preprocess_predictions(self, predictions):
+        return predictions
+
         for i in range(len(predictions)):
             preds = predictions[i]
             if preds.ndim == 1:
@@ -101,7 +103,7 @@ class SupervisedEvaluator(Evaluator):
 
             for i in indexes:
                 gt, preds = self.get_evaluation_input(i, predictions=predictions)
-                score = self.measure_funcs[measure](gt, preds, lbl_aggr if lbl_aggr is not "none" else None)
+                score = self.measure_funcs[measure](gt, preds, lbl_aggr if lbl_aggr != "none" else None)
                 iter_values.append(score)
             # compute aggregation of the multiple-iterations
             res[lbl_aggr] = self.aggregate_iterations(res[lbl_aggr])

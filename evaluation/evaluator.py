@@ -1,7 +1,7 @@
 from component.component import Component
 from serializable import Serializable
 from bundle.datatypes import *
-from bundle.datausages import *
+from bundle.datausages import Predictions
 import numpy as np
 from utils import write_pickled, error, warning, info
 from os.path import join
@@ -47,7 +47,7 @@ class Evaluator(Serializable):
     def produce_outputs(self):
         self.results = {"run":{}}
 
-        self.evaluate_baselines()
+        # self.evaluate_baselines()
 
         info("Evaluating run")
         self.predictions = self.preprocess_predictions(self.predictions)
@@ -59,7 +59,7 @@ class Evaluator(Serializable):
 
     def evaluate_baselines(self):
         # baselines
-        prediction_shape = self.predictions[0].shape
+        prediction_shape = self.predictions.shape
 
         info("Evaluating random baseline")
         self.results["random"] = {}
@@ -124,13 +124,31 @@ class Evaluator(Serializable):
         return np.round(val, self.print_precision)
 
     def evaluate_predictions(self, predictions, key, override_tags_roles=None):
-        """Perform all evaluations on given predictions"""
+        """Perform all evaluations on given predictions
+        Perform a two-step hierarchical aggregation:
+        Outer: any tag that's not inner
+        Inner: "train", "test"
+        """
         out_dict = self.results[key]
-        if override_tags_roles is None:
-            tags, roles = self.tags, self.roles
-        else:
-            tags, roles = override_tags_roles
-            tags, roles = [tags], [roles]
+        outer = [t for t in self.tags if t not in [defs.roles.train, defs.roles.test, defs.roles.inputs]]
+        inner = [t for t in self.tags if t in [defs.roles.train, defs.roles.test]]
+
+        # if override_tags_roles is None:
+        #     tags = self.tags
+        # else:
+        #     tags, roles = override_tags_roles
+        #     tags, roles = [tags], [roles]
+
+        for outer_tag in outer:
+            out_idx = self.indexes[self.tags.index(outer_tag)]
+            out_dict[outer_tag] = {}
+            for inner_tag in inner:
+                out_dict[outer_tag][inner_tag] = {}
+
+                in_idx = self.indexes[self.tags.index(inner_tag)]
+                joint_idx = np.intersect1d(out_idx, in_idx)
+                current_predictions = self.predictions[joint_idx, :]
+
 
         # group by tag
         for tag in set(tags):
@@ -205,11 +223,16 @@ class Evaluator(Serializable):
     def get_component_inputs(self):
         # fetch predictions
         preds_datapack = self.data_pool.request_data(None, Predictions, usage_matching="exact", client=self.name)
+        # get numeric prediction data
         self.predictions = preds_datapack.data.instances
-        self.reference_indexes = preds_datapack.get_usage(Predictions).instances
 
+        # get indices
         preds_usage = preds_datapack.get_usage(Predictions)
-        self.roles, self.tags = preds_usage.roles, preds_usage.tags
+        self.tags = preds_usage.tags
+        # ensure unique tags
+        error(f"Evaluation requires unique tagset, got {self.tags}", len(self.tags) != len(set(self.tags)))
+        self.indexes = preds_usage.instances
+
 
     def get_results(self):
         return self.results
