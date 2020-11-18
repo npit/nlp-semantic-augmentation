@@ -6,6 +6,7 @@ import numpy as np
 from utils import write_pickled, error, warning, info
 from os.path import join
 import json
+import defs
 
 import pandas as pd
 
@@ -67,31 +68,38 @@ class Evaluator(Serializable):
         rand_preds = self.preprocess_predictions(rand_preds)
         self.evaluate_predictions(rand_preds, "random", override_tags_roles=("model", "rand-baseline"))
 
-
     def print_results(self):
+        # print results per runtype / tag / role
         for results_type in self.results:
-            # info(f"{results_type} | {self.iterations_alias} {' '.join(self.iteration_aggregations)}:")
             for tag in self.results[results_type]:
                 for role in self.results[results_type][tag]:
-                    df = pd.DataFrame(columns=[self.iterations_alias] + list(self.iteration_aggregations))
+                    if tag == "all_tags":
+                        # include aggregation stats
+                        df = pd.DataFrame(columns=[self.iterations_alias] + list(self.iteration_aggregations))
+                    else:
+                        df = pd.DataFrame(columns=["score"])
                     for measure in self.results[results_type][tag][role]:
                         self.print_measure(measure, self.results[results_type][tag][role][measure], df=df)
 
-                    # display the result
-                    pd.options.display.max_rows = 999
-                    pd.options.display.max_columns = 999
-                    pd.options.display.precision = 3
+                    self.print_results_dataframe(df, f"{results_type}-{tag}-{role}:")
 
-                    df = self.set_printable_info(df)
-                    if df.size == 0:
-                        continue
-                    info(f"{results_type}-{tag}-{role}:")
-                    info("-------------------------------")
-                    for k in df.to_string().split("\n"):
-                        info(k)
-                    info("-------------------------------")
+    def print_results_dataframe(self, df, prefix):
+        """Display results"""
+        # display the result
+        pd.options.display.max_rows = 999
+        pd.options.display.max_columns = 999
+        pd.options.display.precision = 3
 
-    def compute_additional_info(self):
+        df = self.set_printable_info(df)
+        if df.size == 0:
+            return
+        info(f"{prefix}")
+        info("-------------------------------")
+        for k in df.to_string().split("\n"):
+            info(k)
+        info("-------------------------------")
+
+    def compute_additional_info(self, p, i, m):
         """Print additional information on the run"""
         pass
 
@@ -130,7 +138,8 @@ class Evaluator(Serializable):
         Inner: "train", "test"
         """
         out_dict = self.results[key]
-        outer = [t for t in self.tags if t not in [defs.roles.train, defs.roles.test, defs.roles.inputs]]
+        # outer evaluation tags: model instances
+        outer = [t for t in self.tags if t.startswith("model") and not t.endswith(defs.roles.inputs)]
         inner = [t for t in self.tags if t in [defs.roles.train, defs.roles.test]]
 
         # if override_tags_roles is None:
@@ -143,33 +152,26 @@ class Evaluator(Serializable):
             out_idx = self.indexes[self.tags.index(outer_tag)]
             out_dict[outer_tag] = {}
             for inner_tag in inner:
-                out_dict[outer_tag][inner_tag] = {}
-
+                # get prediction indexes
                 in_idx = self.indexes[self.tags.index(inner_tag)]
                 joint_idx = np.intersect1d(out_idx, in_idx)
-                current_predictions = self.predictions[joint_idx, :]
+                current_predictions = self.predictions[joint_idx]
 
+                # get the indexes to the input data
+                input_tag = f"{outer_tag}_{inner_tag}_{defs.roles.inputs}"
+                input_idx = self.indexes[self.tags.index(input_tag)]
 
-        # group by tag
-        for tag in set(tags):
-            tag_idx = [i for i, t in enumerate(tags) if t == tag]
-            out_dict[tag] = {}
-            # group by role
-            for role in set(roles):
-                idx = [i for i in tag_idx if roles[i] == role]
-                if not idx:
-                    continue
-                out_dict[tag][role] = {}
+                out_dict[outer_tag][inner_tag] = {}
 
-                # iterate over all measures
                 for measure in self.available_measures:
-                    result = self.evaluate_measure(predictions, idx, measure)
-                    out_dict[tag][role][measure] = result
-                self.compute_additional_info(predictions, idx, f"{key}-{tag}-{role}")
+                    result = self.evaluate_measure(current_predictions, input_idx, measure)
+                    out_dict[outer_tag][inner_tag][measure] = result
+                self.compute_additional_info(current_predictions, input_idx, f"{key}-{outer_tag}-{inner_tag}")
 
-        if len(tags) > 1:
+        if len(outer) > 1:
             out_dict["all_tags"] = {}
-            self.aggregate_tags(tags, roles, out_dict)
+            self.aggregate_tags(outer, inner, out_dict)
+        print()
 
     def aggregate_tags(self, tags, roles, out_dict):
         # perform an aggregation across all tags as well, if applicable

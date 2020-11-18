@@ -55,7 +55,6 @@ class Learner(Serializable):
 
     def read_config_variables(self):
         """Shortcut function for readding a load of config variables"""
-        self.allow_prediction_loading = self.config.allow_prediction_loading
 
         self.sequence_length = self.config.sequence_length
 
@@ -126,7 +125,7 @@ class Learner(Serializable):
     def get_predictions_file(self, model_index=None, tag="test"):
         if tag:
             tag += "."
-        return join(self.get_results_folder(),  self.get_model_filename() + "." + tag + "predictions.pkl")
+        return join(self.get_results_folder(),  self.get_model_filename(model_index) + "." + tag + "predictions.pkl")
 
     def get_existing_model_path(self):
         path = self.get_current_model_path()
@@ -200,7 +199,9 @@ class Learner(Serializable):
 
     def get_model_filename(self, model_index=None):
         """Retrieve model filename"""
-        model_id = "" if self.model_index is None else f".model_{self.model_index}"
+        if model_index is None:
+            model_index = self.model_index
+        model_id = "" if model_index is None else f".model_{model_index}"
         return self.name + get_info_string(self.config) + model_id  + ".model"
 
     def get_results_folder(self):
@@ -221,16 +222,15 @@ class Learner(Serializable):
     # region: component functions
     def load_outputs_from_disk(self):
         self.set_serialization_params()
-        self.add_serialization_source(self.get_predictions_file(), reader=read_pickled, handler=lambda x: x)
-        if not self.config.allow_prediction_loading:
-            return False
+        self.add_serialization_source(self.get_predictions_file("total"), reader=read_pickled, handler=lambda x: x)
         return self.load_existing_predictions()
 
     def load_existing_predictions(self):
         """Loader function for existing, already computed predictions. Checks for label matching."""
         # get predictions and instance indexes they correspond to
         try:
-            self.predictions, self.prediction_indexes = read_pickled(self.get_predictions_file())
+            self.predictions, pred_instances, pred_tags = read_pickled(self.get_predictions_file("total"))
+            self.output_usage = Predictions(pred_instances, pred_tags)
         except FileNotFoundError:
             return False
         # also check labels
@@ -320,11 +320,11 @@ class Learner(Serializable):
         # mark the tag
         self.output_usage.add_instance(pred_idx, tag)
         # mark the correspondence to the input instances
-        self.output_usage.add_instance(self.test_index, defs.roles.inputs)
+        self.output_usage.add_instance(self.test_index, f"{model_id}_{tag}_{defs.roles.inputs}")
 
     def save_outputs(self):
         """Save produced predictions"""
-        predictions_file = self.get_predictions_file() 
+        predictions_file = self.get_predictions_file("total") 
         write_pickled(predictions_file, [self.predictions, self.output_usage.instances, self.output_usage.tags])
 
     def load_model_from_disk(self):
@@ -361,12 +361,8 @@ class Learner(Serializable):
         """Set the output data of the clusterer"""
         # predictions to output
         # predictions
-        pred = self.get_predictions_datapack()
-        self.data_pool.add_data_packs([pred], self.name)
-
-    def get_predictions_datapack(self):
         pred = DataPack(Numeric(self.predictions), self.output_usage)
-        return pred
+        self.data_pool.add_data_packs([pred], self.name)
 
     def load_model_wrapper(self):
         return True

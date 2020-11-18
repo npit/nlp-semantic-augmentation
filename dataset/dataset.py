@@ -111,6 +111,9 @@ class Dataset(Serializable):
         # that correpsonds to raw data
         # raw_data_idx = len(self.data_paths)-1
         # return self.attempt_load(raw_data_idx)
+        self.load_model_from_disk()
+
+    def save_model(self):
         pass
 
     def check_sanity(self):
