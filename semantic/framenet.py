@@ -22,7 +22,7 @@ class Framenet(SemanticResource):
     def analyze(self, inputs):
         """Analyzer function"""
         concepts = []
-        for word in inputs:
+        for word in inputs[:5]:
             concepts.extend(self.lookup(word))
         return concepts
 
