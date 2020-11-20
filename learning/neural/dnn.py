@@ -108,6 +108,10 @@ class DNN:
         input_dim_info = self.embeddings if self.embeddings is not None else self.input_shape
         return input_dim_info
 
+    def configure_model_after_inputs(self):
+        if not self.config.retain_embedding_matrix:
+            self.neural_model.update_embedding_layer(self.embeddings)
+
 class GenericSupervisedDNN(DNN):
     """Generic class for deep neural networks with ground truth"""
     def __init__(self):

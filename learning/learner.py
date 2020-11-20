@@ -353,6 +353,10 @@ class Learner(Serializable):
         # initialize current meta-indexes to data
         self.train_index = np.arange(len(self.train_embedding_index))
         self.test_index = np.arange(len(self.test_embedding_index))
+        self.configure_model_after_inputs()
+
+    def configure_model_after_inputs(self):
+        pass
 
     def get_data_from_index(self, index, embeddings):
         """Get data index from the embedding matrix"""

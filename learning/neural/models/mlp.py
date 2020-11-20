@@ -11,7 +11,6 @@ class MLPModel(BaseModel):
     name = "mlp"
     wrapper_name = "labelled_dnn"
 
-
     def __init__(self, config, embeddings_or_dim_info, output_dim, working_folder, model_name):
         super(MLPModel, self).__init__(config, self.wrapper_name, working_folder, model_name)
 
@@ -24,18 +23,25 @@ class MLPModel(BaseModel):
         # build final output layer
         self.linear_out = torch.nn.Linear(hidden_dim, output_dim)
 
-    def model_to_device(self):
-        # linear layers
-        for l in self.linear_layers:
-            l.to(self.device_name)
-        self.linear_out.to(self.device_name)
-        self.embedding_layer.to(self.device_name)
+    def update_embedding_layer(self, input_embedding_data):
+        """For MLP, if the embeddings are not word-based, there's no sense keeping the input embedding layer passed on from training.
+        If so, replace the embedding weights with the input data"""
+        # remake embedding layer
+        self.embedding_layer = neural_utils.make_embedding_layer(input_embedding_data, False)
+
+
+    # def model_to_device(self):
+    #     # linear layers
+    #     for l in self.linear_layers:
+    #         l.to(self.device_name)
+    #     self.linear_out.to(self.device_name)
+    #     self.embedding_layer.to(self.device_name)
 
     def forward(self, input_data):
         """Forward pass method"""
         # embedding output
         if self.embedding_layer is not None:
-            input_data = self.embedding_layer(input_data)
+             input_data = self.embedding_layer(input_data)
         # dense chain
         data = neural_utils.run_linear_chain(self.linear_layers, input_data, dropout_keep_prob=0.3)
 
