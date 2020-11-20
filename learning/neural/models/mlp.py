@@ -53,6 +53,9 @@ class MLPModel(BaseModel):
 
     def make_predictions(self, inputs):
         preds = super().make_predictions(inputs)
+        if preds.ndim == 1:
+            # make sure it's a 2D array
+            preds = preds.unsqueeze(0)
         # pass through softmax
         preds = F.softmax(preds, dim=1)
         return preds

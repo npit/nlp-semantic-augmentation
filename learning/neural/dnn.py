@@ -55,7 +55,8 @@ class DNN:
                 batch_predictions = self.process_predictions(batch_predictions)
                 # batch_predictions = model_instance(input_batch)
                 # account for possible batch padding TODO fix
-                batch_predictions = batch_predictions[:len(input_batch)]
+                input_len = input_batch.numel() if input_batch.ndim == 0 else len(input_batch)
+                batch_predictions = batch_predictions[:input_len]
                 predictions.append(batch_predictions)
         return np.concatenate(predictions, axis=0)
 
