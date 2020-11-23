@@ -55,7 +55,8 @@ class DNN:
                 batch_predictions = self.process_predictions(batch_predictions)
                 # batch_predictions = model_instance(input_batch)
                 # account for possible batch padding TODO fix
-                batch_predictions = batch_predictions[:len(input_batch)]
+                input_len = input_batch.numel() if input_batch.ndim == 0 else len(input_batch)
+                batch_predictions = batch_predictions[:input_len]
                 predictions.append(batch_predictions)
         return np.concatenate(predictions, axis=0)
 
@@ -107,6 +108,10 @@ class DNN:
     def get_embedding_info(self):
         input_dim_info = self.embeddings if self.embeddings is not None else self.input_shape
         return input_dim_info
+
+    def configure_model_after_inputs(self):
+        if not self.config.retain_embedding_matrix:
+            self.neural_model.update_embedding_layer(self.embeddings)
 
 class GenericSupervisedDNN(DNN):
     """Generic class for deep neural networks with ground truth"""

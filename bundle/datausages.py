@@ -207,6 +207,11 @@ class Labels(GroundTruth):
         res["multilabel"] = int(self.multilabel)
         return res
 
+    @staticmethod
+    def from_json(data):
+        return Labels(labelset=data["labelset"], multilabel=data["multilabel"])
+
+
 class DataPack:
     """Objects with data associated with data usages"""
     data = None

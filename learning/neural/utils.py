@@ -64,7 +64,8 @@ def run_linear_chain(layers_chain, input_data, activation_func=None, dropout_kee
 
     for layer in layers_chain:
         current_data = activation_func(layer(current_data))
-        if dropout_keep_prob is not None:
+        # activate dropout only when it's defined and the chain is training
+        if dropout_keep_prob is not None and layers_chain.training:
             current_data = F.dropout(current_data, p=dropout_keep_prob)
     return current_data
 

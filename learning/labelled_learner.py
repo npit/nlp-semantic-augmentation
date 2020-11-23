@@ -115,14 +115,18 @@ class LabelledLearner(SupervisedLearner):
 
     def save_model_wrapper(self):
         # get learner wrapper info
-        path = self.get_current_model_path() + ".wrapper"
+        path = self.get_wrapper_path()
         write_pickled(path, self.labels_info)
+
+    def get_wrapper_path(self):
+        return self.get_current_model_path() + ".wrapper"
 
     def load_model_wrapper(self):
         # get learner wrapper info
         try:
-            path = self.get_current_model_path() + ".wrapper"
+            path = self.get_wrapper_path()
             data = read_pickled(path, msg=f"{self.name} metadata")
+            self.labels_info = Labels.from_json(data)
             return self.process_label_information(data)
         except FileNotFoundError as ex:
             return False

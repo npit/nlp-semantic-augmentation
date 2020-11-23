@@ -50,10 +50,13 @@ class Wordnet(SemanticResource):
 
     def setup_nltk_resources(config):
         try:
-            info("Setting up WordNet...")
+            info("Probing WordNet...")
             wn.VERB
         except:
+            info("Installing WordNet...")
             nltk_download(config, "wordnet")
+            info("Probing WordNet...")
+            wn.VERB
 
     def fetch_raw(self, dummy_input):
         if self.base_name not in listdir(nltk.data.find("corpora")):

@@ -287,7 +287,7 @@ class SemanticResource(Serializable):
 
     def build_model_from_inputs(self):
 
-        info(f"Building {self.name} model")
+        info(f"Preparing {self.base_name} model")
         bagger = self.get_bagger()
         self.initialize_lookup()
         # read the semantic resource input-concept cache , if it exists

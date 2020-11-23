@@ -46,7 +46,6 @@ class Learner(Serializable):
         self.models = []
         self.predictions = []
         self.prediction_roles = []
-        self.prediction_indexes = []
         self.prediction_model_indexes = []
 
     # input preproc
@@ -131,6 +130,8 @@ class Learner(Serializable):
         path = self.get_current_model_path()
         return path if exists(path) else None
 
+    def get_model_path(self):
+        return self.get_current_model_path()
 
     # function to retrieve training data as per the existing configuration
     def configure_trainval_indexes(self):
@@ -179,8 +180,6 @@ class Learner(Serializable):
                 # set the train/val data indexes
                 self.train_index, self.val_index = trainval
 
-                # self.prediction_indexes.append(self.validation.get_prediction_indexes())
-
                 # train and keep track of the model
                 self.model_index = iteration_index
                 model = self.acquire_trained_model()
@@ -201,7 +200,14 @@ class Learner(Serializable):
         """Retrieve model filename"""
         if model_index is None:
             model_index = self.model_index
+<<<<<<< Updated upstream
         model_id = "" if model_index is None else f".model_{model_index}"
+=======
+        if model_index is None or self.validation.get_total_iterations() == 1:
+            model_id = ""
+        else:
+            model_id = f".model_{model_index}"
+>>>>>>> Stashed changes
         return self.name + get_info_string(self.config) + model_id  + ".model"
 
     def get_results_folder(self):
@@ -254,8 +260,13 @@ class Learner(Serializable):
         # apply the learning model on the input data
         # produce pairing with ground truth for future evaluation
         # training data
+<<<<<<< Updated upstream
         self.predictions = None
         self.prediction_indexes = []
+=======
+        self.configure_model_after_inputs()
+        self.predictions = None
+>>>>>>> Stashed changes
         self.prediction_model_indexes = []
         self.prediction_roles = []
 
@@ -348,6 +359,9 @@ class Learner(Serializable):
         # initialize current meta-indexes to data
         self.train_index = np.arange(len(self.train_embedding_index))
         self.test_index = np.arange(len(self.test_embedding_index))
+
+    def configure_model_after_inputs(self):
+        pass
 
     def get_data_from_index(self, index, embeddings):
         """Get data index from the embedding matrix"""

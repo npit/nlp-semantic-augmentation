@@ -158,6 +158,11 @@ class learner_conf(Configuration):
             self.num_clusters = self.get_value("num_clusters", default=None, base=config)
         self.use_gpu = self.get_value("use_gpu", default=True, base=config)
         self.do_test = self.get_value("do_test", default=True, base=config)
+<<<<<<< Updated upstream
+=======
+        self.retain_embedding_matrix = self.get_value("retain_embeddings", default=False, base=config)
+        self.allow_prediction_loading = self.get_value("allow_prediction_loading", default=False, base=config)
+>>>>>>> Stashed changes
 
         # training parameters
         self.train = learner_conf.train()
