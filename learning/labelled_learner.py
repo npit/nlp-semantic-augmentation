@@ -9,7 +9,7 @@ from defs import roles
 from learning.supervised_learner import SupervisedLearner
 from learning.sampling import Sampler
 from learning.validation.validation import ValidationSetting
-from utils import (count_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot, read_pickled, warning)
+from utils import (count_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot, read_pickled, read_json, warning)
 
 
 class LabelledLearner(SupervisedLearner):
@@ -125,9 +125,9 @@ class LabelledLearner(SupervisedLearner):
         # get learner wrapper info
         try:
             path = self.get_wrapper_path()
-            data = read_pickled(path, msg=f"{self.name} metadata")
+            data = read_json(path, msg=f"{self.name} metadata")
             self.labels_info = Labels.from_json(data)
-            return self.process_label_information(data)
+            return self.process_label_information(self.labels_info)
         except FileNotFoundError as ex:
             return False
 

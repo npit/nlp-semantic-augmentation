@@ -161,10 +161,6 @@ class Indices(DataUsage):
 class Predictions(Indices):
     """Usage for denoting learner predictions"""
     name = "predictions"
-    labelset = None
-
-    def add_ground_truth(self, labelset):
-        self.labelset = labelset
 
     def to_json(self):
         res = super().to_json()
@@ -172,9 +168,6 @@ class Predictions(Indices):
         if self.tags is not None:
             for tag in self.tags:
                 res["tags"].append(tag)
-        res["labelset"] = []
-        if self.labelset is not None:
-            res["labelset"] = list(sorted(self.labelset))
         return res
 
 class GroundTruth(DataUsage):
@@ -206,7 +199,7 @@ class Labels(GroundTruth):
 
     def to_json(self):
         res = super().to_json()
-        res["labelset"] = self.labelset
+        res["labelset"] = list(self.labelset)
         res["multilabel"] = int(self.multilabel)
         return res
 
