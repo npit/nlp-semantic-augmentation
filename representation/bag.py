@@ -18,27 +18,6 @@ class Bag:
     model = None
 
     class PBarCountVectorizer(CountVectorizer):
-<<<<<<< Updated upstream
-        pbar = None
-        def __init__(self, **kwargs):
-            CountVectorizer.__init__(self, **kwargs)
-
-        # def _analyze(**kwargs):
-        #     super()._analyze(**kwargs)
-
-        def build_analyzer(self):
-            """In-between function to update progress bar"""
-            analyzer_partial = super().build_analyzer()
-            return partial(self.progbar_updater, partial_obj=analyzer_partial, pbar=self.pbar)
-
-        @staticmethod
-        def progbar_updater(*args, **kwargs):
-            kwargs["pbar"].update()
-            partial_obj = kwargs["partial_obj"]
-            del kwargs["pbar"]
-            del kwargs["partial_obj"]
-            return partial_obj(*args, **kwargs)
-=======
         def __init__(self, **kwargs):
             CountVectorizer.__init__(self, **kwargs)
 
@@ -53,7 +32,6 @@ class Bag:
             del kwargs["analyzer_partial"]
             return analyzer_partial(*args, **kwargs)
 
->>>>>>> Stashed changes
 
     def set_min_features(self, threshold):
         """Populate thresholding"""
@@ -83,27 +61,7 @@ class Bag:
             ngram_range = (1, 1)
         self.ngram_range = ngram_range
         self.model = Bag.PBarCountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range,
-<<<<<<< Updated upstream
                                      analyzer=analyzer_arg, min_df=1, max_df=0.9, max_features=max_terms)
-=======
-                                     analyzer=self.analyzer, min_df=1, max_df=0.9, max_features=max_terms)
-
-
-        
-    # def default_analyzer(model):
-    #     stop_words = model.get_stop_words()
-    #     tokenize = model.build_tokenizer()
-    #     model._check_stop_words_consistency(stop_words, preprocess,
-    #                                         tokenize)
-    #     return partial(model._analyze, ngrams=model._word_ngrams,
-    #                     tokenizer=tokenize, preprocessor=model.preprocess,
-    #                     decoder=model.decode, stop_words=stop_words)
-
-
-    # def analyzer_wrapper(self, arg):
-    #     self.pbar.update()
-    #     self.analyzer(arg)
->>>>>>> Stashed changes
 
     def get_vocabulary(self):
         return self.model.get_feature_names()
@@ -114,10 +72,6 @@ class Bag:
             with tqdm.tqdm(total=len(text_collection), desc="Fitting bag model", ascii=True) as pbar:
                 self.model.pbar = pbar
                 self.model.fit(text_collection)
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
         if transform:
             with tqdm.tqdm(total=len(text_collection), desc="Applying bag model", ascii=True) as pbar:
                 self.model.pbar = pbar

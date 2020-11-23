@@ -98,7 +98,9 @@ class DataPool:
             matches = lambda x: x.source in self.explicit_outputs
             do_explicit_outputs = True
         else:
-            matches = lambda x: x.has_usage(Predictions, allow_superclasses=False) or type(x.data) is Dictionary
+            matches = lambda x: x.has_usage(Predictions, allow_superclasses=False) or  \
+                        x.has_usage(Labels) or \
+                        type(x.data) is Dictionary
         for dp in self.data:
             # by default, return dictionaries and predictions
             if matches(dp):

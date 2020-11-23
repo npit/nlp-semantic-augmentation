@@ -22,11 +22,7 @@ class Framenet(SemanticResource):
     def analyze(self, inputs):
         """Analyzer function"""
         concepts = []
-<<<<<<< Updated upstream
-        for word in inputs[:5]:
-=======
         for word in inputs:
->>>>>>> Stashed changes
             concepts.extend(self.lookup(word))
         return concepts
 

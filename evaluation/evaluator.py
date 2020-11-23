@@ -106,7 +106,7 @@ class Evaluator(Serializable):
     def set_printable_info(self, df):
         # iteration aggregations
         df.index.name = "measure"
-        df = df.drop(columns=[x for x in df.columns if x not in self.print_aggregations])
+        df = df.drop(columns=[x for x in df.columns if x not in self.print_aggregations and x != "score"])
         # measures
         df = df.drop(index=[x for x in df.index if not any (x.startswith(k) for k in self.print_measures)])
         return df

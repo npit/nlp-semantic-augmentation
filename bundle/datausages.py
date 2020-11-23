@@ -17,6 +17,9 @@ class DataUsage:
             ret.extend(scls.get_subclasses())
         return ret
 
+    def to_json(self):
+        return {}
+
 class Indices(DataUsage):
     """Indexes to a collection of data with train/test roles"""
     name = "indices"

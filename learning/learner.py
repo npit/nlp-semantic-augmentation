@@ -200,14 +200,7 @@ class Learner(Serializable):
         """Retrieve model filename"""
         if model_index is None:
             model_index = self.model_index
-<<<<<<< Updated upstream
         model_id = "" if model_index is None else f".model_{model_index}"
-=======
-        if model_index is None or self.validation.get_total_iterations() == 1:
-            model_id = ""
-        else:
-            model_id = f".model_{model_index}"
->>>>>>> Stashed changes
         return self.name + get_info_string(self.config) + model_id  + ".model"
 
     def get_results_folder(self):
@@ -260,13 +253,8 @@ class Learner(Serializable):
         # apply the learning model on the input data
         # produce pairing with ground truth for future evaluation
         # training data
-<<<<<<< Updated upstream
-        self.predictions = None
-        self.prediction_indexes = []
-=======
         self.configure_model_after_inputs()
         self.predictions = None
->>>>>>> Stashed changes
         self.prediction_model_indexes = []
         self.prediction_roles = []
 
