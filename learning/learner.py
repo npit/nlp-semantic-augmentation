@@ -363,8 +363,12 @@ class Learner(Serializable):
         """Set the output data of the clusterer"""
         # predictions to output
         # predictions
+        dp = self.make_predictions_datapack()
+        self.data_pool.add_data_packs([dp], self.name)
+
+    def make_predictions_datapack(self):
         pred = DataPack(Numeric(self.predictions), self.output_usage)
-        self.data_pool.add_data_packs([pred], self.name)
+        return pred
 
     def load_model_wrapper(self):
         return True

@@ -130,15 +130,24 @@ class LabelledLearner(SupervisedLearner):
             return self.process_label_information(self.labels_info)
         except FileNotFoundError as ex:
             return False
+        except (UnicodeDecodeError):
+            return False
 
     def load_model_from_disk(self):
-        self.model_loaded = super().load_model_from_disk()
-        # always load the model wrapper
+        # load the model wrapper
         loaded_wrapper = self.load_model_wrapper()
+        # load the regular model
+        self.model_loaded = super().load_model_from_disk()
         return self.model_loaded and loaded_wrapper
 
     def clear_model_wrapper(self):
         self.labels_info, self.labelset, self.do_multilabel = None, None, None
+
+    def make_predictions_datapack(self):
+        pred = super().make_predictions_datapack()
+        # add labels
+        pred.add_usage(self.labels_info)
+        return pred
 
     def process_label_information(self, data):
         labelset = data.labelset

@@ -85,9 +85,9 @@ class DNN:
         path = self.get_current_model_path()
         if not exists(path):
             return False
-        if not super().load_model_wrapper():
-            info(f"Failed to load wrapper metadata for {self.name}")
-            return False
+        # if not super().load_model_wrapper():
+        #     info(f"Failed to load wrapper metadata for {self.name}")
+        #     return False
         state_dict = self.load_model_weights(path)
         self.get_input_shape_from_weights(state_dict)
         # instantiate object

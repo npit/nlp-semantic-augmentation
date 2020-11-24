@@ -205,7 +205,7 @@ class Labels(GroundTruth):
 
     @staticmethod
     def from_json(data):
-        return Labels(labelset=data["labelset"], multilabel=data["multilabel"])
+        return Labels(labelset=data["labelset"], multilabel=bool(data["multilabel"]))
 
 
 class DataPack:
