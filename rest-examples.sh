@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Example script for running RESTful queries
+
 if [[ -z  $( which curl ) ]]; then 
 	echo "Need curl to run the rest examples"
 	exit 1
@@ -7,7 +9,6 @@ fi
 
 # settings
 #########
-echo "asdf"
 # endpoint
 ip="http://localhost"
 port=9998
