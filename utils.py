@@ -4,6 +4,7 @@ import pickle
 import time
 from collections import Counter, OrderedDict, namedtuple
 from os.path import exists
+import json
 
 import nltk
 import numpy as np
@@ -426,6 +427,18 @@ def read_pickled(path, defaultNone=False, msg=""):
     with open(path, "rb") as f:
         return pickle.load(f)
 
+# read pickled data
+def read_json(path, defaultNone=False, msg=""):
+    """Pickle deserializer function
+    """
+    if msg:
+        msg += " "
+    if defaultNone:
+        if not exists(path):
+            return None
+    info(f"Reading serialized {msg} from {path}")
+    with open(path, "r") as f:
+        return json.load(f)
 
 # write pickled data
 def write_pickled(path, data, msg="", write_intermmediate=True):

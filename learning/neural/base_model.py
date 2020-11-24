@@ -63,6 +63,7 @@ class BaseModel(ptl.LightningModule):
 
     def make_predictions(self, inputs):
         # regular forward
+        self.to(self.device_name)
         return self(inputs.to(self.device_name))
 
     def configure_embedding(self):
@@ -78,7 +79,7 @@ class BaseModel(ptl.LightningModule):
         """Training and validation function"""
         # also check https://pytorch-lightning.readthedocs.io/en/latest/fast_training.html
         # logger = ptl.loggers.TensorBoardLogger(self.working_folder, name=self.model_name)
-        self.model_to_device()
+        # self.model_to_device()
 
 
         model_savepath = join(self.working_folder, 'models')
@@ -238,3 +239,6 @@ class BaseModel(ptl.LightningModule):
         tensorboard_logs = {'test_loss': avg_loss}
         return {'avg_test_loss': avg_loss, 'log': tensorboard_logs}
         # error("Attempted to access abstract test epoch end function")
+
+    def update_embedding_layer(self, input_embedding_data):
+        pass

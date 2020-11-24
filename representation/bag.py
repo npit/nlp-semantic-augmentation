@@ -3,7 +3,9 @@ import defs
 import tqdm
 import numpy as np
 from scipy.sparse import csr_matrix
+from functools import partial
 
+from functools import partial
 import defs
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 
@@ -14,6 +16,22 @@ class Bag:
     min_counts = None
 
     model = None
+
+    class PBarCountVectorizer(CountVectorizer):
+        def __init__(self, **kwargs):
+            CountVectorizer.__init__(self, **kwargs)
+
+        def build_analyzer(self):
+            analyzer = super().build_analyzer()
+            updater_partial = partial(self.progbar_updater,analyzer_partial=analyzer)
+            return updater_partial
+
+        def progbar_updater(self, *args, **kwargs):
+            self.pbar.update()
+            analyzer_partial = kwargs["analyzer_partial"]
+            del kwargs["analyzer_partial"]
+            return analyzer_partial(*args, **kwargs)
+
 
     def set_min_features(self, threshold):
         """Populate thresholding"""
@@ -37,13 +55,13 @@ class Bag:
         self.vocabulary = vocabulary
         self.tokenizer = tokenizer_func
         self.analyzer = analyzer
+        analyzer_arg = self.analyzer
+        # analyzer_arg = self.analyzer_wrapper if callable(analyzer) else analyzer
         if ngram_range is None:
             ngram_range = (1, 1)
         self.ngram_range = ngram_range
-        self.model = CountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range,
-                                     analyzer=self.analyzer, min_df=1, max_df=0.9, max_features=max_terms)
-
-        
+        self.model = Bag.PBarCountVectorizer(tokenizer=self.tokenizer, vocabulary=self.vocabulary, ngram_range=self.ngram_range,
+                                     analyzer=analyzer_arg, min_df=1, max_df=0.9, max_features=max_terms)
 
     def get_vocabulary(self):
         return self.model.get_feature_names()
@@ -51,10 +69,13 @@ class Bag:
     def map_collection(self, text_collection, fit=False, transform=False):
 
         if fit:
-            self.model.fit(text_collection)
-
+            with tqdm.tqdm(total=len(text_collection), desc="Fitting bag model", ascii=True) as pbar:
+                self.model.pbar = pbar
+                self.model.fit(text_collection)
         if transform:
-            vectors = self.model.transform(text_collection).toarray()
+            with tqdm.tqdm(total=len(text_collection), desc="Applying bag model", ascii=True) as pbar:
+                self.model.pbar = pbar
+                vectors = self.model.transform(text_collection).toarray()
             vectors = self.apply_thresholds(vectors)
             if len(vectors) == 0:
                 vectors = np.zeros((0, len(self.vocabulary)), dtype=np.int32)

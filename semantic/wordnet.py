@@ -46,15 +46,17 @@ class Wordnet(SemanticResource):
 
     def __init__(self, config):
         self.config = config
-        self.initialized = False
         SemanticResource.__init__(self)
 
     def setup_nltk_resources(config):
         try:
-            info("Setting up WordNet...")
+            info("Probing WordNet...")
             wn.VERB
         except:
+            info("Installing WordNet...")
             nltk_download(config, "wordnet")
+            info("Probing WordNet...")
+            wn.VERB
 
     def fetch_raw(self, dummy_input):
         if self.base_name not in listdir(nltk.data.find("corpora")):
@@ -68,7 +70,7 @@ class Wordnet(SemanticResource):
         pass
 
     def get_model(self):
-        # save wordnet synset names to avoid depend
+        # save wordnet synset names to avoid wordnet dependency
         return [s.name() for s in self.vocabulary]
 
     def load_model(self):
@@ -82,12 +84,8 @@ class Wordnet(SemanticResource):
 
     def analyze(self, inputs):
         """Analyzer function"""
-        return self.tokenize(inputs)
-
-    def tokenize(self, words):
-        """Tokenizer function"""
         synsets = []
-        for word in words:
+        for word in inputs:
             synsets.extend(self.get_word_synsets(word))
         return synsets
 

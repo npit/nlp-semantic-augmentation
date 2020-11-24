@@ -34,6 +34,9 @@ class ValidationSetting:
         else:
             self.trainval_idx = [(self.train_idx, np.arange(0, dtype=np.int32))]
 
+    def get_total_iterations(self):
+        return len(self.trainval_idx)
+
     def reserve_validation_for_testing(self):
         """Use the validation indexes to test the model"""
         info("Reserving validation data for testing.")

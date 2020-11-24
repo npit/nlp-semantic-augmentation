@@ -80,6 +80,7 @@ class SemanticResource(Serializable):
 
     def __init__(self):
         self.base_name = self.name
+        self.initialized = False
         Serializable.__init__(self, self.dir_name)
 
     def populate(self):
@@ -286,12 +287,11 @@ class SemanticResource(Serializable):
 
     def build_model_from_inputs(self):
 
-        info(f"Building {self.name} model")
+        info(f"Preparing {self.base_name} model")
         bagger = self.get_bagger()
         self.initialize_lookup()
         # read the semantic resource input-concept cache , if it exists
         self.load_semantic_cache()
-
 
         train_idx = self.indices.get_train_instances()
         words = Text.get_words(self.text.data.get_slice(train_idx))
@@ -301,6 +301,9 @@ class SemanticResource(Serializable):
         self.model = self.vocabulary
         info(f"Built a semantic bag model with {len(self.vocabulary)} concepts.")
         del bagger
+
+    def save_model(self):
+        super().save_model()
 
     def get_bagger(self):
         """Retrieve a bag class instance"""

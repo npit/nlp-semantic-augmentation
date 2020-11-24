@@ -40,7 +40,8 @@ def make_linear_chain(input_dim, dim_list):
     current = input_dim
     # make the chain
     for dim in dim_list:
-        layers.append(make_linear(current, dim))
+        layer = make_linear(current, dim)
+        layers.append(layer)
         current = dim
     # return as a module list
     return nn.ModuleList(layers)
@@ -63,7 +64,8 @@ def run_linear_chain(layers_chain, input_data, activation_func=None, dropout_kee
 
     for layer in layers_chain:
         current_data = activation_func(layer(current_data))
-        if dropout_keep_prob is not None:
+        # activate dropout only when it's defined and the chain is training
+        if dropout_keep_prob is not None and layers_chain.training:
             current_data = F.dropout(current_data, p=dropout_keep_prob)
     return current_data
 

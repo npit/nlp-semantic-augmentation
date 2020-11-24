@@ -97,7 +97,10 @@ class Dataset(Serializable):
     def load_model_from_disk(self):
         # for datasets, equivalent to loading the dataset
         self.acquire_data()
-        return any(self.load_flags)
+        loaded = any(self.load_flags)
+        # for datasets, loading from disk is mandatory
+        error("Unable to load the dataset", not loaded)
+        return loaded
 
     def load_outputs_from_disk(self):
         # for datasets, equivalent to loading the preprocessed dataset
@@ -106,45 +109,12 @@ class Dataset(Serializable):
     def build_model_from_inputs(self):
         # load from disk from the last load
         # that correpsonds to raw data
-        raw_data_idx = len(self.data_paths)-1
-        return self.attempt_load(raw_data_idx)
+        # raw_data_idx = len(self.data_paths)-1
+        # return self.attempt_load(raw_data_idx)
+        self.load_model_from_disk()
 
-    # def load_outputs_from_disk(self):
-    #     # set serialization params here, after name's been configured
-    #     import ipdb; ipdb.set_trace()
-    #     self.acquire_data()
-    #     if self.loaded() and (not self.config.has_limit() or self.sampler.matching_limits(self.indices, self.labelset)):
-    #         # downloaded successfully
-    #         self.loaded_index = self.load_flags.index(True)
-    #     else:
-    #         # if the dataset's limited, check for the full version, else fail
-    #         if not self.config.has_limit():
-    #             info(f"Dataset {self.name} not pre-defined and provided paths are not loadable/exist:{self.data_paths}")
-    #             error(f"Failed to acquire {self.name} dataset")
-    #         # check for raw dataset. Suspend limit and setup paths
-    #         self.name = Dataset.generate_name(self.config)
-    #         self.set_serialization_params()
-    #         # exclude loading of pre-processed data
-    #         self.data_paths = self.data_paths[1:]
-    #         self.read_functions = self.read_functions[1:]
-    #         self.handler_functions = self.handler_functions[1:]
-    #         # get the data but do not preprocess
-    #         self.acquire_data()
-    #         error("Failed to load dataset", not self.loaded())
-    #         self.loaded_index = self.load_flags.index(True)
-    #         # reapply the limit
-    #         train, test = self.indices.get_train_test()
-    #         self.data, self.indices, self.labels, self.labelset, self.label_names, self.targets = self.sampler.subsample(
-    #             self.data, (train, test), self.labels, self.labelset, self.label_names, self.multilabel, self.targets)
-    #         self.name = self.sampler.get_limited_name(self.name)
-    #         self.set_serialization_params()
-    #         write_pickled(self.serialization_path, self.get_all_raw())
-    #         self.loaded_preprocessed = False
-
-    #     self.config.full_name = self.name
-    #     info("Acquired dataset:{}".format(str(self)))
-    #     self.check_sanity()
-    #     return self.loaded_preprocessed
+    def save_model(self):
+        pass
 
     def check_sanity(self):
         """Placeholder class for sanity checking"""

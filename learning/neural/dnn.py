@@ -34,9 +34,9 @@ class DNN:
         self.assign_embedding_data(model_instance)
         model_instance.test_index = torch.LongTensor(self.test_index)
 
-    def get_model_filename(self):
+    def get_model_filename(self, model_index=None):
         """Get model base filename"""
-        return self.neural_model_class.name + super().get_model_filename()
+        return self.neural_model_class.name + super().get_model_filename(model_index)
 
     def test_model(self, model_instance):
         """Testing function"""
@@ -55,7 +55,8 @@ class DNN:
                 batch_predictions = self.process_predictions(batch_predictions)
                 # batch_predictions = model_instance(input_batch)
                 # account for possible batch padding TODO fix
-                batch_predictions = batch_predictions[:len(input_batch)]
+                input_len = input_batch.numel() if input_batch.ndim == 0 else len(input_batch)
+                batch_predictions = batch_predictions[:input_len]
                 predictions.append(batch_predictions)
         return np.concatenate(predictions, axis=0)
 
@@ -84,9 +85,9 @@ class DNN:
         path = self.get_current_model_path()
         if not exists(path):
             return False
-        if not super().load_model_wrapper():
-            info(f"Failed to load wrapper metadata for {self.name}")
-            return False
+        # if not super().load_model_wrapper():
+        #     info(f"Failed to load wrapper metadata for {self.name}")
+        #     return False
         state_dict = self.load_model_weights(path)
         self.get_input_shape_from_weights(state_dict)
         # instantiate object
@@ -107,6 +108,10 @@ class DNN:
     def get_embedding_info(self):
         input_dim_info = self.embeddings if self.embeddings is not None else self.input_shape
         return input_dim_info
+
+    def configure_model_after_inputs(self):
+        if not self.config.retain_embedding_matrix:
+            self.neural_model.update_embedding_layer(self.embeddings)
 
 class GenericSupervisedDNN(DNN):
     """Generic class for deep neural networks with ground truth"""
