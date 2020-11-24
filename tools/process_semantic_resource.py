@@ -1,12 +1,15 @@
+import argparse
 import pickle
+
 import tqdm
 import yaml
-import argparse
 from nltk.corpus import wordnet as wn
-from semantic.semantic_resource import SemanticResource
+
 import dataset
 import settings
-from utils import to_namedtuple, info, setup_simple_logging
+from semantic.semantic_resource import SemanticResource
+from utils import info, setup_simple_logging, to_namedtuple
+
 
 """
 Script to preprocess a semantic information resource for text classification.
@@ -98,17 +101,17 @@ def mine_wordnet_examples_definitions():
     word_freqs(examples_def_per_synset)
 
     # write results
-    outfile = "wordnet_synset_examples.pickle"
+    outfile = "wordnet_synset_examples.pkl"
     print("Writing to {}".format(outfile))
     with open(outfile, "wb") as f:
         pickle.dump(examples_per_synset, f)
 
     print("Writing to {}".format(outfile))
-    outfile = "wordnet_synset_examples_definitions.pickle"
+    outfile = "wordnet_synset_examples_definitions.pkl"
     with open(outfile, "wb") as f:
         pickle.dump(examples_def_per_synset, f)
 
-    outfile = "wordnet_synset_definitions.pickle"
+    outfile = "wordnet_synset_definitions.pkl"
     print("Writing to {}".format(outfile))
     with open(outfile, "wb") as f:
         pickle.dump(def_per_synset, f)
@@ -120,8 +123,8 @@ def produce_semantic_neighbourhood(config_file):
     try:
         config = settings.Config(config_file)
         config.misc.independent_component = True
-        config.misc.skip_deserialization = True
-        config.semantic.spreading_activation = config.semantic.spreading_activation[0], 0.5
+        config.misc.deserialization_allowed = False
+        config.spreading_activation = config.spreading_activation[0], 0.5
         semres = SemanticResource.create(config)
     except:
         print("Problematic configuration in {}".format(config_file))

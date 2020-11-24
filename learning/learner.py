@@ -1,275 +1,385 @@
-from utils import error, info, read_pickled, tictoc, write_pickled, one_hot, warning, get_majority_label
-from sklearn.model_selection import KFold, StratifiedKFold, StratifiedShuffleSplit
-import numpy as np
-from os.path import join, dirname, exists, basename
-from learning.evaluator import Evaluator
+from copy import deepcopy
 from os import makedirs
+from os.path import dirname, exists, join, basename, abspath, isabs
+
+import numpy as np
+
+from bundle.bundle import DataPool
+from bundle.datatypes import *
+from bundle.datausages import *
+from serializable import Serializable
+from component.component import Component
+from defs import datatypes, roles
+from learning.evaluator import Evaluator
+from learning.sampling import Sampler
+from learning.validation.validation import ValidationSetting, get_info_string, load_trainval
+from utils import error, info, read_pickled, tictoc, write_pickled, warning
 
 
 """
 Abstract class representing a learning model
 """
 
-class Learner:
 
+class Learner(Serializable):
+
+    component_name = "learner"
+    name = "learner"
     save_dir = "models"
     folds = None
     fold_index = 0
     evaluator = None
-    sequence_length = None
 
     test_instance_indexes = None
+    validation = None
 
-    def __init__(self):
+    allow_prediction_loading = None
+
+    train_embedding = None
+    model_index = None
+
+    def __init__(self, consumes=None):
         """Generic learning constructor
         """
         # initialize evaluation
-        self.evaluator = Evaluator(self.config)
+        Serializable.__init__(self, "")
+        self.models = []
+        self.predictions = []
+        self.prediction_roles = []
+        self.prediction_model_indexes = []
 
     # input preproc
     def process_input(self, data):
         return data
 
-    def count_samples(self):
-        self.num_train, self.num_test, self.num_train_labels, self.num_test_labels = \
-            map(len, [self.train, self.test, self.train_labels, self.test_labels])
+    def read_config_variables(self):
+        """Shortcut function for readding a load of config variables"""
 
-    def make(self, representation, dataset):
-        self.verbosity = 1 if self.config.print.training_progress else 0
-        # get data and labels
-        self.train, self.test = representation.get_data()
-        self.train_labels, self.test_labels = [x for x in dataset.get_labels()]
-        # need at least one sample per class
-        zero_samples_idx = np.where(np.sum(self.train_labels, axis=0) == 0)
-        if np.any(zero_samples_idx):
-            error("No training samples for class index {}".format(zero_samples_idx))
-        # nan checks
-        nans = np.where(np.isnan(self.train))
-        if np.size(nans) != 0:
-            error("NaNs in training data:{}".format(nans))
-        nans = np.where(np.isnan(self.test))
-        if np.size(nans) != 0:
-            error("NaNs in test data:{}".format(nans))
+        self.sequence_length = self.config.sequence_length
 
-        # get many handy variables
-        self.do_multilabel = dataset.is_multilabel()
-        self.num_labels = dataset.get_num_labels()
-        self.count_samples()
-        self.input_dim = representation.get_dimension()
-        self.forbid_load = self.config.learner.no_load
-        self.sequence_length = self.config.learner.sequence_length
         self.results_folder = self.config.folders.results
         self.models_folder = join(self.results_folder, "models")
+
+        self.batch_size = self.config.train.batch_size
         self.epochs = self.config.train.epochs
+        self.early_stopping_patience = self.config.train.early_stopping_patience
         self.folds = self.config.train.folds
         self.validation_portion = self.config.train.validation_portion
         self.do_folds = self.folds and self.folds > 1
         self.do_validate_portion = self.validation_portion is not None and self.validation_portion > 0.0
         self.validation_exists = (self.do_folds or self.do_validate_portion)
-        self.use_validation_for_training = self.validation_exists and self.test_data_available()
-        self.early_stopping_patience = self.config.train.early_stopping_patience
 
-        self.seed = self.config.get_seed()
+        self.seed = self.config.misc.seed
+
+        self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
+        self.do_sampling = self.sampling_method is not None
+        self.save_interval = self.config.save_interval
+
+    def check_sanity(self):
+        """Sanity checks"""
+        # check data for nans
+        if np.size(np.where(np.isnan(self.embeddings))[0]) > 0:
+            error("NaNs exist in data:{}".format(np.where(np.isnan(self.embeddings))))
+        # validation configuration
+        if self.do_folds and self.do_validate_portion:
+            error("Specified both folds {} and validation portion {}.".format(
+                self.folds, self.validation_portion))
+        # self.evaluator.check_sanity()
+
+    def configure_validation_setting(self):
+        """Initialize validation setting"""
+        self.validation = ValidationSetting(self.config, self.train_embedding_index,
+                                            self.test_embedding_index,
+                                            folds=self.folds,
+                                            portion=self.validation_portion,
+                                            seed=self.seed)
+
+    def configure_sampling(self):
+        """No label-agnostic sampling"""
+        # No label-agnostic sampling available
+        pass
+
+    def get_all_preprocessed(self):
+        return (self.predictions, self.output_usage.to_json())
+
+    def make(self):
+        # get handy variables
+        self.read_config_variables()
         np.random.seed(self.seed)
 
-        self.batch_size = self.config.train.batch_size
-        info("Learner data/labels: train: {} test: {}".format(self.train.shape, self.test.shape))
+        info("Learner data: embeddings: {} train idxs: {} test idxs: {}".format(
+            self.embeddings.shape, len(self.train_index), len(self.test_index)))
 
-        # sanity checks
-        if self.do_folds and self.do_validate_portion:
-            error("Specified both folds {} and validation portion {}.".format(self.folds, self.validation_portion))
-        if not (self.validation_exists or self.test_data_available()):
-            error("No test data or cross/portion-validation setting specified.")
+        info("Created learner: {}".format(self))
 
-        # configure and sanity-check evaluator
-        self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
-        if self.validation_exists and not self.use_validation_for_training:
-            # calculate the majority label from the training data
-            self.evaluator.majority_label = get_majority_label(self.train_labels, self.num_labels)
-            info("Majority label: {}".format(self.evaluator.majority_label))
-            self.evaluator.show_label_distribution(labels=self.train_labels, do_show=False)
+    def get_model_instance_name(self):
+        """Get a model instance identifier from all model instances in the experiment"""
+        model_name = self.name
+        if self.config.train.folds:
+            model_name += "_fold_" + str(self.fold_index)
+        elif self.config.train.validation_portion:
+            model_name += "_valportion_" + str(self.fold_index)
+        return model_name
 
-        error("Input none dimension.", self.input_dim is None)
-        info("Created learning: {}".format(self))
+    def get_predictions_file(self, model_index=None, tag="test"):
+        if tag:
+            tag += "."
+        return join(self.get_results_folder(),  self.get_model_filename(model_index) + "." + tag + "predictions.pkl")
 
-    def is_already_completed(self):
-        predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
-        if exists(predictions_file):
-            warning("Reading existing predictions from: {}".format(predictions_file))
-            return read_pickled(predictions_file)
-        return None, None
+    def get_existing_model_path(self):
+        path = self.get_current_model_path()
+        return path if exists(path) else None
 
-    def test_data_available(self):
-        return self.test.size > 0
+    def get_model_path(self):
+        return self.get_current_model_path()
+
+    # function to retrieve training data as per the existing configuration
+    def configure_trainval_indexes(self):
+        """Retrieve training/validation instance indexes
+        """
+        trainval_idx = self.validation.get_trainval_indexes()
+
+        # do sampling 
+        if self.do_sampling:
+            smpl = Sampler()
+            trainval_idx = smpl.sample()
+
+        # handle indexes for multi-instance data
+        if self.sequence_length > 1:
+            self.validation.set_trainval_label_index(deepcopy(trainval_idx))
+            # trainval_idx = self.expand_index_to_sequence(trainval_idx)
+
+    def acquire_trained_model(self):
+        """Trains the learning model or load an existing instance from a persisted file."""
+        with tictoc("Training run [{}] - {} on {} training and {} val data.".format(get_info_string(self.config), self.model_index, len(self.train_index), len(self.val_index) if self.val_index is not None else "[none]")):
+            model = None
+            if not model:
+                model = self.train_model()
+                # create directories
+                makedirs(self.models_folder, exist_ok=True)
+            else:
+                info("Skipping training due to existing model successfully loaded.")
+        return model
+
+    # def assign_current_run_data(self, iteration_index, trainval):
+    #     """Sets data for the current run"""
+    #     self.train_index, self.val_index = self.validation.get_
+    #     self.train_index, self.val_index, self.test_instance_indexes = self.validation.get_run_data(iteration_index, trainval)
+    #     self.num_train, self.num_val, self.num_test = [len(x) for x in (self.train_index, self.val_index, self.test_index)]
 
     # perfrom a train-test loop
-    def do_traintest(self):
-        # get trainval data
-        train_val_idxs = self.get_trainval_indexes()
+    def execute_training(self):
+        with tictoc("Training run", do_print=self.do_folds, announce=False):
 
-        # keep track of models' test performances and paths wrt selected metrics
-        model_paths = []
+            # get training - validation instance indexes for building the model
+            self.configure_trainval_indexes()
 
-        with tictoc("Total training", do_print=self.do_folds, announce=False):
-            # loop on folds, or do a single loop on the train-val portion split
-            for fold_index, trainval_idx in enumerate(train_val_idxs):
-                self.fold_index = fold_index
-                if self.do_folds:
-                    self.current_run_descr = "fold {}/{}".format(fold_index + 1, self.folds)
-                    validation_description = "folds={}".format(self.folds)
-                elif self.do_validate_portion:
-                    self.current_run_descr = "{}-val split".format(self.validation_portion)
-                    validation_description = "validation portion={}".format(self.validation_portion)
-                else:
-                    self.current_run_descr = "(no-validation)"
-                    validation_description = "<none>"
+            # iterate over required runs (e.g. portion split or folds)
+            # # as per the validation setting
+            for iteration_index, trainval in enumerate(self.validation.get_trainval_indexes()):
+                # set the train/val data indexes
+                self.train_index, self.val_index = trainval
 
-                # check if the run is completed already and load existing results, if allowed
-                if not self.forbid_load:
-                    existing_predictions, test_instance_indexes = self.is_already_completed()
-                    if existing_predictions is not None:
-                        if not self.use_validation_for_training:
-                            labels = np.concatenate(self.train_labels)[test_instance_indexes]
-                            self.evaluator.configure(labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
-                        self.evaluator.evaluate_learning_run(existing_predictions, instance_indexes=test_instance_indexes)
-                        continue
-                # if no test data is available, use the validation data
-                if self.validation_exists and not self.use_validation_for_training:
-                    train_idx, val_idx = trainval_idx
-                    self.test, self.test_labels = self.train[val_idx], self.train_labels[val_idx]
-                    self.evaluator.configure(self.test_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
-                    self.test_instance_indexes = val_idx
-                    self.count_samples()
-                    trainval_idx = (train_idx, [])
+                # train and keep track of the model
+                self.model_index = iteration_index
+                model = self.acquire_trained_model()
+                self.append_model_instance(model)
 
-                # train the model
-                with tictoc("Training run {} on train/val data :{}.".format(self.current_run_descr, list(map(len, trainval_idx)))):
-                    model = self.train_model(trainval_idx)
+                # self.conclude_validation_iteration()
 
-                # test the model
-                with tictoc("Testing {} on {} instances.".format(self.current_run_descr, self.num_test_labels)):
-                    self.do_test(model)
-                    model_paths.append(self.get_current_model_path())
-
-                if self.validation_exists and not self.use_validation_for_training:
-                    self.test, self.test_labels = [], []
-                    self.test_instance_indexes = None
-
-            if self.validation_exists and not self.use_validation_for_training:
-                # pass the entire training labels
-                self.evaluator.configure(self.train_labels, self.num_labels, self.do_multilabel, self.use_validation_for_training)
-            self.evaluator.report_overall_results(validation_description, len(self.train), self.results_folder)
-
-    # evaluate a model on the test set
-    def do_test(self, model):
-        print_results = self.do_folds and self.config.print.folds or not self.folds
-        test_data = self.process_input(self.test)
-        info("Test data {}".format(test_data.shape))
-        error("No test data supplied!", len(test_data) == 0)
-        predictions = self.test_model(test_data, model)
-        # get baseline performances
-        self.evaluator.evaluate_learning_run(predictions, self.test_instance_indexes)
-        if print_results:
-            self.evaluator.print_run_performance(self.current_run_descr, self.fold_index)
-        # write fold predictions
-        predictions_file = join(self.results_folder, basename(self.get_current_model_path()) + ".predictions.pickle")
-        write_pickled(predictions_file, [predictions, self.test_instance_indexes])
-
-    # get training and validation data chunks, given the input indexes
-    def get_trainval_data(self, trainval_idx):
-        """get training and validation data chunks, given the input indexes"""
-        # labels
-        train_labels, val_labels = self.prepare_labels(trainval_idx)
-        # data
-        if self.num_train != self.num_train_labels:
-            trainval_idx = self.expand_index_to_sequence(trainval_idx)
-        train_data, val_data = [self.process_input(data) if len(data) > 0 else np.empty((0,)) for data in
-                                [self.train[idx] if len(idx) > 0 else [] for idx in trainval_idx]]
-        val_datalabels = (val_data, val_labels) if val_data.size > 0 else None
-        return train_data, train_labels, val_datalabels
+    def append_model_instance(self, model):
+        self.models.append(model)
 
     def get_current_model_path(self):
-        filepath = join(self.models_folder, "{}".format(self.name))
-        if self.do_folds:
-            filepath += "_fold{}".format(self.fold_index)
-        if self.do_validate_portion:
-            filepath += "_valportion{}".format(self.validation_portion)
-        return filepath
+        if self.config.explicit_model_path is not None:
+            return self.config.explicit_model_path
+        folder = join(self.get_results_folder(), "models")
+        return join(folder, self.get_model_filename())
 
-    # produce training / validation splits, with respect to sample indexes
-    def get_trainval_indexes(self):
-        if not self.validation_exists:
-            return [(np.arange(self.num_train_labels), np.arange(0))]
+    def get_model_filename(self, model_index=None):
+        """Retrieve model filename"""
+        if model_index is None:
+            model_index = self.model_index
+        model_id = "" if model_index is None else f".model_{model_index}"
+        return self.name + get_info_string(self.config) + model_id  + ".model"
 
-        trainval_serialization_file = join(self.results_folder, basename(self.get_current_model_path()) + ".trainval.pickle")
-        if self.do_folds:
-            # check if such data exists
-            if exists(trainval_serialization_file) and not self.forbid_load:
-                info("Training {} with input data: {} samples, {} labels, on LOADED existing {} stratified folds".format(
-                    self.name, self.num_train, self.num_train_labels, self.folds))
-                deser = read_pickled(trainval_serialization_file)
-                if not len(deser) == self.folds:
-                    error("Mismatch between expected folds ({}) and loaded data of {} splits.".format(self.folds, len(deser)))
-                max_idx = max([np.max(x) for tup in deser for x in tup])
-                if max_idx >= self.num_train:
-                    error("Mismatch between max instances in training data ({}) and loaded max index ({}).".format(self.num_train, max_idx))
-                return deser
-            info("Training {} with input data: {} samples, {} labels, on {} stratified folds".format(
-                self.name, self.num_train, self.num_train_labels, self.folds))
-            # for multilabel K-fold, stratification is not available. Also convert label format.
-            if self.do_multilabel:
-                splitter = KFold(self.folds, shuffle=True, random_state=self.seed)
-            else:
-                splitter = StratifiedKFold(self.folds, shuffle=True, random_state=self.seed)
-                # convert to 2D array
-                self.train_labels = np.squeeze(self.train_labels)
+    def get_results_folder(self):
+        """Return model folder"""
+        run_folder = self.config.folders.results
+        if not isabs(run_folder):
+            run_folder = join(abspath(run_folder))
+        return run_folder
 
-        if self.do_validate_portion:
-            # check if such data exists
-            if exists(trainval_serialization_file) and not self.forbid_load:
-                info("Training {} with input data: {} samples, {} labels, on LOADED existing {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
-                deser = read_pickled(trainval_serialization_file)
-                info("Loaded train/val split of {} / {}.".format(*list(map(len, deser[0]))))
-                # sanity checks
-                max_idx = max([np.max(x) for tup in deser for x in tup])
-                if max_idx >= self.num_train:
-                    error("Mismatch between max instances in training data ({}) and loaded max index ({}).".format(self.num_train, max_idx))
-                return deser
-            info("Splitting {} with input data: {} samples, {} labels, on a {} validation portion".format(self.name, self.num_train, self.num_train_labels, self.validation_portion))
-            splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.validation_portion, random_state=self.seed)
+    def get_trainval_serialization_file(self):
+        name = "trainvalidx.pkl"
+        if self.do_sampling:
+            name = self.sampling_method + "_" + "_". join(map(str, self.sampling_ratios)) + "." + name
+        if self.validation:
+            name += self.validation.get_info_string() 
+        return name
 
-        # generate. for multilabel K-fold, stratification is not usable
-        splits = list(splitter.split(np.zeros(self.num_train_labels), self.train_labels))
-        # save and return the splitter splits
-        makedirs(dirname(trainval_serialization_file), exist_ok=True)
-        write_pickled(trainval_serialization_file, splits)
-        return splits
+    # region: component functions
+    def load_outputs_from_disk(self):
+        self.set_serialization_params()
+        self.add_serialization_source(self.get_predictions_file("total"), reader=read_pickled, handler=lambda x: x)
+        return self.load_existing_predictions()
 
-    # handle multi-vector items, expanding indexes to the specified sequence length
-    def expand_index_to_sequence(self, fold_data):
-        # map to indexes in the full-sequence data (e.g. times sequence_length)
-        fold_data = list(map(lambda x: x * self.sequence_length if len(x) > 0 else np.empty((0,)), fold_data))
-        for i in range(len(fold_data)):
-            if fold_data[i] is None:
-                continue
-            # expand with respective sequence members (add an increment, vstack)
-            stacked = np.vstack([fold_data[i] + incr for incr in range(self.sequence_length)])
-            # reshape to a single vector, in the vertical (column) direction, that increases incrementally
-            fold_data[i] = np.ndarray.flatten(stacked, order='F')
-        return fold_data
+    def load_existing_predictions(self):
+        """Loader function for existing, already computed predictions. Checks for label matching."""
+        # get predictions and instance indexes they correspond to
+        try:
+            self.predictions, pred_instances, pred_tags = read_pickled(self.get_predictions_file("total"))
+            self.output_usage = Predictions(pred_instances, pred_tags)
+        except FileNotFoundError:
+            return False
+        # also check labels
+        return True
 
-    # split train/val labels and convert to one-hot
-    def prepare_labels(self, trainval_idx):
-        train_idx, val_idx = trainval_idx
-        train_labels = self.train_labels
-        if len(train_idx) > 0:
-            train_labels = [self.train_labels[i] for i in train_idx]
-            train_labels = one_hot(train_labels, self.num_labels)
+    def build_model_from_inputs(self):
+        self.make()
+        self.configure_validation_setting()
+
+        if self.validation_exists and not len(self.test_embedding_index) > 0:
+            self.validation.reserve_validation_for_testing()
+        output_file = self.get_current_model_path() + ".trainval_idx"
+        self.validation.write_trainval(output_file)
+        # self.attach_evaluator()
+        self.configure_sampling()
+        self.check_sanity()
+        self.serialization_path_preprocessed = join(self.results_folder, "data")
+        self.execute_training()
+
+    def produce_outputs(self):
+        # apply the learning model on the input data
+        # produce pairing with ground truth for future evaluation
+        # training data
+        self.configure_model_after_inputs()
+        self.predictions = None
+        self.prediction_model_indexes = []
+        self.prediction_roles = []
+
+        if self.validation is not None:
+            train_indexes = self.validation.get_train_indexes()
+            test_indexes = self.validation.get_test_indexes()
         else:
-            train_labels = np.empty((0,))
-        if len(val_idx) > 0:
-            val_labels = [self.train_labels[i] for i in val_idx]
-            val_labels = one_hot(val_labels, self.num_labels)
+            train_indexes = [self.train_embedding_index]
+            test_indexes = [self.test_embedding_index]
+
+        # loop over the available models / data batches
+        num_models = len(self.models)
+        if num_models > 0:
+            if len(train_indexes) == 1:
+                # single indexes, multiple models: duplicate
+                train_indexes *= num_models
+                test_indexes *= num_models
+
+        # make the output usage object
+        self.output_usage = None
+        for model_index, model in enumerate(self.models):
+            self.model_index = model_index
+            train, test = train_indexes[model_index], test_indexes[model_index]
+            for (data, role) in zip([train, test], [defs.roles.train, defs.roles.test]):
+                if len(data) > 0:
+                    info(f"Evaluating model {model_index + 1}/{num_models} on {len(data)} {role} data")
+                    # tag = f"model_{self.model_index}_{role}"
+                    self.apply_model(model=model, index=data, tag=role)
+
+    def get_model(self):
+        return self.model
+
+    # evaluate a model on the test set
+    def apply_model(self, model=None, index=None, tag="test"):
+        """Evaluate the model on the current test indexes"""
+        if model is None:
+            model = self.models[self.model_index]
+        if index is not None:
+            self.test_index = index
+        if len(self.test_index) == 0:
+            warning(f"Attempted to apply {self.name} model on empty indexes!")
+            return
+
+        # generate predictions
+        predictions = self.test_model(model)
+
+        pred_idx = np.arange(len(predictions))
+        # keep track output predictions and tags
+        if self.predictions is None:
+            self.predictions = predictions
         else:
-            val_labels = np.empty((0,))
-        return train_labels, val_labels
+            pred_idx += len(self.predictions)
+            self.predictions = np.append(self.predictions, predictions, axis=0)
+        
+        # mark the model
+        model_id = f"model_{self.model_index}"
+        if self.output_usage is None:
+            self.output_usage = Predictions(pred_idx, model_id)
+        else:
+            self.output_usage.add_instance(pred_idx, model_id)
+
+        # mark the tag
+        self.output_usage.add_instance(pred_idx, tag)
+        # mark the correspondence to the input instances
+        self.output_usage.add_instance(self.test_index, f"{model_id}_{tag}_{defs.roles.inputs}")
+
+    def save_outputs(self):
+        """Save produced predictions"""
+        predictions_file = self.get_predictions_file("total") 
+        write_pickled(predictions_file, [self.predictions, self.output_usage.instances, self.output_usage.tags])
+
+    def load_model_from_disk(self):
+        """Load the component's model from disk"""
+        model_loaded = self.load_model()
+        if model_loaded:
+            self.append_model_instance(self.get_model())
+        return model_loaded
+
+    def acquire_embedding_information(self):
+        """Get embedding and embedding information"""
+        # get data
+        vectors = self.data_pool.request_data(Numeric, Indices.name, self.name)
+        self.embeddings = vectors.data.instances
+        self.indices = vectors.get_usage(Indices)
+        self.train_embedding_index, self.test_embedding_index = self.indices.get_train_test()
+
+    def get_component_inputs(self):
+        """Component processing for input indexes and vectors"""
+        self.acquire_embedding_information()
+        # initialize current meta-indexes to data
+        self.train_index = np.arange(len(self.train_embedding_index))
+        self.test_index = np.arange(len(self.test_embedding_index))
+
+    def configure_model_after_inputs(self):
+        pass
+
+    def get_data_from_index(self, index, embeddings):
+        """Get data index from the embedding matrix"""
+        if np.squeeze(index).ndim > 1:
+            if self.input_aggregation is None and self.sequence_length < 2:
+                # if we have multi-element index, there has to be an aggregation method defined for the learner.
+                error("Learner [{}] has no defined aggregation and is not sequence-capable, but the input index has shape {}".format(self.name, index.shape))
+        return embeddings[index] if len(index) > 0 else None
+
+    def set_component_outputs(self):
+        """Set the output data of the clusterer"""
+        # predictions to output
+        # predictions
+        dp = self.make_predictions_datapack()
+        self.data_pool.add_data_packs([dp], self.name)
+
+    def make_predictions_datapack(self):
+        pred = DataPack(Numeric(self.predictions), self.output_usage)
+        return pred
+
+    def load_model_wrapper(self):
+        return True
+
+    def save_model_wrapper(self):
+        pass        
+
+    def save_model(self):
+        for m in range(len(self.models)):
+            self.model_index = m
+            path = self.get_current_model_path()
+            super().save_model(path=path, model=self.models[m])
+        self.save_model_wrapper()
+

@@ -1,0 +1,17 @@
+# ML & DNNs
+torch
+sklearn
+scikit-multilearn
+gensim
+pytorch_lightning
+transformers
+# NLP & semantic
+nltk
+pyspotlight
+# Utils
+pandas
+numpy
+tqdm
+flask==1.1.2
+tensorboard
+# pygraphviz

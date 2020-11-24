@@ -1,5 +1,6 @@
-from utils import error, read_pickled, info, debug
-from os.path import exists, isfile, join
+from utils import error, read_pickled, info, debug, write_pickled
+from component.component import Component
+from os.path import exists, isfile, join, dirname, isabs
 from os import makedirs
 
 """
@@ -20,7 +21,7 @@ are computed automatically from a base object name.
 """
 
 
-class Serializable:
+class Serializable(Component):
     name = None
     base_name = None
     serialization_dir = None
@@ -28,8 +29,6 @@ class Serializable:
 
     # flags for data loading
     loaded_aggregated = False
-    loaded_enriched = False
-    loaded_finalized = False
     loaded_raw_serialized = False
     loaded_preprocessed = False
 
@@ -45,16 +44,24 @@ class Serializable:
     # corresponding processing functions to call on loaded data
     handler_functions = []
     # load flags
-    load_flags = []
+    load_flags = None
 
     # paths to load necessary resources required to compute data from scratch
     resource_paths = []
     # corresponding reader and hanlder functions
-    resource_read_functions = []
-    resource_handler_functions = []
-    resource_always_load_flag = []
+    resource_read_functions = None
+    resource_handler_functions = None
+    resource_always_load_flag = None
+
+    successfully_loaded_path = None
 
     def __init__(self, dir_name):
+        self.load_flags = []
+        self.resource_paths = []
+        self.resource_read_functions = []
+        self.resource_handler_functions = []
+        self.resource_always_load_flag = []
+
         self.serialization_dir = join(self.config.folders.serialization, dir_name)
         self.raw_data_dir = join(self.config.folders.raw_data, dir_name)
         self.loaded_raw_serialized = False
@@ -62,6 +69,7 @@ class Serializable:
         self.loaded_preprocessed = False
         self.loaded_aggregated = False
         self.multiple_config_names = None
+        self.deserialization_allowed = self.config.misc.allow_output_deserialization
         self.set_multiple_config_names()
 
     def loaded(self):
@@ -69,6 +77,9 @@ class Serializable:
 
     def set_multiple_config_names(self):
         pass
+
+    def populate(self):
+        error("Attempted to access abstract populate function of {}.".format(self.name))
 
     def load_any_of(self, path_names):
         for s, name in enumerate(path_names):
@@ -78,6 +89,7 @@ class Serializable:
             # add extras
             self.set_additional_serialization_sources()
             self.set_resources()
+            self.successfully_loaded_path = name
             self.load_single_config_data()
             if self.loaded():
                 info("Loaded {} info by using name: {}".format(self.name, name))
@@ -100,7 +112,6 @@ class Serializable:
         # alias some paths
         self.read_functions = [read_pickled, read_pickled, self.fetch_raw]
         self.handler_functions = [self.handle_preprocessed, self.handle_raw_serialized, self.handle_raw]
-        self.set_additional_serialization_sources()
 
     # set paths according to serializable name
     def get_paths_by_name(self, name=None, raw_path=None):
@@ -109,9 +120,9 @@ class Serializable:
         if not exists(self.serialization_dir):
             makedirs(self.serialization_dir, exist_ok=True)
         # raw
-        serialization_path = "{}/raw_{}.pickle".format(self.serialization_dir, name)
+        serialization_path = "{}/{}_raw.pkl".format(self.serialization_dir, name)
         # preprocessed
-        serialization_path_preprocessed = "{}/{}.preprocessed.pickle".format(self.serialization_dir, name)
+        serialization_path_preprocessed = "{}/{}.preprocessed.pkl".format(self.serialization_dir, name)
         return [serialization_path_preprocessed, serialization_path, raw_path]
 
     def configure_serialization_paths(self):
@@ -123,19 +134,18 @@ class Serializable:
 
     # attemp to load resource from specified paths
     def attempt_load(self, index):
-        path, reader, handler = [x[index] for x in
-                                 [self.data_paths, self.read_functions, self.handler_functions]]
+        path, reader, handler = [x[index] for x in [self.data_paths, self.read_functions, self.handler_functions]]
 
         # either path is None (resource is acquired without one) or it's a file that will be loaded
         if path is None or (exists(path) and isfile(path)):
-            # debug("Attempting load of {} with {}.".format(path, self.read_functions[index]))
+            debug("Attempting load of {} with {}.".format(path, self.read_functions[index]))
             data = reader(path)
             if data is None:
                 # debug("Failed to load {} from path {}".format(self.name, path))
                 return False
-            debug("Reading path {} with func {} and handler {}".format(path, reader, handler))
+            # debug("Reading path {} with func {} and handler {}".format(path, reader, handler))
+            self.successfully_loaded_path = path
             handler(data)
-            self.load_flags[index] = True
             return True
         else:
             # debug("Failed to load {} from path {}".format(self.name, path))
@@ -157,8 +167,13 @@ class Serializable:
     def load_single_config_data(self):
         self.load_flags = [False for _ in self.data_paths]
         for index in range(len(self.data_paths)):
-            if (self.attempt_load(index)):
-                return index
+            if not self.deserialization_allowed and index < len(self.data_paths) - 1:
+                debug("Skipping deser. of {} since it's not allowed".format(self.data_paths[index]))
+                continue
+            res = self.attempt_load(index)
+            self.load_flags[index] = res
+            if res:
+                return True
         # no data was found to load
         if not self.loaded():
             info("Failed to load {}".format(self.name))
@@ -200,3 +215,43 @@ class Serializable:
     def get_all_preprocessed(self):
         error("Need to override preprocessed data getter for {}".format(self.name))
 
+    def get_model_path(self):
+        """Get a path of the trained model"""
+        if self.config.explicit_model_path is not None:
+            path = self.config.explicit_model_path
+            info(f"Using explicit path {path}")
+            if not exists(path):
+                fp = join(self.config.folders.run, path)
+                if exists(fp):
+                    path = fp
+                    info(f"Using full path of {path}")
+            return path
+        path = join(self.config.folders.run, self.name)
+        return path
+
+    def load_model(self):
+        """Default model loading function, via pickled object deserializaLoad the model"""
+        try:
+            # info(f"Loading model for {self.get_full_name()}")
+            self.model = read_pickled(self.get_model_path(), msg=f"{self.get_full_name()} model")
+            return True
+        except FileNotFoundError:
+            debug(f"Model file not found: {self.get_model_path()}")
+            return False
+
+    def save_model(self, path=None, model=None):
+        """Save the serializable model"""
+        if path is None:
+            path = self.get_model_path()
+        if model is None:
+            model = self.get_model()
+        if path is None or model is None:
+            return
+        # write intermmediate folders
+        makedirs(dirname(path), exist_ok=True)
+        write_pickled(path, model, msg=f"{self.get_full_name()} model" )
+
+    def save_outputs(self):
+        """Save the produced outputs"""
+        info("Writing outputs to {}".format(self.serialization_path_preprocessed))
+        write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed(), msg=f"{self.get_full_name()} outputs")

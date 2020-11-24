@@ -1,83 +1,46 @@
-#! /home/nik/work/iit/submissions/NLE-special/venv/bin/python3.6
-from dataset import instantiator as dset_instantiator
-from representation import instantiator as rep_instantiator
-from semantic import instantiator as sem_instantiator
-from transform.transform import Transform
-from settings import Config
+"""The entrypoint module"""
 import argparse
-from utils import info, warning, num_warnings, tictoc
-from learning import instantiator as lrn_instantiator
+
+from config.config_reader import ConfigReader
+from utils import info, num_warnings, tictoc, warning
 
 
-def main(config_file):
+def main(config_file, ignore_undefined=False, load_models_first=False):
+    """The main function
 
-    # initialize configuration
-    config = Config(config_file)
-
-    # time the entire run
+    Arguments:
+        config_file {str} -- Path for the run's configuration file
+    """
+    # # time the entire run
     with tictoc("Total run"):
-        # datasets loading & preprocessing
-        info("===== DATASET =====")
-        dataset = dset_instantiator.create(config)
-        dataset.preprocess()
+        # initialize configuration
+        global_config, pipeline, triggers = ConfigReader.read_configuration(config_file, ignore_undefined)
 
-        # check for existing & precomputed transformed representations
-        info("===== REPRESENTATION =====")
-        # setup the representation
-        representation = rep_instantiator.create(config)
+        pipeline.configure_names()
 
-        transform = None
-        if config.has_transform():
-            transform = Transform.create(representation)
-            if not transform.loaded():
-                # load / acquire necessary data for computation
-                representation.acquire_data()
-            else:
-                # transfer loaded data from the transformed bundle
-                representation.set_transform(transform)
+        # 
+        should_load_models = load_models_first or any(trig.requires_model_loading() for trig in triggers)
+        if should_load_models:
+            pipeline.load_models()
 
-        # representation computation
-        if not config.has_transform() or not transform.loaded():
-            representation.map_text(dataset)
-            representation.compute_dense()
+        for trig in sorted(triggers, key=lambda x: x.is_blocking):
+            trig.link_pipeline(pipeline)
+            trig.setup()
 
-        # transform computation
-        if config.has_transform():
-            info("===== TRANSFORM =====")
-            transform.compute(representation, dataset)
-
-        # aggregation
-        representation.aggregate_instance_vectors()
-
-        # semantic enrichment
-        semantic = None
-        if config.has_semantic():
-            info("===== SEMANTIC =====")
-            semantic = sem_instantiator.create(config)
-            semantic.map_text(representation, dataset)
-            semantic.generate_vectors()
-            representation.set_semantic(semantic)
-
-        # learning
-        info("===== LEARNING =====")
-        # https: // blog.keras.io / using - pre - trained - word - embeddings - in -a - keras - model.html
-        learner = lrn_instantiator.create(config)
-        learner.make(representation, dataset)
-        learner.do_traintest()
+        for trig in triggers:
+            trig.arm()
 
         if num_warnings > 0:
             warning("{} warnings occured.".format(num_warnings - 1))
-        info("Logfile is at: {}".format(config.logfile))
-    tictoc.log(config.logfile + ".timings")
+        info("Logfile is at: {}".format(global_config.logfile))
+    tictoc.log(global_config.logfile + ".timings")
 
 
 if __name__ == "__main__":
+    # Top-level entrypoint code block
     parser = argparse.ArgumentParser()
-    parser.add_argument("config_file", help="Configuration .yml file for the run.")
+    parser.add_argument("config_file", help="Configuration .yml file for the run.", nargs="?")
+    parser.add_argument("--load_models", help="Load models prior to first pipeline execution.", action="store_true", default=False)
+    parser.add_argument("--ignore-undefined-keys", help="Ignore undefined keys in the configuration file.", action="store_true", dest="ignore_undefined")
     args = parser.parse_args()
-    if args.config_file is None:
-        config_file = "config.yml"
-    else:
-        config_file = args.config_file
-
-    main(config_file)
+    main(args.config_file, args.ignore_undefined, load_models_first=args.load_models)

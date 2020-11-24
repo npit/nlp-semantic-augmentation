@@ -5,6 +5,7 @@ import nltk
 from semantic.semantic_resource import SemanticResource
 from utils import info, nltk_download
 from nltk.corpus import wordnet as wn
+from collections import defaultdict
 
 
 class Wordnet(SemanticResource):
@@ -13,9 +14,15 @@ class Wordnet(SemanticResource):
     # local name to synset cache for spreading activation speedups
     name_to_synset_cache = {}
 
+    def initialize_lookup(self):
+        if self.initialized:
+            return
+        Wordnet.setup_nltk_resources(self.config)
+        self.initialized = True
+
     @staticmethod
     def get_wordnet_pos(config, treebank_tag):
-        Wordnet.setup_nltk_resources(config)
+        # Wordnet.setup_nltk_resources(config)
         if treebank_tag.startswith('J'):
             return wn.ADJ
         elif treebank_tag.startswith('V'):
@@ -39,14 +46,17 @@ class Wordnet(SemanticResource):
 
     def __init__(self, config):
         self.config = config
-        Wordnet.setup_nltk_resources(config)
         SemanticResource.__init__(self)
 
     def setup_nltk_resources(config):
         try:
+            info("Probing WordNet...")
             wn.VERB
         except:
+            info("Installing WordNet...")
             nltk_download(config, "wordnet")
+            info("Probing WordNet...")
+            wn.VERB
 
     def fetch_raw(self, dummy_input):
         if self.base_name not in listdir(nltk.data.find("corpora")):
@@ -59,16 +69,36 @@ class Wordnet(SemanticResource):
     def handle_raw(self, raw_data):
         pass
 
-    def lookup(self, word_information):
-        word, _ = word_information
+    def get_model(self):
+        # save wordnet synset names to avoid wordnet dependency
+        return [s.name() for s in self.vocabulary]
+
+    def load_model(self):
+        """Default model loading function, via pickled object deserializaLoad the model"""
+        if super().load_model():
+            # map vocab to synset objects
+            info("Mapping semantic vocabulary strings to wordnet synset objects")
+            self.vocabulary = [wn.synset(t) for t in self.vocabulary]
+        return self.model_loaded
+
+
+    def analyze(self, inputs):
+        """Analyzer function"""
+        synsets = []
+        for word in inputs:
+            synsets.extend(self.get_word_synsets(word))
+        return synsets
+
+    def get_word_synsets(self, word):
+        """Fetch synsets from an input word"""
         synsets = wn.synsets(word)
         if not synsets:
             return {}
-        synsets = self.disambiguate(synsets, word_information)
-        activations = {synset._name: 1 for synset in synsets}
-        return activations
+        synsets = self.disambiguate(synsets, word)
+        return synsets
 
     def spread_activation(self, synset_name):
+        """Retrieve wordnet hypernyms from a given synset"""
         if synset_name in self.name_to_synset_cache:
             synset = self.name_to_synset_cache[synset_name]
         else:

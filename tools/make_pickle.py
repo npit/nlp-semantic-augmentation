@@ -25,7 +25,7 @@ else:
     print("Don't know how to pickle that.")
     exit(1)
 
-outpath = os.path.join(os.path.dirname(input_path), outname + ".pickle")
+outpath = os.path.join(os.path.dirname(input_path), outname + ".pkl")
 print("Writing to {}".format(outpath))
 with open(outpath, "wb") as f:
     pickle.dump(data, f)

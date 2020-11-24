@@ -1,9 +1,0 @@
-keras
-tensorflow
-nltk
-pandas
-numpy
-sklearn
-gensim
-tqdm
-pyspotlight

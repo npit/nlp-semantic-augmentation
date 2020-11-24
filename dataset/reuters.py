@@ -24,7 +24,7 @@ class Reuters(Dataset):
         # get ids
         categories = reuters.categories()
         self.num_labels = len(categories)
-        self.train_label_names, self.test_label_names = [], []
+        self.label_names = []
         # train / test labels
         samples = {}
         train_docs, test_docs = [], []
@@ -64,7 +64,9 @@ class Reuters(Dataset):
             self.test.append(reuters.raw(doc))
             self.test_labels.append(doc2labels[doc])
 
-        self.train_label_names, self.test_label_names = label_set, label_set
+        self.label_names = label_set
+        self.labelset = list(sorted(set(self.train_labels)))
+        self.roles = "train", "test"
         info("Loaded {} train & {} test instances.".format(len(self.train), len(self.test)))
         return self.get_all_raw()
 

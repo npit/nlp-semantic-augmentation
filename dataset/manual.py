@@ -1,51 +1,34 @@
+"""Module for manual dataset specification"""
 import json
 from os.path import basename
+
 import numpy as np
+
 from dataset.dataset import Dataset
+from dataset.manual_reader import ManualDatasetReader
 from utils import write_pickled
 
 
 class ManualDataset(Dataset):
-    """ Class to import a dataset from a folder.
-
-    Expected format in the yml config:
-    name: path/to/dataset_name.json
-
-    In the above path, define dataset json as:
-    {
-        data:
-            train:
-                 [
-                     {
-                        text: "this is the document text"
-                        labels: [0,2,3]
-                     },
-                     ...
-                 ],
-            test: [...]
-        num_labels: 10
-        label_names: ['cat', 'dog', ...]
-        language: english
-    }
-    """
+    """Class to represent a custom dataset"""
 
     def __init__(self, config):
         self.config = config
-        self.name = self.base_name = basename(config.dataset.name)
+        self.name = self.base_name = basename(config.name)
         Dataset.__init__(self)
 
     def get_all_raw(self):
         data = Dataset.get_all_raw(self)
         data["language"] = self.language
-        data["multilabel"] = self.is_multilabel()
+        data["multilabel"] = self.multilabel
         return data
 
     # raw path getter
     def get_raw_path(self):
-        return self.config.dataset.name
+        return self.config.name
 
     def fetch_raw(self, raw_data_path):
-        # no limited dataset
+        # cannot read a raw limited dataset
         if self.name != self.base_name:
             return None
 
@@ -54,48 +37,34 @@ class ManualDataset(Dataset):
         return raw_data
 
     def handle_raw(self, raw_data):
-        max_num_instance_labels = 0
-        self.num_labels = raw_data["num_labels"]
-        self.language = raw_data["language"]
-        data = raw_data["data"]
+        mdr = self.apply_dataset_reader(raw_data)
+        self.data = mdr.data
+        self.labels = mdr.labels
+        self.indices = mdr.indices
+        self.targets = mdr.targets
+        self.multilabel = mdr.max_num_instance_labels > 1
+        self.labelset, self.label_names = mdr.labelset, mdr.label_names
+        self.language = mdr.language
+        self.roles = mdr.roles
 
-        self.train, self.train_labels = [], []
-        self.test, self.test_labels = [], []
 
-        unique_labels = {"train": set(), "test": set()}
-        for obj in data["train"]:
-            self.train.append(obj["text"])
-            lbls = obj["labels"]
-            self.train_labels.append(lbls)
-            unique_labels["train"].update(lbls)
-            max_num_instance_labels = len(lbls) if len(lbls) > max_num_instance_labels else max_num_instance_labels
-        for obj in data["test"]:
-            self.test.append(obj["text"])
-            self.test_labels.append(obj["labels"])
-            unique_labels["test"].update(obj["labels"])
-
-        if "label_names" in raw_data:
-            self.train_label_names = raw_data["label_names"]["train"]
-            self.test_label_names = raw_data["label_names"]["test"]
-        else:
-            self.train_label_names, self.test_label_names = \
-                [list(map(str, sorted(unique_labels[tt]))) for tt in ["train", "test"]]
-        if max_num_instance_labels > 1:
-            self.multilabel = True
-        else:
-            # labels to ndarray
-            self.train_labels = np.squeeze(np.asarray(self.train_labels))
-            self.test_labels = np.squeeze(np.asarray(self.test_labels))
         # write serialized data
-        write_pickled(self.serialization_path, self.get_all_raw())
+        # write_pickled(self.serialization_path, self.get_all_raw())
+
+    def apply_dataset_reader(self, data):
+        mdr = ManualDatasetReader()
+        mdr.read_dataset(raw_data=data)
+        return mdr
 
     def handle_raw_serialized(self, deserialized_data):
         Dataset.handle_raw_serialized(self, deserialized_data)
         self.language = deserialized_data["language"]
-        self.multilabel = deserialized_data["multilabel"]
+        # if self.train_labels is not None:
+            # self.multilabel = deserialized_data["multilabel"]
+            # self.labelset = sorted(np.unique(np.concatenate(self.train_labels)))
 
     def handle_serialized(self, deserialized_data):
-        self.handle_raw_serialized(self, deserialized_data)
+        self.handle_raw_serialized(deserialized_data)
 
     def handle_preprocessed(self, deserialized_data):
         Dataset.handle_preprocessed(self, deserialized_data)

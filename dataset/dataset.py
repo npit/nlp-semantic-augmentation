@@ -1,46 +1,78 @@
 import random
-import json
-import tqdm
-import numpy as np
-from os import listdir
-from os.path import basename, join
-from utils import error, tictoc, info, write_pickled, align_index, debug, warning, nltk_download, flatten
-from defs import is_none
-from sklearn.datasets import fetch_20newsgroups
-from sklearn.model_selection import StratifiedShuffleSplit
-from nltk.corpus import stopwords, reuters
-from nltk.stem import WordNetLemmatizer, PorterStemmer
-from nltk.tokenize import word_tokenize, sent_tokenize
 import string
-import nltk
-from semantic.wordnet import Wordnet
+from os import listdir
+from os.path import basename
 
+import nltk
+import numpy as np
+import tqdm
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer, WordNetLemmatizer
+from nltk.tokenize import sent_tokenize, word_tokenize
+
+from bundle.datatypes import *
+from bundle.datausages import *
+from component.component import Component
+from dataset.sampling import Sampler
+from semantic.wordnet import Wordnet
 from serializable import Serializable
+from utils import (error, flatten, info, nltk_download, tictoc, warning,
+                   write_pickled, set_constant_epi)
 
 
 class Dataset(Serializable):
+    """Generic class for datasets."""
     name = ""
+    component_name = "dataset"
     vocabulary = set()
     vocabulary_index = []
     word_to_index = {}
-    limited_name = ""
     dir_name = "datasets"
     undefined_word_index = None
     preprocessed = False
-    train, test = None, None
-    multilabel = False
-    data_names = ["train-data", "train-labels", "train-label-names",
-                  "test-data", "test-labels", "test_label-names"]
+
+    data, roles, indices = None, None, None
+    labels, labelset, multilabel = None, None, None
+    targets = None
+    num_labels = None
+
+    data_names = ["data", "indices", "roles"]
+    target_data_names = ["targets"]
+    label_data_names = ["labels", "label_names", "labelset"]
+
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
+
+    filter_stopwords = True
+    stopwords = None
+
+    produces = Text.name
 
     @staticmethod
     def generate_name(config):
-        name = basename(config.dataset.name)
-        if config.dataset.prepro is not None:
-            name += "_" + config.dataset.prepro
+        """Generate a dataset identifier name
+
+        Arguments:
+            config {namedtuple} -- The configuration object
+        Returns:
+            The generated name
+        """
+
+        name = basename(config.name)
+        if config.prepro is not None:
+            name += "_" + config.prepro
+        if config.extract_pos:
+            name += "_pos"
         return name
 
     def nltk_dataset_resource_exists(self, name):
+        """Checks the availability of NLTK resources
+
+        Arguments:
+            name {str} -- The name of the resource to check
+        Returns:
+            A boolean denoting existence of the resource.
+        """
+
         try:
             if (name + ".zip") in listdir(nltk.data.find("corpora")):
                 return True
@@ -48,50 +80,51 @@ class Dataset(Serializable):
             warning("Unable to probe nltk corpora at path {}".format(nltk.data.path))
         return False
 
-    # dataset creation
     def __init__(self, skip_init=False):
-        random.seed(self.config.get_seed())
+        """Dataset constructor
+
+        Arguments:
+            skip_init {bool} -- Wether to initialize the serializable superclass mechanism
+        """
+        random.seed(self.config.misc.seed)
         if skip_init or self.config is None:
             return
         Serializable.__init__(self, self.dir_name)
-        self.set_serialization_params()
-        # check for limited dataset
-        self.apply_limit()
-        self.acquire_data()
-        if self.loaded():
-            # downloaded successfully
-            self.loaded_index = self.load_flags.index(True)
-        else:
-            # check for raw dataset. Suspend limit and setup paths
-            self.suspend_limit()
-            self.set_serialization_params()
-            # exclude loading of pre-processed data
-            self.data_paths = self.data_paths[1:]
-            self.read_functions = self.read_functions[1:]
-            self.handler_functions = self.handler_functions[1:]
-            # get the data but do not preprocess
-            self.acquire_data()
-            if not self.loaded():
-                error("Failed to load dataset")
-            self.loaded_index = self.load_flags.index(True)
-            # reapply the limit
-            self.apply_limit()
+        self.config.full_name = self.name
+        self.filter_stopwords = self.config.filter_stopwords
+        self.remove_digits = self.config.remove_digits
 
-        self.config.dataset.full_name = self.name
-        info("Acquired dataset:{}".format(str(self)))
-        # sanity checks
-        # only numeric labels
+    def load_model_from_disk(self):
+        # for datasets, equivalent to loading the dataset
+        self.acquire_data()
+        loaded = any(self.load_flags)
+        # for datasets, loading from disk is mandatory
+        error("Unable to load the dataset", not loaded)
+        return loaded
+
+    def load_outputs_from_disk(self):
+        # for datasets, equivalent to loading the preprocessed dataset
+        return self.attempt_load(0)
+
+    def build_model_from_inputs(self):
+        # load from disk from the last load
+        # that correpsonds to raw data
+        # raw_data_idx = len(self.data_paths)-1
+        # return self.attempt_load(raw_data_idx)
+        self.load_model_from_disk()
+
+    def save_model(self):
+        pass
+
+    def check_sanity(self):
+        """Placeholder class for sanity checking"""
+        # ensure numeric labels
         try:
-            for labels in [self.train_labels, self.test_labels]:
-                list(map(int, flatten(labels)))
+            list(map(int, flatten(self.labels[:1])))
         except ValueError as ve:
             error("Non-numeric label encountered: {}".format(ve))
         except TypeError as ve:
             warning("Non-collection labelitem encountered: {}".format(ve))
-        # zero train / test
-        # error("Problematic values loaded.", zero_length(self.train, self.test))
-
-
 
     def handle_preprocessed(self, data):
         # info("Loaded preprocessed {} dataset from {}.".format(self.name, self.serialization_path_preprocessed))
@@ -99,15 +132,39 @@ class Dataset(Serializable):
         self.vocabulary, self.vocabulary_index, self.undefined_word_index = [data[name] for name in self.preprocessed_data_names]
         for index, word in enumerate(self.vocabulary):
             self.word_to_index[word] = index
-        info("Loaded preprocessed data: {} train, {} test, with {} labels".format(len(self.train), len(self.test), self.num_labels))
+        info(self.get_info())
         self.loaded_raw_serialized = False
         self.loaded_preprocessed = True
+        self.indices = Indices(self.indices, tags=self.roles)
+        self.language = data['language']
 
-    def suspend_limit(self):
-        self.name = Dataset.generate_name(self.config)
+    # region getters
+    def get_data(self):
+        return self.data
 
     def is_multilabel(self):
+        """Multilabel status getter"""
         return self.multilabel
+
+    def get_targets(self):
+        """Targets getter"""
+        return self.targets
+
+    def get_labels(self):
+        """Labels getter"""
+        return self.labels
+
+    def is_labelled(self):
+        """Boolean for labelling"""
+        return self.labels is not None and len(self.labels) > 0
+
+    def get_num_labels(self):
+        """Number of labels getter"""
+        return self.num_labels
+
+    def get_info(self):
+        """Current data information getter"""
+        return f"{self.name} data: {len(self.data)}, {self.num_labels} labels, {len(self.targets) if self.targets is not None else None} targets"
 
     def get_raw_path(self):
         error("Need to override raw path datasea getter for {}".format(self.name))
@@ -118,150 +175,53 @@ class Dataset(Serializable):
     def handle_raw(self, raw_data):
         error("Need to override raw data handler for {}".format(self.name))
 
+    def contains_multilabel(self, labels):
+        """Checks wether labels contain multi-label annotations"""
+        try:
+            for instance_labels in labels:
+                if len(instance_labels) > 1:
+                    return True
+        except TypeError:
+            pass
+        return False
+
+    @staticmethod
+    def get_text(data):
+        """Get text from the dataset outputs"""
+        return " ".join([item["words"] for item in data])
+
+    @staticmethod
+    def get_words(data):
+        """Get text from the dataset outputs"""
+        return data["words"]
+    @staticmethod
+    def get_instance_from_words(data):
+        """Return expected dataset instace from word list"""
+        inst = Dataset.get_instance_template()
+        inst["words"] = data
+        return inst
+    @staticmethod
+    def get_instance_template():
+        return {"words": [], "pos": []}
+
     def handle_raw_serialized(self, deserialized_data):
-        self.train, self.train_labels, self.train_label_names, \
-            self.test, self.test_labels, self.test_label_names = \
-            [deserialized_data[n] for n in self.data_names]
-        self.num_labels = len(set(self.train_label_names))
+        self.data, self.indices, self.roles = [deserialized_data[n] for n in self.data_names]
         self.loaded_raw_serialized = True
+        self.labels, self.label_names, self.labelset = [deserialized_data[n] for n in self.label_data_names]
+        self.targets = deserialized_data[self.target_data_names[0]]
+        if self.labels is not None:
+            self.num_labels = len(set(self.label_names))
+            self.multilabel = self.contains_multilabel(self.labels)
 
-    # data getter
-    def get_data(self):
-        return self.train, self.test
-
-    def get_labels(self):
-        return self.train_labels, self.test_labels
-
-    def get_num_labels(self):
-        return self.num_labels
-
-    # apply stratifed  limiting to the data wrt labels
-    def limit_data_stratify(num_limit, data, labels):
-        limit_ratio = num_limit / len(data)
-        splitter = StratifiedShuffleSplit(1, test_size=limit_ratio)
-        splits = list(splitter.split(np.zeros(len(data)), labels))
-        data = [data[n] for n in splits[0][1]]
-        labels = [labels[n] for n in splits[0][1]]
-
-        # fix up any remaining inconsistency
-        while not len({num_limit, len(data), len(labels)}) == 1:
-            # get label, label_indexes tuple list
-            counts = [(x, [i for i in range(len(labels)) if x in labels[i]]) for x in set(flatten(labels))]
-            # get most populous label
-            maxfreq_label, maxfreq_label_idx = max(counts, key=lambda x: len(x[1]))
-            # drop one from it
-            idx = random.choice(maxfreq_label_idx)
-            del data[idx]
-            del labels[idx]
-            # remove by index of index
-            idx_idx = maxfreq_label_idx.index(idx)
-            del maxfreq_label_idx[idx_idx]
-        return data, labels
-
-    def limit_data_simple(num_limit, data, labels):
-        idxs = random.sample(list(range(len(data))), num_limit)
-        data = [data[i] for i in idxs]
-        labels = [labels[i] for i in idxs]
-        return data, labels
-
-    def apply_data_limit(self, name):
-        lim = self.config.dataset.data_limit
-        lim = lim + [-1] if len(lim) == 1 else lim
-        lim = [x if x >= 0 else None for x in lim]
-        ltrain, ltest = lim
-        if ltrain:
-            name += "_dlim_tr{}".format(ltrain)
-            if self.train:
-                if len(self.train) < ltrain:
-                    error("Attempted to data-limit {} train items to {}".format(len(self.train), ltrain))
-                try:
-                    # use stratification
-                    self.train, self.train_labels = Dataset.limit_data_stratify(ltrain, self.train, self.train_labels)
-                    info("Limited {} loaded data to {} train items.".format(self.base_name, len(self.train)))
-                except ValueError as ve:
-                    warning(ve)
-                    warning("Resorting to non-stratified limiting")
-                    self.train, self.train_labels = Dataset.limit_data_simple(ltrain, self.train, self.train_labels)
-                if not len({ltrain, len(self.train), len(self.train_labels)}) == 1:
-                    error("Inconsistent limiting in train data.")
-        if ltest:
-            name += "_dlim_te{}".format(ltest)
-            if self.test:
-                if len(self.test) < ltest:
-                    error("Attempted to data-limit {} test items to {}".format(len(self.test), ltest))
-                try:
-                    # use stratification
-                    self.test, self.test_labels = Dataset.limit_data_stratify(ltest, self.test, self.test_labels)
-                    info("Limited {} loaded data to {} test items.".format(self.base_name, len(self.test)))
-                except ValueError as ve:
-                    warning(ve)
-                    warning("Resorting to non-stratified limiting")
-                    self.test, self.test_labels = Dataset.limit_data_simple(ltest, self.test, self.test_labels)
-                if not len({ltest, len(self.test), len(self.test_labels)}) == 1:
-                    error("Inconsistent limiting in test data.")
-        return name
-
-    def restrict_to_classes(self, data, labels, restrict_classes):
-        new_data, new_labels = [], []
-        for d, l in zip(data, labels):
-            valid_classes = [cl for cl in l if cl in restrict_classes]
-            if not valid_classes:
-                continue
-            new_data.append(d)
-            new_labels.append(valid_classes)
-        return new_data, new_labels
-
-    def apply_class_limit(self, name):
-        c_lim = self.config.dataset.class_limit
-        if c_lim is not None:
-            name += "_clim_{}".format(c_lim)
-            if self.train:
-                if c_lim >= self.num_labels:
-                    error("Specified non-sensical class limit from {} classes to {}.".format(self.num_labels, c_lim))
-                # data have been loaded -- apply limit
-                retained_classes = random.sample(list(range(self.num_labels)), c_lim)
-                info("Limiting to the {}/{} classes: {}".format(c_lim, self.num_labels, retained_classes))
-                if self.multilabel:
-                    debug("Max train/test labels per item prior: {} {}".format(max(map(len, self.train_labels)), max(map(len, self.test_labels))))
-                self.train, self.train_labels = self.restrict_to_classes(self.train, self.train_labels, retained_classes)
-                self.test, self.test_labels = self.restrict_to_classes(self.test, self.test_labels, retained_classes)
-                self.num_labels = len(retained_classes)
-                if not self.num_labels:
-                    error("Zero labels after limiting.")
-                # remap retained classes to indexes starting from 0
-                self.train_labels = align_index(self.train_labels, retained_classes)
-                self.test_labels = align_index(self.test_labels, retained_classes)
-                # fix the label names
-                self.train_label_names = [self.train_label_names[rc] for rc in retained_classes]
-                self.test_label_names = [self.test_label_names[rc] for rc in retained_classes]
-                info("Limited {} dataset to {} classes: {} - i.e. {} - resulting in {} train and {} test data."
-                     .format(self.base_name, self.num_labels, retained_classes,
-                             self.train_label_names, len(self.train), len(self.test)))
-                if self.multilabel:
-                    debug("Max train/test labels per item post: {} {}".format(max(map(len, self.train_labels)), max(map(len, self.test_labels))))
-        return name
-
-    def apply_limit(self):
-        if self.config.has_limit():
-            self.base_name = Dataset.generate_name(self.config)
-            name = self.base_name
-            if not is_none(self.config.dataset.class_limit):
-                name = self.apply_class_limit(self.base_name)
-            if not is_none(self.config.dataset.data_limit):
-                name = self.apply_data_limit(name)
-            self.name = name
-            self.set_serialization_params()
-        if self.train:
-            # serialize the limited version
-            write_pickled(self.serialization_path, self.get_all_raw())
+    # endregion
 
     def setup_nltk_resources(self):
-        try:
-            stopwords.words(self.language)
-        except LookupError:
-            nltk_download(self.config, "stopwords")
-
-        self.stopwords = set(stopwords.words(self.language))
+        if self.filter_stopwords:
+            try:
+                stopwords.words(self.language)
+            except LookupError:
+                nltk_download(self.config, "stopwords")
+            self.stopwords = set(stopwords.words(self.language))
         try:
             nltk.pos_tag("Text")
         except LookupError:
@@ -271,18 +231,21 @@ class Dataset(Serializable):
         except LookupError:
             nltk_download(self.config, "punkt")
 
-        # setup word prepro
+        # setup word preprocessing
+        self.word_prepro_func = lambda x: x
         while True:
             try:
-                if self.config.dataset.prepro == "stem":
+                if self.config.prepro == "stem":
+                    error("Specified stemming without POS extraction.", not self.config.extract_pos)
                     self.stemmer = PorterStemmer()
-                    self.word_prepro = lambda w_pos: (self.stemmer.stem(w_pos[0]), w_pos[1])
-                elif self.config.dataset.prepro == "lemma":
+                    self.word_prepro_func = lambda w_pos: (self.stemmer.stem(w_pos[0]), w_pos[1])
+                elif self.config.prepro == "lemma":
+                    error("Specified lemmatization without POS extraction.", not self.config.extract_pos)
                     self.lemmatizer = WordNetLemmatizer()
-                    self.word_prepro = self.apply_lemmatizer
+                    self.word_prepro_func = self.apply_lemmatizer
                 else:
-                    self.word_prepro = lambda x: x
-                break
+                    error(f"Undefined preprocessing opt: {self.config.prepro}", self.config.prepro is not None)
+                    break
             except LookupError as err:
                 error(err)
         # punctuation
@@ -296,9 +259,9 @@ class Dataset(Serializable):
         else:
             return self.lemmatizer.lemmatize(w_pos[0], wordnet_pos), w_pos[1]
 
-    # map text string into list of stopword-filtered words and POS tags
-    def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro, stopwords):
-        # debug("Processing raw text:\n[[[{}]]]".format(text))
+    def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro_func, stopwords):
+        """Apply processing for a single text element"""
+        data = {}
         sents = sent_tokenize(text.lower())
         words = []
         for sent in sents:
@@ -310,46 +273,101 @@ class Dataset(Serializable):
 
         # remove stopwords and numbers
         # words = [w.translate(digit_remover) for w in words if w not in stopwords and w.isalpha()]
-        words = [w for w in [w.translate(digit_remover) for w in words if w not in stopwords] if w]
-        # pos tagging
-        words_with_pos = nltk.pos_tag(words)
+        # remove empty "words"
+        words = [w for w in words if w]
+        if self.remove_digits:
+            words = [w for w in [w.translate(digit_remover) for w in words] if w]
+        if self.filter_stopwords:
+            words = [w for w in words if w not in stopwords]
+        data["words"] = words
+        if self.config.extract_pos:
+            # pos tagging
+            data["pos"] = nltk.pos_tag(words)
         # stemming / lemmatization
-        words_with_pos = [word_prepro(wp) for wp in words_with_pos]
-        if not words_with_pos:
-            error("Text preprocessed to an empty list:\n{}".format(text))
-        return words_with_pos
+        if self.config.prepro is not None:
+            data["words"] = [word_prepro_func((w, p)) for (w, p) in zip(words, data["pos"])]
+        # if not data["words"]:
+        #     # warning("Text preprocessed to an empty list:\n{}".format(text))
+        #     return None
+        return data
+
+    def has_text_targets(self):
+        return self.targets is not None and len(self.targets) > 0 and type(self.targets[0]) == str
 
     # preprocess single
-    def preprocess_text_collection(self, document_list, track_vocabulary=False):
+    def preprocess_text_collection(self, texts_container, container_idxs, track_vocabulary=False):
         # filt = '!"#$%&()*+,-./:;<=>?@\[\]^_`{|}~\n\t1234567890'
         ret_words_pos, ret_voc = [], set()
         num_words = []
-        with tqdm.tqdm(desc="Mapping document collection", total=len(document_list), ascii=True, ncols=100, unit="collection") as pbar:
-            for i in range(len(document_list)):
-                pbar.set_description("Document {}/{}".format(i + 1, len(document_list)))
+        discarded_indexes = []
+        if container_idxs.size == 0:
+            info("(Empty collection)")
+            return [], [], None
+        with tqdm.tqdm(desc="Mapping document collection", total=len(container_idxs), ascii=True, ncols=100, unit="collection") as pbar:
+            for i, idx in enumerate(container_idxs):
+                data = texts_container[idx]
+                pbar.set_description("Document {}/{}".format(i + 1, len(container_idxs)))
                 pbar.update()
-                # text_words_pos = self.process_single_text(document_list[i], filt=filt, stopwords=stopw)
-                text_words_pos = self.process_single_text(document_list[i], punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
-                                                          word_prepro=self.word_prepro, stopwords=self.stopwords)
-                ret_words_pos.append(text_words_pos)
+                data = self.process_single_text(data, punctuation_remover=self.punctuation_remover, digit_remover=self.digit_remover,
+                                                          word_prepro_func=self.word_prepro_func, stopwords=self.stopwords)
+                word_data = data["words"]
+                if not word_data:
+                    # warning("Text {}/{} preprocessed to an empty list:\n{}".format(i + 1, len(document_list), document_list[i]))
+                    discarded_indexes.append(i)
+                    # continue
+                    data["words"] = []
+
+                ret_words_pos.append(data)
                 if track_vocabulary:
-                    ret_voc.update([wp[0] for wp in text_words_pos])
-                num_words.append(len(text_words_pos))
+                    ret_voc.update(word_data)
+                num_words.append(len(word_data))
         stats = [x(num_words) for x in [np.mean, np.var, np.std]]
-        info("Words per document stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
-        return ret_words_pos, ret_voc
+        info(f"Text vocab size: {len(ret_voc)}" + ", stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
+        return ret_words_pos, ret_voc, discarded_indexes
 
     # preprocess raw texts into word list
-    def preprocess(self):
-        if self.loaded_preprocessed:
-            info("Skipping preprocessing, preprocessed data already loaded from {}.".format(self.serialization_path_preprocessed))
-            return
+    def produce_outputs(self):
+        """Apply preprocessing"""
+
         self.setup_nltk_resources()
+        # make indices object -- this filters down non-existent (with no instances) roles
+        self.indices = Indices(self.indices, tags=self.roles)
+        self.roles = self.indices.tags
+        train_idx, test_idx = self.indices.get_train_test()
+        test_idx = self.indices.get_tag_instances(defs.roles.test, must_exist=False)
+        error("Neither train or test indices found to process dataset", not (train_idx.size > 0 or test_idx.size > 0))
+        preproc_data = []
+        preproc_targets = []
+
         with tictoc("Preprocessing {}".format(self.name)):
-            info("Mapping training set to word collections.")
-            self.train, self.vocabulary = self.preprocess_text_collection(self.train, track_vocabulary=True)
-            info("Mapping test set to word collections.")
-            self.test, _ = self.preprocess_text_collection(self.test)
+            info("Mapping text training data to word collections.")
+            txts, self.vocabulary, discarded_indexes = self.preprocess_text_collection(self.data, train_idx, track_vocabulary=True)
+            self.vocabulary = set(self.vocabulary)
+            preproc_data.extend(txts)
+
+            if self.has_text_targets():
+                info("Mapping text training targets to word collections.")
+                txts, voc, _ = self.preprocess_text_collection(self.targets, train_idx, track_vocabulary=True)
+                self.vocabulary.update(voc)
+                preproc_targets.extend(txts)
+
+            # if discarded_indexes:
+            #     warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
+            #     if self.train_labels is not None:
+            #         self.train_labels = [self.train_labels[i] for i in range(len(self.train_labels)) if i not in discarded_indexes]
+
+            info("Mapping text test data to word collections.")
+            txts, _, discarded_indexes = self.preprocess_text_collection(self.data, test_idx)
+            preproc_data.extend(txts)
+            if self.has_text_targets():
+                info("Mapping text test targets to word collections.")
+                txts, _, _ = self.preprocess_text_collection(self.targets, test_idx)
+                preproc_targets.extend(txts)
+
+            # if discarded_indexes:
+            #     warning(f"Discarded {len(discarded_indexes)} instances from preprocessing.")
+            #     if self.test_labels is not None:
+            #         self.test_labels = [self.test_labels[i] for i in discarded_indexes]
             # fix word order and get word indexes
             self.vocabulary = list(self.vocabulary)
             for index, word in enumerate(self.vocabulary):
@@ -357,12 +375,24 @@ class Dataset(Serializable):
                 self.vocabulary_index.append(index)
             # add another for the missing word
             self.undefined_word_index = len(self.vocabulary)
-        # serialize
+
+            self.data = preproc_data
+            self.targets = preproc_targets
+
+    def save_outputs(self):
+        # serialize preprocessed
         write_pickled(self.serialization_path_preprocessed, self.get_all_preprocessed())
 
     def get_all_raw(self):
-        return {"train-data": self.train, "train-labels": self.train_labels, "train-label-names": self.train_label_names,
-                "test-data": self.test, "test-labels": self.test_labels, "test_label-names": self.test_label_names}
+        indices = self.indices.instances if type(self.indices) is Indices else self.indices
+        data = {lbl: data for (lbl, data) in zip(self.data_names, (self.data, indices, self.roles))}
+        for key, value in zip(self.label_data_names, self.get_labelled_data()):
+            data[key] = value
+        data[self.target_data_names[0]] = self.targets
+        return data
+
+    def get_labelled_data(self):
+        return [self.labels, self.label_names, self.labelset]
 
     def get_all_preprocessed(self):
         res = self.get_all_raw()
@@ -374,14 +404,49 @@ class Dataset(Serializable):
     def get_name(self):
         return self.name
 
-    def get_word_lists(self):
-        """Get word-only data"""
-        res = [], []
-        for doc in self.train:
-            res[0].append([wp[0] for wp in doc])
-        for doc in self.test:
-            res[1].append([wp[0] for wp in doc])
-        return res
-
     def __str__(self):
-        return "{}, train/test {}/{}, num labels: {}".format(self.base_name, len(self.train), len(self.test), self.num_labels)
+        try:
+            return self.get_info()
+        except:
+            return self.base_name
+
+    # region # chain methods
+
+    def set_component_outputs(self):
+        """Set text data to the output bundle"""
+        outputs = []
+
+        text = Text(self.get_data(), self.vocabulary)
+        dp = DataPack(text, usage=self.indices)
+        outputs.append(dp)
+
+        if self.is_labelled():
+            labels_data = Numeric(self.labels)
+            labels_usage = Labels(self.labelset, self.multilabel)
+            dp = DataPack(labels_data, labels_usage)
+            dp.add_usage(self.indices)
+            outputs.append(dp)
+        if self.targets:
+            # tar = self.train_targets + self.test_targets
+            # dp = DataPack.make(tar, GroundTruth)
+            dp = DataPack.make(self.targets, GroundTruth)
+            dp.add_usage(self.indices)
+            outputs.append(dp)
+
+        self.data_pool.add_data_packs(outputs, self.name)
+
+    def get_component_inputs(self):
+        # not needed for datasets
+        pass
+
+    def configure_name(self):
+        self.name = Dataset.generate_name(self.config)
+        if self.config.has_limit():
+            self.sampler = Sampler(self.config)
+            self.name = self.sampler.get_limited_name(self.name)
+        else:
+            self.name = Dataset.generate_name(self.config)
+        Component.configure_name(self, self.name)
+
+
+    # endregion

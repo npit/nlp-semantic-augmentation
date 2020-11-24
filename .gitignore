@@ -14,3 +14,7 @@ serialization
 test.config.yml
 test
 test_runs
+venv/
+!example.config.yml
+.dir-locals.el
+.vscode

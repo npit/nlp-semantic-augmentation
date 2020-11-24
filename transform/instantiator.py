@@ -3,24 +3,18 @@ from transform.kmeans import KMeansClustering
 from transform.lda import LDA
 from transform.lida import LiDA
 from transform.lsa import LSA
+from transform.pca import PCA
 from utils import error
 
 
-def create(representation):
-    config = representation.config
-    name = config.transform.name
-    if name == LSA.base_name:
-        return LSA(representation)
-    if name == KMeansClustering.base_name:
-        return KMeansClustering(representation)
-    if name == GMMClustering.base_name:
-        return GMMClustering(representation)
-    if name == LiDA.base_name:
-        return LiDA(representation)
-    if name == LDA.base_name:
-        return LDA(representation)
+class Instantiator:
+    component_name = "transform"
+    avail = [LSA, KMeansClustering, GMMClustering, LiDA, LDA, PCA]
 
-    available = [LSA.base_name, KMeansClustering.base_name, GMMClustering.base_name, LiDA.base_name, LDA.base_name]
-    # any unknown name is assumed to be pretrained embeddings
-    error("Undefined feature transformation: {}, available ones are {}".format(name, available))
-
+    def create(config):
+        name = config.name
+        for tra in Instantiator.avail:
+            if tra.base_name == name:
+                return tra(config)
+        # any unknown name is assumed to be pretrained embeddings
+        error(f"Undefined feature transformation: {name}, available ones are {[tra.base_name for tra in Instantiator.avail]}")
