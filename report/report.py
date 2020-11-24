@@ -1,6 +1,6 @@
 from component.component import Component
 import numpy as np
-from utils import to_namedtuple, debug, align_index
+from utils import to_namedtuple, debug, align_index, error
 from bundle.datausages import *
 from bundle.datatypes import *
 import json
@@ -65,58 +65,126 @@ class MultistageClassificationReport(Report):
         # iterate over input instances (prior to ngramizing)
         ngram_tags = sorted([x for x in datapack.usages[0].tags if x.startswith("ngram_inst")])
         for n, ngram_tag in enumerate(ngram_tags):
-            original_instance_idx = datapack.usages[0].get_tag_instances(ngram_tag)
-            obj = {"instance": n, "data": [data[i] for i in original_instance_idx], "predictions": []}
+            # indexes of the tokens for the current istance to the entire data container
+            original_instance_ix_data = datapack.usages[0].get_tag_instances(ngram_tag)
+
+            # indexes of the current tokens for the current istance to the prediction container
+            # (the first prediction batch is on the entire data)
+            instance_ix_preds = original_instance_ix_data.copy()
+            # indexes of the current tokens for the current istance to the entire data container
+            instance_ix_data = original_instance_ix_data.copy()
+
+            # indexes (size == num curr. curr. predictions) mapping each pred. row
+            # to each token in the data container
+            prediction_ix_data = None
+
+            obj = {"instance": n, "data": [data[i] for i in original_instance_ix_data], "predictions": []}
             preds_obj = {}
-            total_survivors = []
+            # iterate over prediction steps
             for i in range(len(predictions)):
                 debug(f"Creating report for instance {n+1}/{len(ngram_tags)}, prediction {i+1}/{len(predictions)}")
                 preds_obj = {"step": i}
-                # get all predictions & tresholding results for them
-                all_preds = predictions[i].data.instances
-                all_surviving_idx = tagged_idx[i]
+                # all prediction scores
+                step_preds = predictions[i].data.instances
+                if prediction_ix_data is None:
+                    # this is the first step -- size should equal
+                    prediction_ix_data = np.arange(len(step_preds))
+                    error("Mismatch in number of predictions and data!", len(prediction_ix_data) != len(data))
 
-                # get *thresholded* predictions relevant to the current original instance
-                surv_instance_idx = np.intersect1d(original_instance_idx, all_surviving_idx)
-                preds_obj["survivors"] = [i for (i, idx) in enumerate(original_instance_idx) if idx in surv_instance_idx]
-                total_survivors.append(preds_obj["survivors"])
+                # filter out survivors
+                # local index of entries surviving the thresholding
+                survivor_ix_preds = tagged_idx[i]
+                survivor_ix_data = prediction_ix_data[survivor_ix_preds]
+
+                # filter out to current instance
+                # (both indexes refer to the preds. container):
+                instance_survivor_ix_preds = np.intersect1d(instance_ix_preds, survivor_ix_preds)
+                # (both indexes refer to the data. container):
+                instance_survivor_ix_data = np.intersect1d(survivor_ix_data, instance_ix_data)
+
+                preds_obj["survivor_words"] = [data[i] for i in instance_survivor_ix_data]
+
+                if i == 0:
+                    th = self.input_parameters_dict["binary_threshold"]
+                    if np.any(step_preds[survivor_ix_preds,1] < th):
+                        print("bin Threshold!")
+                else:
+                    th = self.input_parameters_dict["multiclass_threshold"]
+                    l1 = len(np.where(step_preds[survivor_ix_preds,:] >= th)[0])
+                    l2 = len(survivor_ix_preds)
+                    if l1 != l2:
+                        print("mc Threshold!")
+                ds = [data[i] for i in instance_survivor_ix_data]
+                dall = [data[i] for i in original_instance_ix_data]
+                if any(x not in dall for x in ds):
+                    print("words")
+
+
+                preds_obj["s_inst_preds"] = instance_survivor_ix_preds.tolist()
+                preds_obj["s_inst_data"] = instance_survivor_ix_data.tolist()
+                preds_obj["s_preds"] = survivor_ix_preds.tolist()
+                preds_obj["s_data"] = survivor_ix_data.tolist()
+
+                preds_obj["pred_ix_data"] = prediction_ix_data.tolist()
+                preds_obj["inst_ix_pred"] = instance_ix_preds.tolist()
 
                 # sort descending, get top k
                 # for completeness, get the topK preds for all instances, surviving or not
-                top_k_preds, top_k_predicted_classes = self.get_topK_preds(all_preds[original_instance_idx], self.label_mapping[i])
-
-                # write stuff in the object dict:
-                # (do not write all instance predictions)
-                # preds_obj[self.params.pred_chains[i]] = all_instance_preds.tolist()
-                # (do not write all predictions thresholding)
-                # surviving = np.zeros(len(all_preds))
-                # surviving[surv_instance_idx] = 1
-                # preds_obj["thresholded"] = surviving.tolist()
+                top_k_preds, top_k_predicted_classes = self.get_topK_preds(step_preds[instance_ix_preds], self.label_mapping[i])
 
                 # write top-k
-                preds_obj["topk_preds"] = top_k_preds
-                preds_obj["topk_classes"] = top_k_predicted_classes
+                preds_obj["topk_per_token"] = []
+                for (pr, cl) in zip (top_k_preds, top_k_predicted_classes):
+                    preds_obj["topk_per_token"].append({c: p for (c, p) in zip(cl, pr)})
+                
+                # for the next step, only survivors remain
+                # predictions
+                prediction_ix_data = survivor_ix_data
+                # instance-related:
+                # ixs to data is straightforward
+                instance_ix_data = instance_survivor_ix_data
+                # aligning the surviving indexes of the instance to the surviving preds container
+                # via the surviving data
+                ix = [np.where(prediction_ix_data == d)[0] for d in instance_survivor_ix_data]
+                instance_ix_preds = np.concatenate(ix) if ix else []
 
-                # eliminate instance indexes that did not survive
-                # and align them to the thresholded orig. instance container
-                original_instance_idx = align_index(original_instance_idx, [i in all_surviving_idx for i in range(len(all_preds))], mask_shows_deletion=False)
+                # preds_obj["topk_classes"] = top_k_predicted_classes
 
                 # append the predictions for the instance
                 obj["predictions"].append(preds_obj)
-            obj["total_survivors"] = self.get_threshold_survivors(total_survivors, datapack.usages[0].get_tag_instances(ngram_tag).tolist())
-            obj["total_topk_preds"] = [top_k_preds[i] for i in preds_obj["survivors"]]
-            obj["total_topk_classes"] = [top_k_predicted_classes[i] for i in preds_obj["survivors"]]
+
+            # total predictions
+            obj["total_predictions"] = []
+
+            preds_obj["survivors_idx"] = []
+            orig_words = [data[i] for i in instance_ix_data]
+            for s, surv_idx in enumerate(instance_ix_data):
+                tobj = {"original_word_index": int(surv_idx), "original_word": orig_words[s]}
+                tobj["replacements"] = []
+                for (pr, cl) in zip (top_k_preds[s], top_k_predicted_classes[s]):
+                    tobj["replacements"].append({cl: pr})
+                obj["total_predictions"].append(tobj)
+
             res.append(obj)
         self.result = {"results": res, "input_params": self.input_parameters_dict, "messages": self.messages}
-    def get_threshold_survivors(self, total_survivors, original_idx):
-        # total surviving tokens in reversed order
-        survivors_per_step = total_survivors[-2::-1] + [original_idx]
-        current = total_survivors[-1]
-        for surv in survivors_per_step:
-            if not surv or not current:
-                current = []
-                break
-            current = [surv[i] for i in current]
+
+    def align_to_original_index(self, idx_progression, original_idx):
+        """
+        Aligns a collection of self-applying indexes to the original collection indexes
+        index_progression (list): List of index collections in temporal order
+        original_idx (list): Original index collection
+        """
+        # set index in in reversed order and append the original
+        current = idx_progression[-1]
+        if not current:
+            return []
+        # get progression but for the last step
+        all_progression = reversed([original_idx] + idx_progression[:-1])
+        for active_idx in all_progression:
+            if not active_idx:
+                return []
+            # align
+            current = [active_idx[i] for i in current]
         return current
 
     def get_topK_preds(self, predictions, label_mapping):
@@ -152,7 +220,5 @@ class MultistageClassificationReport(Report):
         self.data_pool.add_data_packs([res], self.name)
 
     def get_component_inputs(self):
-        # will handle in produce outputs
-        # orig_data = self.data_pool.get_current_inputs()[0]
-        # classification_results = self.data_pool.current_inputs()[1:] 
+        # handle in production
         pass

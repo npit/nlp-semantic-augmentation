@@ -18,6 +18,9 @@ class Filter(Manipulation):
         self.params = config.params
         try:
             self.func = eval(config.function)
+            info(f"Using filter function: {str(config.function)}")
+
+
         except KeyError:
             error(f"Undefined filtering predefined function: {config.function}")
 
@@ -28,7 +31,9 @@ class Filter(Manipulation):
 
     def produce_outputs(self):
         self.outputs = []
-        info(f"Applying filter: {self.func}")
+        info(f"Applying filter: {self.config.function}")
+        if self.config.params is not None:
+            info(f"Using params: {str(self.params)}")
         for i, dp in enumerate(self.input_dps):
             mask = self.apply_operation(dp.data.instances)
             # add filtered index and tag
