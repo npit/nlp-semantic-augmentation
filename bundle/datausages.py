@@ -1,6 +1,7 @@
 from bundle.datatypes import *
 import numpy as np
 from utils import as_list, warning, align_index
+from collections import defaultdict
 
 class DataUsage:
     """Abstract class for types of data utilization"""
@@ -217,10 +218,10 @@ class DataPack:
     id = "NO_ID"
 
     def to_json(self):
-        res = {"usages": []}
+        res = {"usages": defaultdict(list)}
         res["data"] = self.data.to_json()
         for us in self.usages:
-            res["usages"].append(us.to_json())
+            res["usages"][us.name].append(us.to_json())
         return res
 
 
