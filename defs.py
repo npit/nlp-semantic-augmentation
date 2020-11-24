@@ -15,9 +15,9 @@ avail_sequence_length = ["unit", "non_unit"]
 avail_weights = ["bag", "tfidf"]
 avail_disam = ["first", "pos"]
 avail_limit = ["frequency", "top", "none"]
-avail_alias = ["none", "link", "triggered"]
+avail_alias = ["none", "link"]
 avail_sampling = ["oversample", "undersample"]
-avail_roles = ["train", "test", "predictions"]
+avail_roles = ["train", "test", "inputs"]
 avail_datatypes = ["text", "vectors", "indices", "labels"]
 
 aggregation = make_def("aggregation")

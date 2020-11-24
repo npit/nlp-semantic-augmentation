@@ -29,12 +29,6 @@ class Chain(Component):
             self.required_finished_chains = link_component.get_links()
             del fields[idx]
             del configs[idx]
-        elif defs.alias.triggered in fields:
-            idx = fields.index(defs.alias.triggered)
-            trigger_args = [] # TODO, if necessary
-            self.triggered = True
-            del fields[idx]
-            del configs[idx]
 
         self.num_components = len(fields)
         self.name = name

@@ -188,7 +188,8 @@ class ManualDatasetReader:
         if type(instances) is str:
             instances = json.loads(instances)
         if type(instances) is list and type(instances[0]) is str:
-            instances = [{"text": inst, "labels": []} for inst in instances]
+            # instances = [{"text": inst, "labels": []} for inst in instances]
+            instances = [{"text": inst} for inst in instances]
         dset = {"data":{"test": instances}, "language": language}
         if label_names is not None:
             dset["label_names"] = label_names

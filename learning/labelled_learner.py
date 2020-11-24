@@ -9,7 +9,7 @@ from defs import roles
 from learning.supervised_learner import SupervisedLearner
 from learning.sampling import Sampler
 from learning.validation.validation import ValidationSetting
-from utils import (count_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot, read_pickled, warning)
+from utils import (count_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot, read_pickled, read_json, warning)
 
 
 class LabelledLearner(SupervisedLearner):
@@ -115,26 +115,39 @@ class LabelledLearner(SupervisedLearner):
 
     def save_model_wrapper(self):
         # get learner wrapper info
-        path = self.get_current_model_path() + ".wrapper"
+        path = self.get_wrapper_path()
         write_pickled(path, self.labels_info)
+
+    def get_wrapper_path(self):
+        return self.get_current_model_path() + ".wrapper"
 
     def load_model_wrapper(self):
         # get learner wrapper info
         try:
-            path = self.get_current_model_path() + ".wrapper"
-            data = read_pickled(path, msg=f"{self.name} metadata")
-            return self.process_label_information(data)
+            path = self.get_wrapper_path()
+            data = read_json(path, msg=f"{self.name} metadata")
+            self.labels_info = Labels.from_json(data)
+            return self.process_label_information(self.labels_info)
         except FileNotFoundError as ex:
+            return False
+        except (UnicodeDecodeError):
             return False
 
     def load_model_from_disk(self):
-        self.model_loaded = super().load_model_from_disk()
-        # always load the model wrapper
+        # load the model wrapper
         loaded_wrapper = self.load_model_wrapper()
+        # load the regular model
+        self.model_loaded = super().load_model_from_disk()
         return self.model_loaded and loaded_wrapper
 
     def clear_model_wrapper(self):
         self.labels_info, self.labelset, self.do_multilabel = None, None, None
+
+    def make_predictions_datapack(self):
+        pred = super().make_predictions_datapack()
+        # add labels
+        pred.add_usage(self.labels_info)
+        return pred
 
     def process_label_information(self, data):
         labelset = data.labelset

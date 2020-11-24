@@ -34,9 +34,9 @@ class DNN:
         self.assign_embedding_data(model_instance)
         model_instance.test_index = torch.LongTensor(self.test_index)
 
-    def get_model_filename(self):
+    def get_model_filename(self, model_index=None):
         """Get model base filename"""
-        return self.neural_model_class.name + super().get_model_filename()
+        return self.neural_model_class.name + super().get_model_filename(model_index)
 
     def test_model(self, model_instance):
         """Testing function"""
@@ -85,9 +85,9 @@ class DNN:
         path = self.get_current_model_path()
         if not exists(path):
             return False
-        if not super().load_model_wrapper():
-            info(f"Failed to load wrapper metadata for {self.name}")
-            return False
+        # if not super().load_model_wrapper():
+        #     info(f"Failed to load wrapper metadata for {self.name}")
+        #     return False
         state_dict = self.load_model_weights(path)
         self.get_input_shape_from_weights(state_dict)
         # instantiate object

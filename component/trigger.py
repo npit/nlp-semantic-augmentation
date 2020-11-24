@@ -75,7 +75,7 @@ class Trigger:
                 if len(outputs) == 1:
                     outputs = outputs[0]
             except Exception as ex:
-                warning(str(ex))
+                self.handle_execution_exception(ex)
                 outputs = {"ERROR": str(ex)}
             self.clean_up_data()
 
@@ -87,9 +87,16 @@ class Trigger:
     def clean_up_data(self):
         """Add received data to the data pool, to make available to the pipeline"""
         pass
+    def handle_execution_exception(self, ex):
+        """By default, print exception message"""
+        warning(str(ex))
 
 class ImmediateExecution(Trigger):
     """Dummy trigger for direct pipeline execution"""
     def arm(self):
         """Fires immediately"""
         self.fire()
+
+    def handle_execution_exception(self, ex):
+        """For normal execution, exceptions are  fatal"""
+        raise(ex)

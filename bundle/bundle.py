@@ -98,7 +98,9 @@ class DataPool:
             matches = lambda x: x.source in self.explicit_outputs
             do_explicit_outputs = True
         else:
-            matches = lambda x: x.has_usage(Predictions, allow_superclasses=False) or type(x.data) is Dictionary
+            matches = lambda x: x.has_usage(Predictions, allow_superclasses=False) or  \
+                        x.has_usage(Labels) or \
+                        type(x.data) is Dictionary
         for dp in self.data:
             # by default, return dictionaries and predictions
             if matches(dp):
@@ -211,11 +213,11 @@ class DataPool:
                 if len(curr_inputs) == 0:
                     warning("No available current inputs to fetch requrested data from! Did you omit a cross-chain linkage?")
                 else:
-                    warning("Examined current inputs for client {client}:")
+                    warning(f"Examined current inputs for requesting client {client}:")
                     for i, c in enumerate(curr_inputs):
                         warning(f"{i+1}/{len(curr_inputs)}: {str(c)}")
-                warning(f"Feeder chains/components: {self.feeder_chains}/{self.feeder_components}")
-                error(on_error_message + f" Requested: {data_type}, {'/'.join(usage)}. matches: {len(res)} candidates but requested a singleton.")
+                warning(f"Feeder chains: {self.feeder_chains}, components:{self.feeder_components}")
+                error(on_error_message + f" Requested: type: {data_type}, usages: {'/'.join(usage)}, usage-matching: {usage_matching}. \n num matches: {len(res)}.")
             res = res[0]
         else:
             # else keep all and drop empty ones
@@ -388,3 +390,7 @@ class DataPool:
     def set_chain_name(self, name):
         self.chain_name = name
     # endregion
+
+    def __str__(self):
+        return "\n".join(str(dat) for dat in self.data)
+

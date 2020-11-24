@@ -40,7 +40,8 @@ def make_linear_chain(input_dim, dim_list):
     current = input_dim
     # make the chain
     for dim in dim_list:
-        layers.append(make_linear(current, dim))
+        layer = make_linear(current, dim)
+        layers.append(layer)
         current = dim
     # return as a module list
     return nn.ModuleList(layers)

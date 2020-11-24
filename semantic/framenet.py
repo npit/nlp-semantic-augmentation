@@ -18,21 +18,37 @@ class Framenet(SemanticResource):
         # map nltk pos maps into meaningful framenet ones
         self.pos_tag_mapping = {"VB": "V", "NN": "N", "JJ": "A", "RB": "ADV"}
 
-    def fetch_raw(self, dummy_input):
-        if not self.base_name + "_v17" in listdir(nltk.data.find("corpora")):
-            nltk_download(self.config, "framenet_v17")
-        return None
 
-    def lookup(self, candidate):
+    def analyze(self, inputs):
+        """Analyzer function"""
+        concepts = []
+        for word in inputs:
+            concepts.extend(self.lookup(word))
+        return concepts
+
+    def initialize_lookup(self):
+        if self.initialized:
+            return
+        try:
+            fn.frames_by_lemma("dog")
+        except LookupError:
+            nltk_download(self.config, "framenet_v17")
+        self.initialized = True
+
+    def lookup(self, word):
+        frames = fn.frames_by_lemma(word)
+        return [f['name'] for f in frames]
+
+    def lookup_(self, candidate):
         # http://www.nltk.org/howto/framenet.html
-        word, word_pos = candidate
+        word = candidate
         # in framenet, pos-disambiguation is done via the lookup
         if self.disambiguation == defs.disam.pos:
             frames = self.lookup_with_POS(candidate)
         else:
             frames = fn.frames_by_lemma(word)
             if not frames:
-                return None
+                return 
             frames = self.disambiguate(frames, candidate)
         if not frames:
             return None

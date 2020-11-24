@@ -38,15 +38,6 @@ class Learner(Serializable):
     train_embedding = None
     model_index = None
 
-    # # store information pertaining to the learning run(s) executed
-    # predictions = []
-    # prediction_tags = []
-    # prediction_roles = []
-    # prediction_indexes = []
-    # prediction_model_indexes = []
-
-    # models = None
-
     def __init__(self, consumes=None):
         """Generic learning constructor
         """
@@ -54,9 +45,7 @@ class Learner(Serializable):
         Serializable.__init__(self, "")
         self.models = []
         self.predictions = []
-        self.prediction_tags = []
         self.prediction_roles = []
-        self.prediction_indexes = []
         self.prediction_model_indexes = []
 
     # input preproc
@@ -65,7 +54,6 @@ class Learner(Serializable):
 
     def read_config_variables(self):
         """Shortcut function for readding a load of config variables"""
-        self.allow_prediction_loading = self.config.allow_prediction_loading
 
         self.sequence_length = self.config.sequence_length
 
@@ -112,7 +100,7 @@ class Learner(Serializable):
         pass
 
     def get_all_preprocessed(self):
-        return (self.predictions, self.prediction_tags, self.prediction_indexes)
+        return (self.predictions, self.output_usage.to_json())
 
     def make(self):
         # get handy variables
@@ -136,25 +124,20 @@ class Learner(Serializable):
     def get_predictions_file(self, model_index=None, tag="test"):
         if tag:
             tag += "."
-        return join(self.get_results_folder(),  self.get_model_filename() + "." + tag + "predictions.pkl")
+        return join(self.get_results_folder(),  self.get_model_filename(model_index) + "." + tag + "predictions.pkl")
 
     def get_existing_model_path(self):
         path = self.get_current_model_path()
         return path if exists(path) else None
 
+    def get_model_path(self):
+        return self.get_current_model_path()
 
     # function to retrieve training data as per the existing configuration
     def configure_trainval_indexes(self):
         """Retrieve training/validation instance indexes
-
-        :returns: 
-        :rtype: 
-
         """
         trainval_idx = self.validation.get_trainval_indexes()
-
-        # get train/val splits
-        trainval_serialization_file = join(self.config.folders.run, self.get_trainval_serialization_file())
 
         # do sampling 
         if self.do_sampling:
@@ -197,8 +180,6 @@ class Learner(Serializable):
                 # set the train/val data indexes
                 self.train_index, self.val_index = trainval
 
-                # self.prediction_indexes.append(self.validation.get_prediction_indexes())
-
                 # train and keep track of the model
                 self.model_index = iteration_index
                 model = self.acquire_trained_model()
@@ -217,7 +198,9 @@ class Learner(Serializable):
 
     def get_model_filename(self, model_index=None):
         """Retrieve model filename"""
-        model_id = "" if self.model_index is None else f".model_{self.model_index}"
+        if model_index is None:
+            model_index = self.model_index
+        model_id = "" if model_index is None else f".model_{model_index}"
         return self.name + get_info_string(self.config) + model_id  + ".model"
 
     def get_results_folder(self):
@@ -238,16 +221,15 @@ class Learner(Serializable):
     # region: component functions
     def load_outputs_from_disk(self):
         self.set_serialization_params()
-        self.add_serialization_source(self.get_predictions_file(), reader=read_pickled, handler=lambda x: x)
-        if not self.config.allow_prediction_loading:
-            return False
+        self.add_serialization_source(self.get_predictions_file("total"), reader=read_pickled, handler=lambda x: x)
         return self.load_existing_predictions()
 
     def load_existing_predictions(self):
         """Loader function for existing, already computed predictions. Checks for label matching."""
         # get predictions and instance indexes they correspond to
         try:
-            self.predictions, self.prediction_indexes = read_pickled(self.get_predictions_file())
+            self.predictions, pred_instances, pred_tags = read_pickled(self.get_predictions_file("total"))
+            self.output_usage = Predictions(pred_instances, pred_tags)
         except FileNotFoundError:
             return False
         # also check labels
@@ -271,9 +253,8 @@ class Learner(Serializable):
         # apply the learning model on the input data
         # produce pairing with ground truth for future evaluation
         # training data
-        self.predictions = []
-        self.prediction_tags = []
-        self.prediction_indexes = []
+        self.configure_model_after_inputs()
+        self.predictions = None
         self.prediction_model_indexes = []
         self.prediction_roles = []
 
@@ -292,6 +273,8 @@ class Learner(Serializable):
                 train_indexes *= num_models
                 test_indexes *= num_models
 
+        # make the output usage object
+        self.output_usage = None
         for model_index, model in enumerate(self.models):
             self.model_index = model_index
             train, test = train_indexes[model_index], test_indexes[model_index]
@@ -314,23 +297,34 @@ class Learner(Serializable):
         if len(self.test_index) == 0:
             warning(f"Attempted to apply {self.name} model on empty indexes!")
             return
+
+        # generate predictions
         predictions = self.test_model(model)
 
-        # keep track of:
-        # output predictions and tags
-        self.predictions.append(predictions)
-        # self.prediction_tags.append(tag)
-        self.prediction_roles.append(tag)
-        # corresponding model
-        self.prediction_model_indexes.append(f"model_{self.model_index}")
-        # corresponding indexes to instance / label data
-        self.prediction_indexes.append(self.test_index)
+        pred_idx = np.arange(len(predictions))
+        # keep track output predictions and tags
+        if self.predictions is None:
+            self.predictions = predictions
+        else:
+            pred_idx += len(self.predictions)
+            self.predictions = np.append(self.predictions, predictions, axis=0)
+        
+        # mark the model
+        model_id = f"model_{self.model_index}"
+        if self.output_usage is None:
+            self.output_usage = Predictions(pred_idx, model_id)
+        else:
+            self.output_usage.add_instance(pred_idx, model_id)
+
+        # mark the tag
+        self.output_usage.add_instance(pred_idx, tag)
+        # mark the correspondence to the input instances
+        self.output_usage.add_instance(self.test_index, f"{model_id}_{tag}_{defs.roles.inputs}")
 
     def save_outputs(self):
         """Save produced predictions"""
-        for m in range(len(self.predictions)):
-            predictions_file = self.get_predictions_file(m) 
-            write_pickled(predictions_file, [self.predictions[m], self.prediction_indexes[m]])
+        predictions_file = self.get_predictions_file("total") 
+        write_pickled(predictions_file, [self.predictions, self.output_usage.instances, self.output_usage.tags])
 
     def load_model_from_disk(self):
         """Load the component's model from disk"""
@@ -358,6 +352,9 @@ class Learner(Serializable):
     def configure_model_after_inputs(self):
         pass
 
+    def configure_model_after_inputs(self):
+        pass
+
     def get_data_from_index(self, index, embeddings):
         """Get data index from the embedding matrix"""
         if np.squeeze(index).ndim > 1:
@@ -370,14 +367,11 @@ class Learner(Serializable):
         """Set the output data of the clusterer"""
         # predictions to output
         # predictions
-        pred = self.get_predictions_datapack()
-        self.data_pool.add_data_packs([pred], self.name)
+        dp = self.make_predictions_datapack()
+        self.data_pool.add_data_packs([dp], self.name)
 
-    def get_predictions_datapack(self):
-        pred = Numeric(np.concatenate(self.predictions))
-        preds_usage = Predictions(self.prediction_indexes, tags=self.prediction_roles)
-        preds_usage.add_tags(self.prediction_model_indexes)
-        pred = DataPack(pred, preds_usage)
+    def make_predictions_datapack(self):
+        pred = DataPack(Numeric(self.predictions), self.output_usage)
         return pred
 
     def load_model_wrapper(self):
