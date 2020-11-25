@@ -37,7 +37,7 @@ class Filter(Manipulation):
         for i, dp in enumerate(self.input_dps):
             mask = self.apply_operation(dp.data.instances)
             # add filtered index and tag
-            output_usages = [Indices(mask, [self.config.produce_index_tag])]
+            output_usages = [Indices(mask, [self.config.produce_index_tag], skip_empty=False)]
             # modify (align) existing indexes, post-filtering
             for u in dp.usages:
                 if issubclass(type(u), Indices):
@@ -56,6 +56,6 @@ class Filter(Manipulation):
         self.input_dps = self.data_pool.get_current_inputs()
         error(f"No inputs available for {self.name}", len(self.input_dps) == 0)
         # get config
-        if self.params == "input":
+        if self.config.params == "input":
             self.params = self.data_pool.request_data(Dictionary, usage="ignore", client=self.name, reference_data=self.data_pool.data)
             self.params = to_namedtuple(self.params.data.instances, "params")

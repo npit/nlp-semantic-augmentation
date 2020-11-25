@@ -54,7 +54,7 @@ class Indices(DataUsage):
         return self.__class__(output, self.tags)
 
 
-    def __init__(self, instances, tags, epi=None):
+    def __init__(self, instances, tags, epi=None, skip_empty=True):
         # only numbers
         super().__init__([Numeric])
         instances = as_list(instances)
@@ -68,7 +68,8 @@ class Indices(DataUsage):
         for i in range(len(instances)):
             inst = instances[i]
             if len(inst) == 0:
-                continue
+                if skip_empty:
+                    continue
             self.instances.append(np.asarray(inst))
             try:
                 tag = tags[i]

@@ -19,6 +19,8 @@ class MultistageClassificationReport(Report):
     name = "multistageclassif"
     def __init__(self, config):
         self.config = config
+        if "debug" not in self.config.params:
+            self.config.params["debug"] = False
         self.params = to_namedtuple(self.config.params, "params")
     
     def produce_outputs(self):
@@ -104,13 +106,19 @@ class MultistageClassificationReport(Report):
 
                 preds_obj["survivor_words"] = [data[i] for i in instance_survivor_ix_data]
 
+                ix = [np.where(original_instance_ix_data == d)[0] for d in instance_survivor_ix_data]
+                ix = np.concatenate(ix) if ix else np.asarray([],dtype=np.int64)
+                preds_obj["survivor_word_instance_index"] = ix.tolist()
+
+                # extra info for verification debugging
+                ########################################
                 if i == 0:
                     th = self.input_parameters_dict["binary_threshold"]
                     if np.any(step_preds[survivor_ix_preds,1] < th):
                         print("bin Threshold!")
                 else:
                     th = self.input_parameters_dict["multiclass_threshold"]
-                    l1 = len(np.where(step_preds[survivor_ix_preds,:] >= th)[0])
+                    l1 = len(np.unique(np.where(step_preds[survivor_ix_preds,:] >= th)[0]))
                     l2 = len(survivor_ix_preds)
                     if l1 != l2:
                         print("mc Threshold!")
@@ -119,23 +127,30 @@ class MultistageClassificationReport(Report):
                 if any(x not in dall for x in ds):
                     print("words")
 
+                if self.params.debug or ("debug" in self.input_parameters_dict and self.input_parameters_dict["debug"]):
+                    preds_obj["survivor_inst_idx_wrt_preds"] = instance_survivor_ix_preds.tolist()
+                    preds_obj["survivor_inst_idx_wrt_data"] = instance_survivor_ix_data.tolist()
+                    preds_obj["survivor_idx_wrt_preds"] = survivor_ix_preds.tolist()
+                    preds_obj["survivor_idx_wrt_data"] = survivor_ix_data.tolist()
 
-                preds_obj["s_inst_preds"] = instance_survivor_ix_preds.tolist()
-                preds_obj["s_inst_data"] = instance_survivor_ix_data.tolist()
-                preds_obj["s_preds"] = survivor_ix_preds.tolist()
-                preds_obj["s_data"] = survivor_ix_data.tolist()
+                    preds_obj["prediction_ix_wrt_data"] = prediction_ix_data.tolist()
+                    preds_obj["instance_idx_wrt_preds"] = instance_ix_preds.tolist()
 
-                preds_obj["pred_ix_data"] = prediction_ix_data.tolist()
-                preds_obj["inst_ix_pred"] = instance_ix_preds.tolist()
+                    preds_obj["topk_in_predictions"] = []
+                    top_k_all, top_k_classes_all = self.get_topK_preds(step_preds, self.label_mapping[i])
+                    for (pr, cl) in zip (top_k_all, top_k_classes_all):
+                        preds_obj["topk_in_predictions"].append({c: p for (c, p) in zip(cl, pr)})
+
+                ########################################
 
                 # sort descending, get top k
                 # for completeness, get the topK preds for all instances, surviving or not
                 top_k_preds, top_k_predicted_classes = self.get_topK_preds(step_preds[instance_ix_preds], self.label_mapping[i])
 
                 # write top-k
-                preds_obj["topk_per_token"] = []
+                preds_obj["topk_per_instance_token"] = []
                 for (pr, cl) in zip (top_k_preds, top_k_predicted_classes):
-                    preds_obj["topk_per_token"].append({c: p for (c, p) in zip(cl, pr)})
+                    preds_obj["topk_per_instance_token"].append({c: p for (c, p) in zip(cl, pr)})
                 
                 # for the next step, only survivors remain
                 # predictions
@@ -146,7 +161,7 @@ class MultistageClassificationReport(Report):
                 # aligning the surviving indexes of the instance to the surviving preds container
                 # via the surviving data
                 ix = [np.where(prediction_ix_data == d)[0] for d in instance_survivor_ix_data]
-                instance_ix_preds = np.concatenate(ix) if ix else []
+                instance_ix_preds = np.concatenate(ix) if ix else np.asarray([],dtype=np.int64)
 
                 # preds_obj["topk_classes"] = top_k_predicted_classes
 
@@ -154,16 +169,16 @@ class MultistageClassificationReport(Report):
                 obj["predictions"].append(preds_obj)
 
             # total predictions
-            obj["total_predictions"] = []
+            obj["overall_predictions"] = []
 
-            preds_obj["survivors_idx"] = []
             orig_words = [data[i] for i in instance_ix_data]
             for s, surv_idx in enumerate(instance_ix_data):
-                tobj = {"original_word_index": int(surv_idx), "original_word": orig_words[s]}
-                tobj["replacements"] = []
+                widx = np.where(original_instance_ix_data == surv_idx)[0]
+                tobj = {"original_word_index": int(widx), "original_word": orig_words[s]}
+                tobj["replacements"] = {}
                 for (pr, cl) in zip (top_k_preds[s], top_k_predicted_classes[s]):
-                    tobj["replacements"].append({cl: pr})
-                obj["total_predictions"].append(tobj)
+                    tobj["replacements"][cl] = pr
+                obj["overall_predictions"].append(tobj)
 
             res.append(obj)
         self.result = {"results": res, "input_params": self.input_parameters_dict, "messages": self.messages}
