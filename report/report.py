@@ -1,6 +1,6 @@
 from component.component import Component
 import numpy as np
-from utils import to_namedtuple, debug, align_index, error
+from utils import to_namedtuple, debug, align_index, error, as_list
 from bundle.datausages import *
 from bundle.datatypes import *
 import json
@@ -137,7 +137,7 @@ class MultistageClassificationReport(Report):
                     preds_obj["instance_idx_wrt_preds"] = instance_ix_preds.tolist()
 
                     preds_obj["topk_in_predictions"] = []
-                    top_k_all, top_k_classes_all = self.get_topK_preds(step_preds, self.label_mapping[i])
+                    top_k_all, top_k_classes_all = self.get_topK_preds(step_preds, self.label_mapping[i], self.params.only_report_labels[i])
                     for (pr, cl) in zip (top_k_all, top_k_classes_all):
                         preds_obj["topk_in_predictions"].append({c: p for (c, p) in zip(cl, pr)})
 
@@ -145,7 +145,7 @@ class MultistageClassificationReport(Report):
 
                 # sort descending, get top k
                 # for completeness, get the topK preds for all instances, surviving or not
-                top_k_preds, top_k_predicted_classes = self.get_topK_preds(step_preds[instance_ix_preds], self.label_mapping[i])
+                top_k_preds, top_k_predicted_classes = self.get_topK_preds(step_preds[instance_ix_preds], self.label_mapping[i],self.params.only_report_labels[i])
 
                 # write top-k
                 preds_obj["topk_per_instance_token"] = []
@@ -202,7 +202,7 @@ class MultistageClassificationReport(Report):
             current = [active_idx[i] for i in current]
         return current
 
-    def get_topK_preds(self, predictions, label_mapping):
+    def get_topK_preds(self, predictions, label_mapping, only_report_labels):
         """
         Return topK predictions and predicted classes from a predictions matrix and index label mapping dict
         """
@@ -226,6 +226,15 @@ class MultistageClassificationReport(Report):
             top_k_preds = [row[top_k_idxs[row_idx]].tolist() for row_idx, row in enumerate(predictions)]
             # take the classses corresponding to the argsorted indexes probs
             top_k_predicted_classes = [[label_mapping[ix] for ix in idxs] for idxs in top_k_idxs]
+        if only_report_labels is not None:
+            only_report_labels = as_list(only_report_labels)
+            for i in range(len(top_k_predicted_classes)):
+                retained_label_idxs = []
+                for lbl in only_report_labels:
+                    lbl_idx = top_k_predicted_classes[i].index(lbl)
+                    retained_label_idxs.append(lbl_idx)
+                top_k_predicted_classes[i] = [top_k_predicted_classes[i][l] for l in retained_label_idxs]
+                top_k_preds[i] = [top_k_preds[i][l] for l in retained_label_idxs]
         return top_k_preds, top_k_predicted_classes
 
     def set_component_outputs(self):

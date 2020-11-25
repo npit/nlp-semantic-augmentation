@@ -86,6 +86,7 @@ chains:
         # threshold application indexes
         idx_tags: [binary_thresh, multiclass_thresh]
         label_mappings: [["keep", "replace"], "labelmapping.json"]
+	only_report_labels: ["report", null]
         top_k: 5
 
 # global settings
