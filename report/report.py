@@ -231,6 +231,8 @@ class MultistageClassificationReport(Report):
             for i in range(len(top_k_predicted_classes)):
                 retained_label_idxs = []
                 for lbl in only_report_labels:
+                    if lbl not in top_k_predicted_classes[i]:
+                        error(f"Requested to only report label {lbl} but top {self.topk} predicted labels are {top_k_predicted_classes[i]}")
                     lbl_idx = top_k_predicted_classes[i].index(lbl)
                     retained_label_idxs.append(lbl_idx)
                 top_k_predicted_classes[i] = [top_k_predicted_classes[i][l] for l in retained_label_idxs]
