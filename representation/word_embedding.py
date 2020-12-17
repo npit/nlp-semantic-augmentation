@@ -103,19 +103,19 @@ class WordEmbedding(Embedding):
         if self.unknown_word_token not in self.embeddings_source:
             self.embeddings_source.loc[self.unknown_word_token] = np.zeros(self.dimension)
 
+        # make index to position map to speed up location finder
+        self.key2pos_map = {}
+        for ind in tqdm.tqdm(self.embeddings_source.index, total=len(self.embeddings_source), desc="Buildilng key index map"):
+            self.key2pos_map[ind] = len(self.key2pos_map)
+
     def produce_outputs(self):
         """Produce word embeddings"""
         # will not limit the embedding source to the used embeddings,
         # since the model may be used for testing
 
-        # make index to position map to speed up location finder
-        self.key2pos_map = {}
         # stats
         self.num_texts_unmapped = 0
         self.all_idxs = []
-        counter = collections.Counter()
-        for ind in tqdm.tqdm(self.embeddings_source.index, total=len(self.embeddings_source), desc="Buildilng key index map"):
-            self.key2pos_map[ind] = len(self.key2pos_map)
 
         self.embeddings, self.elements_per_instance = [], []
         for doc_dict in tqdm.tqdm(self.text.data.instances, total=len(self.text.data.instances), desc="Mapping word embeddings"):

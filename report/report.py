@@ -176,6 +176,7 @@ class MultistageClassificationReport(Report):
                 widx = np.where(original_instance_ix_data == surv_idx)[0]
                 tobj = {"original_word_index": int(widx), "original_word": orig_words[s]}
                 tobj["replacements"] = {}
+
                 for (pr, cl) in zip (top_k_preds[s], top_k_predicted_classes[s]):
                     tobj["replacements"][cl] = pr
                 obj["overall_predictions"].append(tobj)

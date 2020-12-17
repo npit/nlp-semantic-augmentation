@@ -33,9 +33,10 @@ class Filter(Manipulation):
         self.outputs = []
         info(f"Applying filter: {self.config.function}")
         if self.config.params is not None:
-            info(f"Using params: {str(self.params)}")
+            debug(f"Using params: {str(self.params)}")
         for i, dp in enumerate(self.input_dps):
             mask = self.apply_operation(dp.data.instances)
+            debug(f"Survivors in mask: {np.where(mask)}")
             # add filtered index and tag
             output_usages = [Indices(mask, [self.config.produce_index_tag], skip_empty=False)]
             # modify (align) existing indexes, post-filtering
