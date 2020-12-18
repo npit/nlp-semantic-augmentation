@@ -84,7 +84,9 @@ class SupervisedEvaluator(Evaluator):
         gt = np.concatenate(gt)
         return gt
 
-    def evaluate_measure(self, predictions, indexes, measure):
+    computed_maj_baseline_for_indexes = set()
+
+    def evaluate_measure(self, predictions, indexes, measure, key_suffix=None):
         """Evaluate a measure on input data over label aggregations
 
         Arguments:
@@ -93,16 +95,40 @@ class SupervisedEvaluator(Evaluator):
         """
         res = {}
         for lbl_aggr in self.label_aggregations:
-            res[lbl_aggr] = {self.iterations_alias:[]}
-            iter_values = res[lbl_aggr][self.iterations_alias]
-
+            if key_suffix is not None:
+                key = lbl_aggr + key_suffix
+            else:
+                key = lbl_aggr
+            res[key] = {self.iterations_alias:[]}
             gt, preds = self.get_evaluation_input(predictions, indexes)
             score = self.measure_funcs[measure](gt, preds, lbl_aggr if lbl_aggr != "none" else None)
-            iter_values.append(score)
+            res[key][self.iterations_alias].append(score)
             # # compute aggregation of the multiple-iterations
             # res[lbl_aggr] = self.aggregate_iterations(res[lbl_aggr])
+        
+        # by the way -- if we need to evaluate the majority baseline,
+        # since it's dependent on the input labels portion
+        # do it sneakily here instead.
+        self.compute_majority_baseline(measure, predictions, indexes)
         return res
 
+
+    def compute_majority_baseline(self, measure, predictions, indexes):
+        """
+        Compute a majority-based baseline wrt. input indexes
+        """
+        # keep track of baseline'd index collection
+        idxs_hash = hash(str(indexes))
+        if idxs_hash not in self.computed_maj_baseline_for_indexes:
+            self.computed_maj_baseline_for_indexes.add(idxs_hash)
+            # get gt for that chunk
+            gt, _ = self.get_evaluation_input(predictions, indexes)
+            # make dummy classifier
+            dc = DummyClassifier(strategy="stratified")
+            dc.fit(gt, y=gt)
+            maj_preds = dc.predict(predictions)
+            # evaluate the maj predictions
+            self.evaluate_measure(maj_preds, indexes, measure, key_suffix="maj_baseline")
 
     def aggregate_tags(self, tags, roles, out_dict):
         # perform an aggregation across all tags as well, if applicable
@@ -130,21 +156,6 @@ class SupervisedEvaluator(Evaluator):
 
         info(f"gt:    {tl2s(gt_distr)}")
         info(f"preds: {tl2s(preds_distr)}")
-
-    def evaluate_baselines(self):
-        super().evaluate_baselines()
-
-        info("Evaluating majority baseline")
-        self.results["majority"] = {}
-        maj_preds = []
-        for i in range(len(self.predictions)):
-            _, gt = self.get_evaluation_input(i)
-            dc = DummyClassifier(strategy="prior")
-            dc.fit(gt, y=gt)
-            maj_preds.append(dc.predict(self.predictions[i]))
-        maj_preds = self.preprocess_predictions(maj_preds)
-        self.evaluate_predictions(maj_preds, "majority", override_tags_roles=("model", "maj-baseline"))
-
 
     def print_measure(self, measure, ddict, df=None):
         """Print measure results, aggregating over prediction iterations"""
@@ -176,3 +187,4 @@ class SupervisedEvaluator(Evaluator):
         #         weight_factor=1.2, stemming=True)
         # scores = evaluator.get_scores(gt, preds)
         # return scores
+

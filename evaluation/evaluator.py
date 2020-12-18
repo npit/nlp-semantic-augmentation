@@ -48,7 +48,7 @@ class Evaluator(Serializable):
     def produce_outputs(self):
         self.results = {"run":{}}
 
-        # self.evaluate_baselines()
+        self.evaluate_baselines()
 
         info("Evaluating run")
         self.predictions = self.preprocess_predictions(self.predictions)
@@ -64,7 +64,7 @@ class Evaluator(Serializable):
 
         info("Evaluating random baseline")
         self.results["random"] = {}
-        rand_preds = [get_random_predictions(prediction_shape) for _ in range(self.num_eval_iterations)]
+        rand_preds = [get_random_predictions(prediction_shape) for _ in range(self.num_eval_iterations)][0]
         rand_preds = self.preprocess_predictions(rand_preds)
         self.evaluate_predictions(rand_preds, "random", override_tags_roles=("model", "rand-baseline"))
 
@@ -81,6 +81,8 @@ class Evaluator(Serializable):
                     for measure in self.results[results_type][tag][role]:
                         self.print_measure(measure, self.results[results_type][tag][role][measure], df=df)
 
+                    if not self.config.print_individual_models and tag != "all_tags":
+                        continue
                     self.print_results_dataframe(df, f"{results_type}-{tag}-{role}:")
 
     def print_results_dataframe(self, df, prefix):
@@ -131,7 +133,7 @@ class Evaluator(Serializable):
             return [self.round(x) for x in val]
         return np.round(val, self.print_precision)
 
-    def evaluate_predictions(self, predictions, key, override_tags_roles=None):
+    def evaluate_predictions(self, input_predictions, key, override_tags_roles=None):
         """Perform all evaluations on given predictions
         Perform a two-step hierarchical aggregation:
         Outer: any tag that's not inner
@@ -155,7 +157,7 @@ class Evaluator(Serializable):
                 # get prediction indexes
                 in_idx = self.indexes[self.tags.index(inner_tag)]
                 joint_idx = np.intersect1d(out_idx, in_idx)
-                current_predictions = self.predictions[joint_idx]
+                current_predictions = input_predictions[joint_idx]
 
                 # get the indexes to the input data
                 input_tag = f"{outer_tag}_{inner_tag}_{defs.roles.inputs}"

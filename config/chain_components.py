@@ -216,6 +216,7 @@ class evaluator_conf(Configuration):
         self.label_aggregations = self.get_value("label_aggregations", base=config)
         self.measures = self.get_value("measures", default=["f1"], base=config)
         self.measures = as_list(self.measures)
+        self.print_individual_models = self.get_value("print_individual_models", default=False, base=config)
         self.label_distribution = self.get_value("show_label_distributions", base=config, default="logs")
 
 class endpoint_conf(Configuration):
