@@ -135,14 +135,14 @@ class DataPool:
         # organize data by type
         data.chain = self.current_running_chain
         self.data_per_type[data.get_datatype()].append(data)
-        self.data_per_usage[data.usage()].append(data)
+        self.data_per_usage[data.get_usages_str()].append(data)
         self.data_per_chain[data.chain].append(data)
         self.log_data_supply(data)
         self.data.append(data)
 
     def log_data_supply(self, data):
         """Log chain data dependencies"""
-        self.supply[(data.get_datatype(), data.usage(), data.source, data.chain)].append(data)
+        self.supply[(data.get_datatype(), data.get_usages_str(), data.source, data.chain)].append(data)
 
     def match_usage(self, candidate_usage, usage_requested, usage_matching, usage_exclude=None):
         """Match candidate usage with the requested usage type

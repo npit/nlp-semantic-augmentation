@@ -87,7 +87,7 @@ class Component:
         self.set_serialization_params()
 
         # try loading component outputs from disk
-        if not (self.config.misc.allow_output_deserialization and self.load_outputs_from_disk()):
+        if not (self.config.output_deserialization_allowed() and self.load_outputs_from_disk()):
             # if not available, fetch component inputs
             self.get_component_inputs()
 

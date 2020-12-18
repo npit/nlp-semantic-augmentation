@@ -193,8 +193,8 @@ class Labels(GroundTruth):
 
     def __init__(self, labelset=None, multilabel=None):
         super().__init__(discrete=True)
-        self.labelset = labelset
-        self.multilabel = multilabel
+        self.labelset = labelset if labelset is not None else []
+        self.multilabel = multilabel if multilabel is not None else False
 
     def is_multilabel(self):
         return self.multilabel
@@ -241,7 +241,7 @@ class DataPack:
         error("Attempted to add duplicate usage {us.name} in datapack!", us in self.usages)
         self.usages.append(us)
 
-    def usage(self):
+    def get_usages_str(self):
         return "_".join([x.name for x in self.usages])
 
     def get_id(self):
@@ -251,7 +251,7 @@ class DataPack:
     def generate_id(self, override_existing=True):
         if not override_existing and self.id != "NO_ID":
             return
-        self.id = self.data.name + "|" + self.usage()
+        self.id = self.data.name + "|" + self.get_usages_str()
 
     def get_datatype(self):
         """Get type of data"""
@@ -286,7 +286,7 @@ class DataPack:
         return dp
 
     def __str__(self):
-        return f"{self.get_datatype()}|{self.usage()}|{self.source}|{self.chain}"
+        return f"{self.get_datatype()}|{self.get_usages_str()}|{self.source}|{self.chain}"
     def __repr__(self):
         return str(self)
 

@@ -33,7 +33,6 @@ class Learner(Serializable):
     test_instance_indexes = None
     validation = None
 
-    allow_prediction_loading = None
 
     train_embedding = None
     model_index = None

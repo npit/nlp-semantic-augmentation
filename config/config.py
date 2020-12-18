@@ -14,12 +14,24 @@ class Configuration:
     component = None
     explicit_model_path = None
 
+    allow_output_deserialization = None
+    allow_model_deserialization = None
+
     def __init__(self, config):
         self.conf = config
         self.config_objects = []
         self.config_object_names = []
+        # component-level deserialization flags
+        if config is not None:
+            self.allow_output_deserialization = self.get_value("allow_output_deserialization", base=config, default=None)
+            self.allow_model_deserialization = self.get_value("allow_model_deserialization", base=config, default=None)
+
+
         if config is not None:
             self.explicit_model_path = self.get_value("model_path", default=None, base=config)
+
+    def output_deserialization_allowed(self):
+        return self.allow_output_deserialization == True or (self.allow_output_deserialization is None and self.misc.allow_output_deserialization)
 
     def add_config_object(self, conf_name, conf_object):
         """Add a configuration sub-object to the current configuration object

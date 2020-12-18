@@ -133,6 +133,11 @@ class LabelledLearner(SupervisedLearner):
         except (UnicodeDecodeError):
             return False
 
+    def load_existing_predictions(self):
+        # no way to retrieve the labels info -- make dummy
+        self.labels_info = Labels()
+        return super().load_existing_predictions()
+
     def load_model_from_disk(self):
         # load the model wrapper
         loaded_wrapper = self.load_model_wrapper()

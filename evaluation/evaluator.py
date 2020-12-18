@@ -224,7 +224,7 @@ class Evaluator(Serializable):
 
     def get_component_inputs(self):
         # fetch predictions
-        preds_datapack = self.data_pool.request_data(None, Predictions, usage_matching="exact", client=self.name)
+        preds_datapack = self.data_pool.request_data(None, Predictions, usage_matching="subset", client=self.name)
         # get numeric prediction data
         self.predictions = preds_datapack.data.instances
 

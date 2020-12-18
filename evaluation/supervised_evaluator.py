@@ -40,7 +40,7 @@ class SupervisedEvaluator(Evaluator):
         """Get inputs for unsupervised evaluation"""
         # anything but ground truth
         super().get_component_inputs()
-        matches = self.data_pool.request_data(None, Labels, usage_matching="subset", client=self.name)
+        matches = self.data_pool.request_data(None, [Labels, Indices], usage_matching="exact", client=self.name)
         self.labels = matches.data
         self.labels_info = matches.get_usage(Labels)
         # TODO subclass
