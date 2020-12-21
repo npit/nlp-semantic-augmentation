@@ -4,6 +4,7 @@ from os import listdir
 from os.path import basename
 
 import nltk
+from modern_greek_accentuation.accentuation import remove_all_diacritics
 import numpy as np
 import tqdm
 from nltk.corpus import stopwords
@@ -259,6 +260,11 @@ class Dataset(Serializable):
         else:
             return self.lemmatizer.lemmatize(w_pos[0], wordnet_pos), w_pos[1]
 
+    def handle_punctuation(self, text, punctuation_remover):
+        if self.language == "greek":
+            text = remove_all_diacritics(text)
+        return text.translate(punctuation_remover)
+
     def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro_func, stopwords):
         """Apply processing for a single text element"""
         data = {}
@@ -266,7 +272,7 @@ class Dataset(Serializable):
         words = []
         for sent in sents:
             # remove punctuation content
-            sent = sent.translate(punctuation_remover)
+            sent = self.handle_punctuation(sent, punctuation_remover)
             words.extend(word_tokenize(sent))
         # words = text_to_word_sequence(text, filters=filt, lower=True, split=' ')
         # words = [w.lower() for w in self.nltk_tokenizer.tokenize(text)]
