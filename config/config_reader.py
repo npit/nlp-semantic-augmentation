@@ -9,6 +9,7 @@ from component.trigger_instantiator import TriggerInstantiator as trigger_inst
 from config.chain_components import get_chain_component_classes
 from config.global_components import global_component_classes
 from config.global_config import GlobalConfig
+from config.chain_components import endpoint_conf
 from utils import debug, error
 
 
@@ -50,7 +51,11 @@ class ConfigReader:
             res.append(trigger_inst.make_default())
         for trigger_name in conf:
             conf = conf[trigger_name]
-            cconf = utils.to_namedtuple(conf, "trigger_conf")
+            if trigger_name == endpoint_conf.conf_key_name:
+                cconf = endpoint_conf(conf)
+            else:
+                # error(f"Undefined trigger: {trigger_name}")
+                cconf = utils.to_namedtuple(conf, "trigger_conf")
             trigger = trigger_inst.create(trigger_name, cconf)
             res.append(trigger)
         return res

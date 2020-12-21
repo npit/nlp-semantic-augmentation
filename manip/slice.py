@@ -1,7 +1,7 @@
 
 # from manip.filter import Filter
 from manip.manip import Manipulation
-from utils import info, error, is_collection
+from utils import info, error, is_collection, debug
 from collections import OrderedDict
 from bundle.datatypes import *
 from bundle.datausages import *
@@ -29,8 +29,10 @@ class Slice(Manipulation):
         # fetch indices for the slice tag
         indices = self.input_dps.get_usage(Indices)
         if self.dummy_data:
+            debug(f"Slicing via input dummy data {self.dummy_data}")
             indices_with_tag = self.dummy_data.get_usage(Indices, allow_superclasses=False).get_tag_instances(self.tag)
         else:
+            debug(f"Slicing with of existing input datapack(s): [{self.tag}]")
             indices_with_tag = indices.get_tag_instances(self.tag)
         info(f"Slicing with tag: [{self.tag}] indexes of size: {len(indices_with_tag)}")
         sliced_instances = self.input_dps.data.get_slice(indices_with_tag)
@@ -49,15 +51,20 @@ class Slice(Manipulation):
         self.output = data_cls(sliced_instances)
 
     def get_component_inputs(self):
-        self.inputs = []
-        self.indices = []
-        # inputs = self.data_pool.request_data(Numeric, usage=Indices, usage_matching="subset", client=self.name, must_be_single=False)
-        self.input_dps = self.data_pool.request_data(None, usage=[Indices, Predictions], usage_matching="any", client=self.name, must_be_single=False)
-        # fetch any input dummy data that's 
+        """
+        Slicing can be parameterized by a tag. That tag may reside:
+        a) in data to be sliced itself
+        b) in a separate datapack, of data type "dummy"
+        """
+        self.inputs, self.indices = [], []
+        self.input_dps = self.data_pool.get_current_inputs()
+        # fetch any input dummy data (which correspond to filtering indexes)
         self.dummy_data = [x for x in self.input_dps if type(x.data) == DummyData]
         error("Multiple dummy data in slicing", len(self.dummy_data) > 1)
         self.input_dps = [x for x in self.input_dps if x not in self.dummy_data]
         if self.dummy_data:
             self.dummy_data = self.dummy_data[0]
-        error(f"{self.name} can only operate on a single input, got {len(self.input_dps)} instead.", len(self.input_dps) != 1)
+        error(f"{self.name} got no data to slice!", len(self.input_dps) == 0)
+        if len(self.input_dps) != 1:
+            error(f"{self.name} can only operate on a single input, got {len(self.input_dps)} instead.")
         self.input_dps = self.input_dps[0]

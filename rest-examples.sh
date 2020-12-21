@@ -21,13 +21,14 @@ ip="http://localhost"
 port=9998
 
 # input data (array of strings)
-data='["Καλημέρα τι κάνετε", "Τι ώρα είναι κύριε ηρεμήστε παρακαλώ", "δηλαδη τωρα τι θελετε να παιξουμε ξυλο ας πουμε"]'
 
+data='["το 50% της αμοιβής στο νέο διορισθέντα διαιτητή Χαράλαμπο Μεϊδάνη, το παρόν δικαστήριο ομόφωνα αποφαίνεται ότι πρέπει", "θα φωνάξει τον κατασκευαστή που είανι στην προσωρινή παραλαβή","παραδοθηκε με ενα το βαλαμε μες τον τεχνικο φακελο της προσωρινης παραλαβης τους το ειπαμε και προφορικα ειχε ληξει αυτο το θεμα", "ολα αυτα εγιναν μετα απο την κληση πολυ μετα απο την κληση για οριστικη παραλαβη και οπωσδηποτε οπως εμεις ισχυριζομαστε και μετα απο την οριστικη παραλαβη"]'
 # input config as dictionary. Parameters:
 # binary_treshold: Float. lowermost confidence threshold to advance a word to multiclass classif.
 # multiclass_treshold: Float. lowermost confidence threshold to consider a replacement word
 # top_k: Integer. How many prediction scores / classes to retrieve per token.
 params="{ \"binary_threshold\": $BIN_THRESH , \"multiclass_threshold\": $MC_THRESH , \"debug\": $DO_DEBUG, \"top_k\": 5}"
+# params="{ \"binary_threshold\": $BIN_THRESH , \"multiclass_threshold\": $MC_THRESH , \"debug\": $DO_DEBUG, \"top_k\": 5, \"skip_step_predictions\": 1}"
 
 #########
 

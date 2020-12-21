@@ -64,8 +64,27 @@ class MultistageClassificationReport(Report):
             data = [x["words"] for x in datapack.data.instances]
         res = []
 
-        # iterate over input instances (prior to ngramizing)
         ngram_tags = sorted([x for x in datapack.usages[0].tags if x.startswith("ngram_inst")])
+
+        # df for visualization
+        import pandas  as pd
+        all_words = []
+        all_instance_idxs = []
+        for tg in ngram_tags:
+            idx = datapack.usages[0].get_tag_instances(tg)
+            all_words += [data[i] for i in datapack.usages[0].get_tag_instances(tg)]
+            all_instance_idxs += [tg for _ in idx]
+
+        p = pd.DataFrame()
+        p["word"] = all_words
+        p["instance"] = all_instance_idxs
+
+        # index mapping from local to global levels, backwards
+        # step n -> step n-1 -> .... -> global (input)
+        survivors_index_map = {}
+        # 
+
+        # iterate over input instances (prior to ngramizing)
         for n, ngram_tag in enumerate(ngram_tags):
             # indexes of the tokens for the current istance to the entire data container
             original_instance_ix_data = datapack.usages[0].get_tag_instances(ngram_tag)
@@ -78,25 +97,30 @@ class MultistageClassificationReport(Report):
 
             # indexes (size == num curr. curr. predictions) mapping each pred. row
             # to each token in the data container
-            prediction_ix_data = None
+            prediction_ix_data = np.arange(len(data))
 
             obj = {"instance": n, "data": [data[i] for i in original_instance_ix_data], "predictions": []}
-            preds_obj = {}
             # iterate over prediction steps
             for i in range(len(predictions)):
                 debug(f"Creating report for instance {n+1}/{len(ngram_tags)}, prediction {i+1}/{len(predictions)}")
                 preds_obj = {"step": i}
                 # all prediction scores
                 step_preds = predictions[i].data.instances
-                if prediction_ix_data is None:
-                    # this is the first step -- size should equal
-                    prediction_ix_data = np.arange(len(step_preds))
-                    error("Mismatch in number of predictions and data!", len(prediction_ix_data) != len(data))
+                # if prediction_ix_data is None:
+                #     # this is the first step -- size should equal
+                #     prediction_ix_data = np.arange(len(step_preds))
+                #     error("Mismatch in number of predictions and data!", len(prediction_ix_data) != len(data))
 
-                # filter out survivors
-                # local index of entries surviving the thresholding
+                # get local index of entries surviving the thresholding
                 survivor_ix_preds = tagged_idx[i]
+                # from this get the global idx
                 survivor_ix_data = prediction_ix_data[survivor_ix_preds]
+
+                # df for visualization
+                s = np.asarray([None for _ in range(len(p))])
+                s[prediction_ix_data] = False
+                s[survivor_ix_data] = True
+                p[f"survivors_{i}"] = s
 
                 # filter out to current instance
                 # (both indexes refer to the preds. container):
@@ -117,20 +141,21 @@ class MultistageClassificationReport(Report):
                     if np.any(step_preds[survivor_ix_preds,1] < th):
                         print("bin Threshold!")
                 else:
-                    th = self.input_parameters_dict["multiclass_threshold"]
-                    l1 = len(np.unique(np.where(step_preds[survivor_ix_preds,:] >= th)[0]))
-                    l2 = len(survivor_ix_preds)
-                    if l1 != l2:
-                        print("mc Threshold!")
-                ds = [data[i] for i in instance_survivor_ix_data]
-                dall = [data[i] for i in original_instance_ix_data]
-                if any(x not in dall for x in ds):
-                    print("words")
+                    if len(survivor_ix_preds) > 0:
+                        th = self.input_parameters_dict["multiclass_threshold"]
+                        l1 = len(np.unique(np.where(step_preds[survivor_ix_preds,:] >= th)[0]))
+                        l2 = len(survivor_ix_preds)
+                        if l1 != l2:
+                            print("mc Threshold!")
+                    ds = [data[i] for i in instance_survivor_ix_data]
+                    dall = [data[i] for i in original_instance_ix_data]
+                    if any(x not in dall for x in ds):
+                        print("words")
 
-                if self.params.debug or ("debug" in self.input_parameters_dict and self.input_parameters_dict["debug"]):
-                    preds_obj["survivor_inst_idx_wrt_preds"] = instance_survivor_ix_preds.tolist()
-                    preds_obj["survivor_inst_idx_wrt_data"] = instance_survivor_ix_data.tolist()
-                    preds_obj["survivor_idx_wrt_preds"] = survivor_ix_preds.tolist()
+                    if self.params.debug or ("debug" in self.input_parameters_dict and self.input_parameters_dict["debug"]):
+                        preds_obj["survivor_inst_idx_wrt_preds"] = instance_survivor_ix_preds.tolist()
+                        preds_obj["survivor_inst_idx_wrt_data"] = instance_survivor_ix_data.tolist()
+                        preds_obj["survivor_idx_wrt_preds"] = survivor_ix_preds.tolist()
                     preds_obj["survivor_idx_wrt_data"] = survivor_ix_data.tolist()
 
                     preds_obj["prediction_ix_wrt_data"] = prediction_ix_data.tolist()
@@ -181,6 +206,8 @@ class MultistageClassificationReport(Report):
                     tobj["replacements"][cl] = pr
                 obj["overall_predictions"].append(tobj)
 
+            if "skip_step_predictions" in self.input_parameters_dict and self.input_parameters_dict["skip_step_predictions"]:
+                del obj["predictions"]
             res.append(obj)
         self.result = {"results": res, "input_params": self.input_parameters_dict, "messages": self.messages}
 

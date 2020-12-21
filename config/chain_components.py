@@ -229,6 +229,7 @@ class endpoint_conf(Configuration):
         self.url = self.get_value("url", default="localhost")
         self.port = self.get_value("port", default="9999")
         self.endpoint_name = self.get_value("endpoint_name", default="smaug")
+        self.raise_errors = self.get_value("raise_errors", default=False)
 
 def get_chain_component_classes():
     res = [manip_conf, dataset_conf, representation_conf, semantic_conf, learner_conf]

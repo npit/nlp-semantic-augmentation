@@ -266,7 +266,7 @@ class Learner(Serializable):
 
         # loop over the available models / data batches
         num_models = len(self.models)
-        if num_models > 0:
+        if num_models > 1:
             if len(train_indexes) == 1:
                 # single indexes, multiple models: duplicate
                 train_indexes *= num_models
@@ -282,6 +282,10 @@ class Learner(Serializable):
                     info(f"Evaluating model {model_index + 1}/{num_models} on {len(data)} {role} data")
                     # tag = f"model_{self.model_index}_{role}"
                     self.apply_model(model=model, index=data, tag=role)
+        # no predictions in the output
+        if self.predictions is None:
+            self.predictions = np.empty(0)
+            self.output_usage = Predictions(np.empty(0, dtype=np.int64), "dummy")
 
     def get_model(self):
         return self.model
@@ -294,11 +298,10 @@ class Learner(Serializable):
         if index is not None:
             self.test_index = index
         if len(self.test_index) == 0:
-            warning(f"Attempted to apply {self.name} model on empty indexes!")
-            return
-
-        # generate predictions
-        predictions = self.test_model(model)
+            predictions = np.empty(0)
+        else:
+            # generate predictions
+            predictions = self.test_model(model)
 
         pred_idx = np.arange(len(predictions))
         # keep track output predictions and tags

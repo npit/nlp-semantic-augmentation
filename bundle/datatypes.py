@@ -5,22 +5,19 @@ from numbers import Number
 from collections import OrderedDict
 
 import defs
-from defs import avail_roles, roles_compatible
 from utils import error, data_summary, is_collection
 
 
 class Datatype:
     """Abstract class for a data type"""
-    # whether the data should be used for training or testing
-    roles = None
-    # whether the data should be treaded as data or ground truth
-
     # variable for the distinct data units
     instances = None
-
     name = None
     def __init__(self, instances):
         self.instances = instances
+
+    def __str__(self):
+        return self.name + f" {len(self.instances)}"
 
     def get_slice(self, instance_idx):
         try:

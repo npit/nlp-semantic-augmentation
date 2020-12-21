@@ -70,6 +70,7 @@ Fetch the pretrained classifiers:
 ```
 cd ../..
 wget https://users.iit.demokritos.gr/~pittarasnikif/nv/models.tar.gz && tar xzf models.tar.gz
+wget  -O labelmapping.json https://users.iit.demokritos.gr/~pittarasnikif/nv/multiclass_labelnames.json
 ```
 
 

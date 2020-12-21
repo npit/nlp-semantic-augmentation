@@ -21,7 +21,9 @@ class Manipulation(Component):
     def configure_name(self):
         if type(self.source_name) in [list, tuple]:
             self.source_name = "_".join(self.source_name)
-        self.name = "{}_{}".format(self.source_name, self.name)
+            self.name = "{}_{}".format(self.source_name, self.name)
+        else:
+            self.name = self.name
         Component.configure_name(self, self.name)
 
     def load_model_from_disk(self):

@@ -89,6 +89,8 @@ class Trigger:
         pass
     def handle_execution_exception(self, ex):
         """By default, print exception message"""
+        if self.config.raise_errors:
+            raise(ex)
         warning(str(ex))
 
 class ImmediateExecution(Trigger):
