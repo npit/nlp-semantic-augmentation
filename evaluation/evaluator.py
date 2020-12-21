@@ -71,6 +71,7 @@ class Evaluator(Serializable):
     def print_results(self):
         # print results per runtype / tag / role
         for results_type in self.results:
+            num_tags = len(self.results[results_type].keys())
             for tag in self.results[results_type]:
                 for role in self.results[results_type][tag]:
                     if tag == "all_tags":
@@ -81,8 +82,9 @@ class Evaluator(Serializable):
                     for measure in self.results[results_type][tag][role]:
                         self.print_measure(measure, self.results[results_type][tag][role][measure], df=df)
 
-                    if not self.config.print_individual_models and tag != "all_tags":
-                        continue
+                    if num_tags > 1:
+                        if not self.config.print_individual_models and tag != "all_tags":
+                            continue
                     self.print_results_dataframe(df, f"{results_type}-{tag}-{role}:")
 
     def print_results_dataframe(self, df, prefix):

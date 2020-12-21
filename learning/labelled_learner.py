@@ -9,7 +9,7 @@ from defs import roles
 from learning.supervised_learner import SupervisedLearner
 from learning.sampling import Sampler
 from learning.validation.validation import ValidationSetting
-from utils import (count_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot, read_pickled, read_json, warning)
+from utils import (count_occurences, error, info, is_multilabel, tictoc, write_pickled, all_labels_have_samples, one_hot, read_pickled, read_json, write_json, warning)
 
 
 class LabelledLearner(SupervisedLearner):
@@ -112,11 +112,10 @@ class LabelledLearner(SupervisedLearner):
         gt = np.concatenate(gt)
         return gt
 
-
     def save_model_wrapper(self):
         # get learner wrapper info
         path = self.get_wrapper_path()
-        write_pickled(path, self.labels_info)
+        write_json(path, self.labels_info.to_json())
 
     def get_wrapper_path(self):
         return self.get_current_model_path() + ".wrapper"

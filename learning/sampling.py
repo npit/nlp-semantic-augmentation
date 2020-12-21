@@ -1,4 +1,30 @@
 """Perform sampling modifications"""
+from imblearn.over_sampling import RandomOverSampler
+
+from collections import Counter
+
+def oversample_single_sample_labels(data, labels, target_num=2):
+    """
+    Return a dict where keys are single-sample labels and values the desired number to reach
+    """
+    cn = Counter(labels)
+    singles = [x[0] for x in cn.most_common() if x[1] == 1]
+    if not singles:
+        return data, labels
+    desired_dict = {k: target_num for k in singles}
+    return oversample(data, labels, desired_dict)
+
+def oversample(data, labels, label_desired_nums_dict):
+    """
+    Perform oversampling by specified label sample counts
+
+    label_desired_nums_dict (dict): Dictionary of entries label: desired num
+    """
+    import ipdb; ipdb.set_trace()
+    sampler = RandomOverSampler(sampling_strategy=label_desired_nums_dict)
+    rx, ry = sampler.fit_resample(data.reshape(-1, 1), labels)
+    rx = rx.squeeze()
+    return rx, ry
 
 class Sampler:
     def __init__(self):

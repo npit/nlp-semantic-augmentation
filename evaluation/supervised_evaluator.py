@@ -18,6 +18,7 @@ class SupervisedEvaluator(Evaluator):
     available_measures = ("rouge", "f1", "accuracy", "precision", "recall")
 
     labels_info = None
+    num_max_print_labels = 10
     label_aggregations = ["micro", "macro", "weighted", "none"]
 
     def __init__(self, config):
@@ -148,10 +149,10 @@ class SupervisedEvaluator(Evaluator):
     def compute_additional_info(self, predictions, indexes, key):
         # compute label distributions
         # tuplelist to string
-        tl2s = lambda tlist: ", ".join(f"({x}: {y})" for (x,y) in tlist)
+        tl2s = lambda tlist: ", ".join(f"({x}: {y})" for (x,y) in tlist[:self.num_max_print_labels])
 
         gt, preds = self.get_evaluation_input(predictions, indexes)
-        info(f"{key} | predictions ({len(preds)} instances) Label distros:")
+        info(f"{key} | predictions ({len(preds)} instances) Top-{self.num_max_print_labels} label distros:")
         gt_distr, preds_distr = count_occurences(gt), count_occurences(preds)
 
         info(f"gt:    {tl2s(gt_distr)}")

@@ -5,6 +5,7 @@ scikit-multilearn
 gensim
 pytorch_lightning
 transformers
+imbalanced_learn
 # NLP & semantic
 nltk
 pyspotlight

@@ -427,7 +427,17 @@ def read_pickled(path, defaultNone=False, msg=""):
     with open(path, "rb") as f:
         return pickle.load(f)
 
-# read pickled data
+def write_json(path, data, msg="", write_intermmediate=True):
+    """Pickle serializer function
+    """
+    if msg:
+        msg += " "
+    if write_intermmediate:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    info(f"Serializing {msg}to {path}")
+    with open(path, "w") as f:
+        return json.dump(data, f)
+
 def read_json(path, defaultNone=False, msg=""):
     """Pickle deserializer function
     """
