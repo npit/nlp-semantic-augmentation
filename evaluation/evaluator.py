@@ -168,7 +168,7 @@ class Evaluator(Serializable):
                 out_dict[outer_tag][inner_tag] = {}
 
                 for measure in self.available_measures:
-                    result = self.evaluate_measure(current_predictions, input_idx, measure)
+                    result = self.evaluate_measure(current_predictions, input_idx, measure, tag_info=(outer_tag, inner_tag))
                     out_dict[outer_tag][inner_tag][measure] = result
                 self.compute_additional_info(current_predictions, input_idx, f"{key}-{outer_tag}-{inner_tag}")
 

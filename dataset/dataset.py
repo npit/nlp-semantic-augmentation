@@ -5,6 +5,7 @@ from os.path import basename
 
 import nltk
 from modern_greek_accentuation.accentuation import remove_all_diacritics
+import unicodedata
 import numpy as np
 import tqdm
 from nltk.corpus import stopwords
@@ -261,8 +262,9 @@ class Dataset(Serializable):
             return self.lemmatizer.lemmatize(w_pos[0], wordnet_pos), w_pos[1]
 
     def handle_punctuation(self, text, punctuation_remover):
-        if self.language == "greek":
+        if self.language == "greek" or True:
             text = remove_all_diacritics(text)
+            text = ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
         return text.translate(punctuation_remover)
 
     def process_single_text(self, text, punctuation_remover, digit_remover, word_prepro_func, stopwords):

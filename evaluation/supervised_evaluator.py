@@ -35,6 +35,8 @@ class SupervisedEvaluator(Evaluator):
             self.print_measures = ("f1", "accuracy")
         if self.print_label_aggregations is None:
             self.print_label_aggregations = ("micro", "macro")
+        # dedicated container for majority baseline (that's index-dependent)
+        self.results_majority_baseline = {}
 
 
     def get_component_inputs(self):
@@ -87,7 +89,7 @@ class SupervisedEvaluator(Evaluator):
 
     computed_maj_baseline_for_indexes = set()
 
-    def evaluate_measure(self, predictions, indexes, measure, key_suffix=None):
+    def evaluate_measure(self, predictions, indexes, measure, tag_info=None):
         """Evaluate a measure on input data over label aggregations
 
         Arguments:
@@ -96,30 +98,28 @@ class SupervisedEvaluator(Evaluator):
         """
         res = {}
         for lbl_aggr in self.label_aggregations:
-            if key_suffix is not None:
-                key = lbl_aggr + key_suffix
-            else:
-                key = lbl_aggr
+            key = lbl_aggr
             res[key] = {self.iterations_alias:[]}
             gt, preds = self.get_evaluation_input(predictions, indexes)
             score = self.measure_funcs[measure](gt, preds, lbl_aggr if lbl_aggr != "none" else None)
             res[key][self.iterations_alias].append(score)
             # # compute aggregation of the multiple-iterations
             # res[lbl_aggr] = self.aggregate_iterations(res[lbl_aggr])
-        
+
         # by the way -- if we need to evaluate the majority baseline,
         # since it's dependent on the input labels portion
         # do it sneakily here instead.
-        self.compute_majority_baseline(measure, predictions, indexes)
+        self.compute_majority_baseline(measure, predictions, indexes, tag_info)
         return res
 
 
-    def compute_majority_baseline(self, measure, predictions, indexes):
+    def compute_majority_baseline(self, measure, predictions, indexes, tag_info):
         """
-        Compute a majority-based baseline wrt. input indexes
+        Compute a majority-based baseline wrt. input indexes. Store results in
+        a dict specified by the tag information
         """
         # keep track of baseline'd index collection
-        idxs_hash = hash(str(indexes))
+        idxs_hash = hash(str(indexes) + str(indexes) + str(tag_info) + str(measure))
         if idxs_hash not in self.computed_maj_baseline_for_indexes:
             self.computed_maj_baseline_for_indexes.add(idxs_hash)
             # get gt for that chunk
@@ -129,7 +129,28 @@ class SupervisedEvaluator(Evaluator):
             dc.fit(gt, y=gt)
             maj_preds = dc.predict(predictions)
             # evaluate the maj predictions
-            self.evaluate_measure(maj_preds, indexes, measure, key_suffix="maj_baseline")
+            res = self.evaluate_measure(maj_preds, indexes, measure, tag_info)
+            curr_dict = self.results_majority_baseline
+            for t in tag_info:
+                if t not in curr_dict:
+                    curr_dict[t] = {}
+                curr_dict = curr_dict[t]
+            curr_dict[measure] = res
+
+    def evaluate_baselines(self):
+        # the majority baseline is computed inline each evaluate_measure function call,
+        # for each separate input indexes (corresponding to different ground truth distros)
+        super().evaluate_baselines()
+        # do aggregation
+        if len(self.results_majority_baseline) > 1:
+            outer = list(self.results_majority_baseline.keys())
+            inner = list(self.results_majority_baseline[outer[0]].keys())
+            self.results_majority_baseline["all_tags"] = {}
+            self.aggregate_tags(outer, inner, self.results_majority_baseline)
+
+        # add it to the container
+        self.results["majority"] = self.results_majority_baseline
+
 
     def aggregate_tags(self, tags, roles, out_dict):
         # perform an aggregation across all tags as well, if applicable
@@ -181,7 +202,7 @@ class SupervisedEvaluator(Evaluator):
         # gt, preds = data
         # preds = np.argmax(preds, axis=1)
         # maxlen = preds.shape[-1]
-        # evaluator = rouge.Rouge(metrics=['rouge-n', 'rouge-l', 'rouge-w'], max_n=4, limit_length=True, length_limit=maxlen, 
+        # evaluator = rouge.Rouge(metrics=['rouge-n', 'rouge-l', 'rouge-w'], max_n=4, limit_length=True, length_limit=maxlen,
         #         length_limit_type='words',
         #         apply_avg=True,
         #         alpha=0.5, # Default F1_score
