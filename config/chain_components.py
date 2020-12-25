@@ -21,6 +21,13 @@ class manip_conf(Configuration):
         self.tag = self.get_value("tag", base=config, default=None)
         self.params = self.get_value("params", base=config, default=None)
 
+class sampling_conf(Configuration):
+    conf_key_name = "sample"
+    def __init__(self, config):
+        """Constructor for the sampling component configuration"""
+        super().__init__(config)
+        self.label_dict = self.get_value("label_dict", base=config)
+        self.min_freq = self.get_value("min_freq", base=config)
 
 class dataset_conf(Configuration):
     conf_key_name = "dataset"
@@ -134,8 +141,6 @@ class learner_conf(Configuration):
         folds = None
         early_stopping_patience = None
         validation_portion = None
-        sampling_method = None
-        sampling_ratios = None
         optimizer = None
         lr_scheduler = None
         do_test = True
@@ -174,8 +179,6 @@ class learner_conf(Configuration):
         self.train.folds = getval("folds", None)
         self.train.validation_portion = getval("validation_portion", None)
         self.train.early_stopping_patience = getval("early_stopping_patience", None)
-        self.train.sampling_method = getval("sampling_method", None)
-        self.train.sampling_ratios = getval("sampling_ratios", None, list)
         self.save_interval =  getval("save_interval", 1)
 
 class report_conf(Configuration):
@@ -232,7 +235,7 @@ class endpoint_conf(Configuration):
         self.raise_errors = self.get_value("raise_errors", default=False)
 
 def get_chain_component_classes():
-    res = [manip_conf, dataset_conf, representation_conf, semantic_conf, learner_conf]
+    res = [manip_conf, dataset_conf, representation_conf, semantic_conf, learner_conf, sampling_conf]
     res += [link_conf, evaluator_conf, endpoint_conf]
     res += [report_conf]
     return res

@@ -151,6 +151,8 @@ class SupervisedEvaluator(Evaluator):
         # add it to the container
         self.results["majority"] = self.results_majority_baseline
 
+    def is_baseline_run(self, run_type):
+        return super().is_baseline_run(run_type) or run_type.startswith("majority")
 
     def aggregate_tags(self, tags, roles, out_dict):
         # perform an aggregation across all tags as well, if applicable
@@ -166,18 +168,19 @@ class SupervisedEvaluator(Evaluator):
                     out_dict["all_tags"][role][measure][laggr] = {self.iterations_alias: tag_values}
                     self.aggregate_iterations(out_dict["all_tags"][role][measure][laggr])
 
-
-    def compute_additional_info(self, predictions, indexes, key):
+    def compute_additional_info(self, predictions, indexes, key, do_print=True):
         # compute label distributions
         # tuplelist to string
         tl2s = lambda tlist: ", ".join(f"({x}: {y})" for (x,y) in tlist[:self.num_max_print_labels])
 
         gt, preds = self.get_evaluation_input(predictions, indexes)
-        info(f"{key} | predictions ({len(preds)} instances) Top-{self.num_max_print_labels} label distros:")
+        if do_print:
+            info(f"{key} | predictions ({len(preds)} instances) Top-{self.num_max_print_labels} label distros:")
         gt_distr, preds_distr = count_occurences(gt), count_occurences(preds)
 
-        info(f"gt:    {tl2s(gt_distr)}")
-        info(f"preds: {tl2s(preds_distr)}")
+        if do_print:
+            info(f"gt:    {tl2s(gt_distr)}")
+            info(f"preds: {tl2s(preds_distr)}")
 
     def print_measure(self, measure, ddict, df=None):
         """Print measure results, aggregating over prediction iterations"""

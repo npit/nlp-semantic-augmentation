@@ -11,7 +11,6 @@ from serializable import Serializable
 from component.component import Component
 from defs import datatypes, roles
 from learning.evaluator import Evaluator
-from learning.sampling import Sampler
 from learning.validation.validation import ValidationSetting, get_info_string, load_trainval
 from utils import error, info, read_pickled, tictoc, write_pickled, warning
 
@@ -70,8 +69,6 @@ class Learner(Serializable):
 
         self.seed = self.config.misc.seed
 
-        self.sampling_method, self.sampling_ratios = self.config.train.sampling_method, self.config.train.sampling_ratios
-        self.do_sampling = self.sampling_method is not None
         self.save_interval = self.config.save_interval
 
     def check_sanity(self):
@@ -92,11 +89,6 @@ class Learner(Serializable):
                                             folds=self.folds,
                                             portion=self.validation_portion,
                                             seed=self.seed)
-
-    def configure_sampling(self):
-        """No label-agnostic sampling"""
-        # No label-agnostic sampling available
-        pass
 
     def get_all_preprocessed(self):
         return (self.predictions, self.output_usage.to_json())
@@ -137,11 +129,6 @@ class Learner(Serializable):
         """Retrieve training/validation instance indexes
         """
         trainval_idx = self.validation.get_trainval_indexes()
-
-        # do sampling 
-        if self.do_sampling:
-            smpl = Sampler()
-            trainval_idx = smpl.sample()
 
         # handle indexes for multi-instance data
         if self.sequence_length > 1:
@@ -211,8 +198,6 @@ class Learner(Serializable):
 
     def get_trainval_serialization_file(self):
         name = "trainvalidx.pkl"
-        if self.do_sampling:
-            name = self.sampling_method + "_" + "_". join(map(str, self.sampling_ratios)) + "." + name
         if self.validation:
             name += self.validation.get_info_string() 
         return name
@@ -242,8 +227,6 @@ class Learner(Serializable):
             self.validation.reserve_validation_for_testing()
         output_file = self.get_current_model_path() + ".trainval_idx"
         self.validation.write_trainval(output_file)
-        # self.attach_evaluator()
-        self.configure_sampling()
         self.check_sanity()
         self.serialization_path_preprocessed = join(self.results_folder, "data")
         self.execute_training()

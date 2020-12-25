@@ -1,4 +1,5 @@
 from component.component import Component
+from collections import defaultdict
 from serializable import Serializable
 from bundle.datatypes import *
 from bundle.datausages import Predictions
@@ -45,6 +46,9 @@ class Evaluator(Serializable):
         if self.print_aggregations is None:
             self.print_aggregations = ("mean", "std")
 
+    def is_baseline_run(self, run_type):
+        return run_type.startswith("random")
+
     def produce_outputs(self):
         self.results = {"run":{}}
 
@@ -83,9 +87,12 @@ class Evaluator(Serializable):
                         self.print_measure(measure, self.results[results_type][tag][role][measure], df=df)
 
                     if num_tags > 1:
-                        if not self.config.print_individual_models and tag != "all_tags":
+                        if not self.should_print_this(results_type, tag):
                             continue
-                    self.print_results_dataframe(df, f"{results_type}-{tag}-{role}:")
+                    pref = f"{results_type}-{tag}-{role}:"
+                    if self.is_baseline_run(results_type):
+                        pref = "(baseline) " + pref
+                    self.print_results_dataframe(df, pref)
 
     def print_results_dataframe(self, df, prefix):
         """Display results"""
@@ -103,7 +110,7 @@ class Evaluator(Serializable):
             info(k)
         info("-------------------------------")
 
-    def compute_additional_info(self, p, i, m):
+    def compute_additional_info(self, preds, idx, prefix, do_print=True):
         """Print additional information on the run"""
         pass
 
@@ -135,26 +142,23 @@ class Evaluator(Serializable):
             return [self.round(x) for x in val]
         return np.round(val, self.print_precision)
 
-    def evaluate_predictions(self, input_predictions, key, override_tags_roles=None):
+    def evaluate_predictions(self, input_predictions, run_type, override_tags_roles=None):
         """Perform all evaluations on given predictions
         Perform a two-step hierarchical aggregation:
         Outer: any tag that's not inner
         Inner: "train", "test"
         """
-        out_dict = self.results[key]
+        out_dict = self.results[run_type]
         # outer evaluation tags: model instances
         outer = [t for t in self.tags if t.startswith("model") and not t.endswith(defs.roles.inputs)]
         inner = [t for t in self.tags if t in [defs.roles.train, defs.roles.test]]
 
-        # if override_tags_roles is None:
-        #     tags = self.tags
-        # else:
-        #     tags, roles = override_tags_roles
-        #     tags, roles = [tags], [roles]
+        total_idxs_inner = defaultdict(list)
 
         for outer_tag in outer:
             out_idx = self.indexes[self.tags.index(outer_tag)]
             out_dict[outer_tag] = {}
+
             for inner_tag in inner:
                 # get prediction indexes
                 in_idx = self.indexes[self.tags.index(inner_tag)]
@@ -164,18 +168,31 @@ class Evaluator(Serializable):
                 # get the indexes to the input data
                 input_tag = f"{outer_tag}_{inner_tag}_{defs.roles.inputs}"
                 input_idx = self.indexes[self.tags.index(input_tag)]
+                total_idxs_inner[inner_tag].append(input_idx)
 
                 out_dict[outer_tag][inner_tag] = {}
 
                 for measure in self.available_measures:
                     result = self.evaluate_measure(current_predictions, input_idx, measure, tag_info=(outer_tag, inner_tag))
                     out_dict[outer_tag][inner_tag][measure] = result
-                self.compute_additional_info(current_predictions, input_idx, f"{key}-{outer_tag}-{inner_tag}")
+                self.compute_additional_info(current_predictions, input_idx, f"{run_type}-{outer_tag}-{inner_tag}", do_print=self.should_print_this(run_type, outer_tag))
 
         if len(outer) > 1:
             out_dict["all_tags"] = {}
             self.aggregate_tags(outer, inner, out_dict)
+            for o in total_idxs_inner:
+                self.compute_additional_info(input_predictions, np.concatenate(total_idxs_inner[o]), f"{run_type}-{o}-all_tags", do_print=not self.is_baseline_run(run_type))
         print()
+
+    def should_print_this(self, run_type, tag):
+        # whether or not to print individual models (e.g. individual folds)
+        if tag != "all_tags":
+            # skip if it is set as such or we are at a baseline
+            if not self.config.print_individual_models or self.is_baseline_run(run_type):
+                return False
+        return True
+
+
 
     def aggregate_tags(self, tags, roles, out_dict):
         # perform an aggregation across all tags as well, if applicable
