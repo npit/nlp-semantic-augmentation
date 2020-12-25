@@ -37,6 +37,22 @@ class Indices(DataUsage):
         if len(self.tags) != len(self.instances):
             warning(f"Added {len(self.tags)} tags on indexes composed of {len(self.instances)} instances.")
 
+    def apply_index_expansion(self, replicated_addendum_idx, old_size):
+        """
+        Inform indexes in usages with appended indexes, pointing to existing data in the container
+        replicated_addendum_idx (list): List of integer indexes to the current data container
+        """
+        for i, inst in enumerate(self.instances):
+            # find matches in the addenda
+            matches = np.where(np.in1d(replicated_addendum_idx, inst))
+            if not matches:
+                continue
+            matches = matches[0]
+            # shift to the global index for the addenda
+            matches += old_size
+            # update the indices container
+            self.instances[i] = np.append(inst, matches)
+
     def to_json(self):
         res = {"instances":[], "tags":[]}
         for inst in self.instances:
@@ -236,6 +252,17 @@ class DataPack:
             self.source = source
         if chain is not None:
             self.chain = chain
+
+    def apply_index_expansion(self, replicated_addendum_idx, old_data_size=None):
+        """
+        Inform indexes in usages with appended indexes, pointing to existing data in the container
+        replicated_addendum_idx (list): List of integer indexes to the current data container
+        """
+        if old_data_size is None:
+            old_data_size = len(self.data.instances)
+        for u in self.usages:
+            if issubclass(type(u), Indices):
+                u.apply_index_expansion(replicated_addendum_idx, old_data_size)
 
     def add_usage(self, us):
         error("Attempted to add duplicate usage {us.name} in datapack!", us in self.usages)

@@ -58,6 +58,10 @@ class Text(Datatype):
         super().__init__(inst)
         self.vocabulary = vocab
 
+    def append_instance(self, inst):
+        """Append another instance object"""
+        self.instances += inst
+
     @staticmethod
     def get_strings(data):
         """Get text from the dataset outputs"""

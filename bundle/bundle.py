@@ -147,15 +147,22 @@ class DataPool:
     def match_usage(self, candidate_usage, usage_requested, usage_matching, usage_exclude=None):
         """Match candidate usage with the requested usage type
         """
-        # no matching
-        if len(usage_requested) == 1 and usage_requested[0] == "ignore":
-            return True
-        candidate_usage = as_list(candidate_usage)
-        if usage_matching != "all":
-            usage_requested = as_list(usage_requested)
+
         usage_exclude = as_list(usage_exclude)
         if any(x in candidate_usage for x in usage_exclude):
             return False
+
+        # no spec. usage
+        if usage_requested is None:
+            return True
+        # no matching
+        if len(usage_requested) == 1 and usage_requested[0] == "ignore":
+            return True
+
+        candidate_usage = as_list(candidate_usage)
+        if usage_matching != "all":
+            usage_requested = as_list(usage_requested)
+
         if usage_matching == "all":
             return True
         if usage_matching == "exact":
@@ -195,12 +202,13 @@ class DataPool:
         if data_type is not None:
             # data_type = data_type.get_matching_names() if type(data_type) is not str and issubclass(data_type, Datatype) else data_type
             data_type = data_type.name if type(data_type) is not str and issubclass(data_type, Datatype) else data_type
-        usage = as_list(usage)
-        if any(type(x) is not str and issubclass(x, DataUsage) for x in usage):
-            # usage = [x.get_matching_names() if type(x) is not str and issubclass(x, DataUsage) else x for x in usage]
-            # flatten
-            # usage = [k for x in usage for k in x]
-            usage = [x.name if type(x) is not str and issubclass(x, DataUsage) else x for x in usage]
+        if usage is not None:
+            usage = as_list(usage)
+            if any(type(x) is not str and issubclass(x, DataUsage) for x in usage):
+                # usage = [x.get_matching_names() if type(x) is not str and issubclass(x, DataUsage) else x for x in usage]
+                # flatten
+                # usage = [k for x in usage for k in x]
+                usage = [x.name if type(x) is not str and issubclass(x, DataUsage) else x for x in usage]
         if usage_exclude is not None:
             usage_exclude = as_list(usage_exclude)
             usage_exclude = [x.name if type(x) is not str and issubclass(x, DataUsage) else x for x in usage_exclude]
