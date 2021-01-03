@@ -222,7 +222,6 @@ class Learner(Serializable):
     def build_model_from_inputs(self):
         self.make()
         self.configure_validation_setting()
-
         if self.validation_exists and not len(self.test_embedding_index) > 0:
             self.validation.reserve_validation_for_testing()
         output_file = self.get_current_model_path() + ".trainval_idx"

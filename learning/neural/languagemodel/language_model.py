@@ -67,7 +67,7 @@ class NLM:
         for i in range(len(indices.instances)):
             idx = indices.instances[i]
             # offset = len(tokens)
-            for doc_idx in tqdm(idx, total=len(idx), desc=f"Encoding role: {indices.tags[i]}"):
+            for doc_idx in tqdm(idx, total=len(idx), desc=f"Encoding role: {indices.tags[i]}", ascii=True):
                 doc_data = texts.instances[doc_idx]
                 words = doc_data["words"]
                 text = " ".join(words)
