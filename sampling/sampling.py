@@ -34,7 +34,7 @@ class Sampler(Component):
         lengths = [len(x.data.instances) for x in (self.data + [self.labels_dp])]
         if not len(set(lengths)) == 1:
             error(f"Inputs to {self.name} sampling with different lengths: {lengths}.")
-        
+
 
     def produce_outputs(self):
         self.output_labels = None
@@ -42,6 +42,12 @@ class Sampler(Component):
         if self.config.min_freq is not None:
             new_labels = None
             ddict = self.make_label_transformation_dict(self.reference_labels, self.config.min_freq)
+            if not ddict:
+                # no oversampling required
+                info(f"No oversampling required to reach a min label freq. of {self.config.min_freq}!")
+                self.outputs = self.data + [self.labels_dp]
+                return
+            info(f"Will oversample {len(ddict)} / {len(self.labels_dp.get_usage(Labels).labelset)} labels, e.g. 10 of these: {list(ddict.keys())[:10]}")
             for inp in self.data:
                 data_idx = np.arange(len(inp.data.instances))
                 if new_labels is None:

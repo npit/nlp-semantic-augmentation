@@ -33,13 +33,11 @@ class ValidationSetting:
         elif self.portion is not None:
             meta_trainval_idx = portion_split(self.train_idx, self.portion, self.seed, self.labels, self.label_info)
         else:
-            meta_trainval_idx = [(self.train_idx, np.arange(0, dtype=np.int32))]
+            meta_trainval_idx = [(np.arange(len(self.train_idx)), np.arange(0, dtype=np.int32))]
         # "dereference" the metaindexes to point to the data themselves
         self.trainval_idx = []
         for (tidx, vidx) in meta_trainval_idx:
-            self.trainval_idx.append(self.train_idx[tidx], self.train_idx[vidx])
-
-
+            self.trainval_idx.append((self.train_idx[tidx], self.train_idx[vidx]))
 
     def get_total_iterations(self):
         return len(self.trainval_idx)

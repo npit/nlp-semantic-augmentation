@@ -105,7 +105,7 @@ class WordEmbedding(Embedding):
 
         # make index to position map to speed up location finder
         self.key2pos_map = {}
-        for ind in tqdm.tqdm(self.embeddings_source.index, total=len(self.embeddings_source), desc="Buildilng key index map"):
+        for ind in tqdm.tqdm(self.embeddings_source.index, total=len(self.embeddings_source), desc="Buildilng key index map", ascii=True):
             self.key2pos_map[ind] = len(self.key2pos_map)
 
     def produce_outputs(self):
@@ -118,7 +118,7 @@ class WordEmbedding(Embedding):
         self.all_idxs = []
 
         self.embeddings, self.elements_per_instance = [], []
-        for doc_dict in tqdm.tqdm(self.text.data.instances, total=len(self.text.data.instances), desc="Mapping word embeddings"):
+        for doc_dict in tqdm.tqdm(self.text.data.instances, total=len(self.text.data.instances), desc="Mapping word embeddings", ascii=True):
             words = doc_dict['words']
             self.map_words(words, self.embeddings)
         self.embeddings = np.vstack(self.embeddings)

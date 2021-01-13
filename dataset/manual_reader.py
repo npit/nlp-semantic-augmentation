@@ -4,7 +4,7 @@ import numbers
 import defs
 import numpy as np
 
-from utils import error, update_cumulative_index
+from utils import error, update_cumulative_index, debug
 
 
 class ManualDatasetReader:
@@ -155,6 +155,7 @@ class ManualDatasetReader:
         #         if ntrain < ntest:
         #             error("Read manual dataset with {ntrain} unique labels in the training set, but {ntest} in the test set.")
 
+        self.labelset = list(sorted(self.labelset))
         if self.is_labelled:
             self.configure_labelnames(json_data, self.labelset)
 
@@ -168,7 +169,20 @@ class ManualDatasetReader:
             if type(self.label_names) is not list:
                 error(f"Expected list of strings for labelnames, got {type(self.label_names)} : {self.label_names}")
             if instances_labelset != self.label_names:
-                error(f"Train non-numeric label names differ than the global labelnames provided.")
+                # need instances with numeric labels
+                debug(f"Train non-numeric label names differ from the global labelnames provided -- mapping.")
+                if type(instances_labelset[0]) == str:
+                    # better be the same labelset
+                    if instances_labelset != self.label_names:
+                        error(f"Train string label names differ from the global string labelnames provided.")
+                    # remap to ints
+                    for i in range(len(self.labels)):
+                        str_lbls = self.labels[i]
+                        int_lbls = [self.label_names.index(l) for l in str_lbls]
+                        self.labels[i] = np.split(np.asarray(int_lbls), len(int_lbls))
+                else:
+                    if len(instances_labelset) != len(self.label_names):
+                        error(f"Unequal labelset lengths from instances: {len(instances_labelset)} and dedicated field: {len(self.label_names)}")
         else:
             # assign numeric indexes as label names
             self.label_names = [str(x) for x in self.labelset]
