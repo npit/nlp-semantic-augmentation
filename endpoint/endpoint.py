@@ -77,6 +77,7 @@ class IOEndpoint(Trigger):
         Runs within the execution lock
 
         """
+        self.data_pool.current_running_chain = self.name
         for key, value in data.items():
             if key == Text.name:
                 # package input text data

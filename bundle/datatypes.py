@@ -36,6 +36,11 @@ class Datatype:
             res[i] = inst
         return res
 
+    def get_shape_info(self):
+        if type(self.instances) is np.ndarray:
+            return self.instances.shape
+        return len(self.instances)
+
     def append_instance(self, inst):
         """Append another instance object"""
         self.instances = np.append(self.instances, inst, axis=0)
@@ -85,6 +90,7 @@ class Dictionary(Datatype):
         return self.instances
 
 class DummyData(Datatype):
+    """Class for passing usages around"""
     name = "dummy"
     def __init__(self):
         super().__init__([])

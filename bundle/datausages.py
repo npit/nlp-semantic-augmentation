@@ -31,6 +31,9 @@ class Indices(DataUsage):
     instances = None
     tags = None
 
+    def has_tag(self, tag):
+        return tag in self.tags
+
     def add_tags(self, tags):
         """Add tag metadata"""
         self.tags = tags

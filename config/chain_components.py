@@ -2,6 +2,7 @@
 """
 import defs
 from config.config import Configuration
+from collections import defaultdict
 from utils import as_list
 
 
@@ -19,6 +20,8 @@ class manip_conf(Configuration):
         self.produce_index_tag = self.get_value("produce_index_tag", base=config, default=None, expected_type=str)
         self.size =  self.get_value("size", base=config, default=None)
         self.tag = self.get_value("tag", base=config, default=None)
+        self.target_tags = self.get_value("target_tags", base=config, default=None)
+        self.rename_tag = self.get_value("rename_tag", base=config, default=None)
         self.params = self.get_value("params", base=config, default=None)
 
 class sampling_conf(Configuration):
@@ -186,7 +189,9 @@ class report_conf(Configuration):
     def __init__(self, config):
         super().__init__(config)
         self.name = config["name"]
-        self.params = self.get_value("params", default={})
+        self.params = {"debug": False, "only_report_labels": None}
+        for k, v in self.get_value("params", default={}).items():
+            self.params[k] = v
 
 class link_conf(Configuration):
     """Defines chains to be passed as input to the current 

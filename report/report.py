@@ -1,6 +1,6 @@
 from component.component import Component
 import numpy as np
-from utils import to_namedtuple, debug, align_index, error, as_list
+from utils import to_namedtuple, debug, align_index, error, as_list, tictoc
 from bundle.datausages import *
 from bundle.datatypes import *
 import json
@@ -9,18 +9,96 @@ class Report(Component):
     """
     Task-specific reporting class
     """
+    component_name = "report"
+
     def load_model_from_disk(self):
         return True
     def set_component_outputs(self):
         # mark report existence
         self.data_pool.add_explicit_output(self.name)
 
+
+class IndexMapper:
+    """
+    Class to convert between indexes
+    """
+    def __init__(self, size, list_of_indexes):
+        """
+        size: Size of the original container 
+        list_of_indexes: each contains indices to elements of a container.
+                        Implicitly defines a new container with the elements it points to, where the next index list refers to.
+        """
+        self.size = size
+        self.indexes = list_of_indexes
+
+    def index_survives(self, idx, target_level=-1):
+        return self.convert_index(idx, target_level=target_level) is not None
+
+    def convert_index_to_last_container(self, idx):
+        """Converts input index to indexes of the last tangible container (to which the last index-list refers to)"""
+        lvl =  len(self.indexes) - 2
+        return self.convert_index(idx, target_level=lvl)
+
+    def convert_index(self, idx, source_level=-1, target_level=None):
+        """Converts index idx that resides on index_list of level source_level to the corresponding one
+        at target_level"""
+        error(f"Invalid index {idx}", idx < 0)
+        if source_level == -1:
+            # starts from the original index pool
+            if idx >= self.size:
+                error(f"Invalid index {idx} wrt. original size: {self.size}")
+            pass
+        else:
+            # make sure it exists in the specified level
+            if idx not in self.indexes[source_level]:
+                error(f"Requested conversion of idx {idx}: lvl {source_level}->{target_level}, but it's not in the source: {self.indexes[source_level]}")
+        if target_level is None:
+            # by default produce indexes in the final level
+            target_level = len(self.indexes) - 1
+
+        if target_level == source_level:
+            return np.asarray([idx], np.int64)
+
+        # compute
+        curr_value = idx
+        curr_lvl = source_level
+        while True:
+            if target_level > curr_lvl:
+                # next level is ahead
+                curr_lvl += 1
+                if idx not in self.indexes[curr_lvl]:
+                    # index did not survive past this step
+                    return None
+                curr_value = np.where(self.indexes[curr_lvl] == curr_value)[0]
+            elif target_level < curr_lvl:
+                # next level is behind
+                curr_lvl -= 1
+                # slice; it's guaranteed to exist
+                curr_value = self.indexes[curr_lvl][curr_value]
+            else:
+                return curr_value
+
 class MultistageClassificationReport(Report):
     name = "multistageclassif"
     def __init__(self, config):
         self.config = config
-        if "debug" not in self.config.params:
-            self.config.params["debug"] = False
+        self.params = self.config.params
+
+        if any(self.params[k] is None for k in "data_chain pred_chains idx_tags".split()):
+            error("Need report params for keys: data_chain, pred_chains, idx_tags")
+
+        stage_data_keys = "pred_chains idx_tags".split()
+        lens = [len(self.params[k]) for k in stage_data_keys]
+        if lens.count(lens[0]) != len(lens):
+            error(f"Need same number of entries for stage data keys:{stage_data_keys} -- got {[self.params[k] for k in stage_data_keys]}")
+
+        self.params["only_report_labels"] = [None] * len(self.params["pred_chains"])
+
+        if self.params["debug"] is None:
+            self.params["debug"] = False
+        if self.params["only_report_labels"] is None:
+            self.params["only_report_labels"] = [None] * len(self.params["pred_chains"])
+
         self.params = to_namedtuple(self.config.params, "params")
     
     def produce_outputs(self):
@@ -64,151 +142,54 @@ class MultistageClassificationReport(Report):
             data = [x["words"] for x in datapack.data.instances]
         res = []
 
+        # get final scores
+        final_preds = predictions[len(predictions)-1].data.instances
+        final_surv_idx = tagged_idx[len(predictions)-1]
+
+        curr_surv_idx = final_surv_idx
+        # find which words the survivors belong to
+        for idx in reversed(tagged_idx[:-1]):
+            curr_surv_idx = idx[curr_surv_idx]
+
+        res = []
+        # contextualize wrt. each instance (specified by the ngram tag)
+        num_all_ngrams = len(predictions[0].data.instances)
+        num_steps = len(predictions)
+        index_mapper = IndexMapper(num_all_ngrams, tagged_idx)
+
         ngram_tags = sorted([x for x in datapack.usages[0].tags if x.startswith("ngram_inst")])
+        with tictoc("Classification report building", announce=False):
+            for n, ngram_tag in enumerate(ngram_tags):
+                # indexes of the tokens for the current instance
+                # to the entire data container
+                original_instance_ix_data = datapack.usages[0].get_tag_instances(ngram_tag)
+                inst_obj = {"instance": n, "data": [data[i] for i in original_instance_ix_data], "detailed_preds": []}
 
-        # df for visualization
-        import pandas  as pd
-        all_words = []
-        all_instance_idxs = []
-        for tg in ngram_tags:
-            idx = datapack.usages[0].get_tag_instances(tg)
-            all_words += [data[i] for i in datapack.usages[0].get_tag_instances(tg)]
-            all_instance_idxs += [tg for _ in idx]
+                for local_word_idx, ix in enumerate(original_instance_ix_data):
+                    word_obj = {"word": data[ix], "word_idx": int(local_word_idx), "word_preds": []}
+                    # for each step
+                    for step_idx in range(num_steps):
+                        preds = predictions[step_idx].data.instances
+                        step_name = self.params.pred_chains[step_idx]
+                        step_obj = {"name": step_name, "step_index": step_idx}
 
-        p = pd.DataFrame()
-        p["word"] = all_words
-        p["instance"] = all_instance_idxs
+                        if step_idx == 0 or index_mapper.index_survives(ix, target_level=step_idx):
+                            # we want the position of in the pred. container previous to the step
+                            surv_idx = index_mapper.convert_index(ix, target_level=step_idx-1)
+                            step_preds = preds[surv_idx, :]
+                            scores, classes = self.get_topK_preds(step_preds, self.label_mapping[step_idx], self.params.only_report_labels[step_idx])
+                            step_obj["step_preds"] = {c:s for (c,s) in zip(classes[0], scores[0])}
+                        else:
+                            scores, classes = [], []
+                            step_obj["step_preds"] = {}
+                        word_obj["word_preds"].append(step_obj)
+                        # 
+                        if step_idx == num_steps - 1:
+                            word_obj["overall_preds"] = step_obj["step_preds"]
 
-        # index mapping from local to global levels, backwards
-        # step n -> step n-1 -> .... -> global (input)
-        survivors_index_map = {}
-        # 
+                    inst_obj["detailed_preds"].append(word_obj)
+                res.append(inst_obj)
 
-        # iterate over input instances (prior to ngramizing)
-        for n, ngram_tag in enumerate(ngram_tags):
-            # indexes of the tokens for the current istance to the entire data container
-            original_instance_ix_data = datapack.usages[0].get_tag_instances(ngram_tag)
-
-            # indexes of the current tokens for the current istance to the prediction container
-            # (the first prediction batch is on the entire data)
-            instance_ix_preds = original_instance_ix_data.copy()
-            # indexes of the current tokens for the current istance to the entire data container
-            instance_ix_data = original_instance_ix_data.copy()
-
-            # indexes (size == num curr. curr. predictions) mapping each pred. row
-            # to each token in the data container
-            prediction_ix_data = np.arange(len(data))
-
-            obj = {"instance": n, "data": [data[i] for i in original_instance_ix_data], "predictions": []}
-            # iterate over prediction steps
-            for i in range(len(predictions)):
-                debug(f"Creating report for instance {n+1}/{len(ngram_tags)}, prediction {i+1}/{len(predictions)}")
-                preds_obj = {"step": i}
-                # all prediction scores
-                step_preds = predictions[i].data.instances
-                # if prediction_ix_data is None:
-                #     # this is the first step -- size should equal
-                #     prediction_ix_data = np.arange(len(step_preds))
-                #     error("Mismatch in number of predictions and data!", len(prediction_ix_data) != len(data))
-
-                # get local index of entries surviving the thresholding
-                survivor_ix_preds = tagged_idx[i]
-                # from this get the global idx
-                survivor_ix_data = prediction_ix_data[survivor_ix_preds]
-
-                # df for visualization
-                s = np.asarray([None for _ in range(len(p))])
-                s[prediction_ix_data] = False
-                s[survivor_ix_data] = True
-                p[f"survivors_{i}"] = s
-
-                # filter out to current instance
-                # (both indexes refer to the preds. container):
-                instance_survivor_ix_preds = np.intersect1d(instance_ix_preds, survivor_ix_preds)
-                # (both indexes refer to the data. container):
-                instance_survivor_ix_data = np.intersect1d(survivor_ix_data, instance_ix_data)
-
-                preds_obj["survivor_words"] = [data[i] for i in instance_survivor_ix_data]
-
-                ix = [np.where(original_instance_ix_data == d)[0] for d in instance_survivor_ix_data]
-                ix = np.concatenate(ix) if ix else np.asarray([],dtype=np.int64)
-                preds_obj["survivor_word_instance_index"] = ix.tolist()
-
-                # extra info for verification debugging
-                ########################################
-                if i == 0:
-                    th = self.input_parameters_dict["binary_threshold"]
-                    if np.any(step_preds[survivor_ix_preds,1] < th):
-                        print("bin Threshold!")
-                else:
-                    if len(survivor_ix_preds) > 0:
-                        th = self.input_parameters_dict["multiclass_threshold"]
-                        l1 = len(np.unique(np.where(step_preds[survivor_ix_preds,:] >= th)[0]))
-                        l2 = len(survivor_ix_preds)
-                        if l1 != l2:
-                            print("mc Threshold!")
-                    ds = [data[i] for i in instance_survivor_ix_data]
-                    dall = [data[i] for i in original_instance_ix_data]
-                    if any(x not in dall for x in ds):
-                        print("words")
-
-                    if self.params.debug or ("debug" in self.input_parameters_dict and self.input_parameters_dict["debug"]):
-                        preds_obj["survivor_inst_idx_wrt_preds"] = instance_survivor_ix_preds.tolist()
-                        preds_obj["survivor_inst_idx_wrt_data"] = instance_survivor_ix_data.tolist()
-                        preds_obj["survivor_idx_wrt_preds"] = survivor_ix_preds.tolist()
-                    preds_obj["survivor_idx_wrt_data"] = survivor_ix_data.tolist()
-
-                    preds_obj["prediction_ix_wrt_data"] = prediction_ix_data.tolist()
-                    preds_obj["instance_idx_wrt_preds"] = instance_ix_preds.tolist()
-
-                    preds_obj["topk_in_predictions"] = []
-                    top_k_all, top_k_classes_all = self.get_topK_preds(step_preds, self.label_mapping[i], self.params.only_report_labels[i])
-                    for (pr, cl) in zip (top_k_all, top_k_classes_all):
-                        preds_obj["topk_in_predictions"].append({c: p for (c, p) in zip(cl, pr)})
-
-                ########################################
-
-                # sort descending, get top k
-                # for completeness, get the topK preds for all instances, surviving or not
-                top_k_preds, top_k_predicted_classes = self.get_topK_preds(step_preds[instance_ix_preds], self.label_mapping[i],self.params.only_report_labels[i])
-
-                # write top-k
-                preds_obj["topk_per_instance_token"] = []
-                for (pr, cl) in zip (top_k_preds, top_k_predicted_classes):
-                    preds_obj["topk_per_instance_token"].append({c: p for (c, p) in zip(cl, pr)})
-                
-                # for the next step, only survivors remain
-                # predictions
-                prediction_ix_data = survivor_ix_data
-                # instance-related:
-                # ixs to data is straightforward
-                instance_ix_data = instance_survivor_ix_data
-                # aligning the surviving indexes of the instance to the surviving preds container
-                # via the surviving data
-                ix = [np.where(prediction_ix_data == d)[0] for d in instance_survivor_ix_data]
-                instance_ix_preds = np.concatenate(ix) if ix else np.asarray([],dtype=np.int64)
-
-                # preds_obj["topk_classes"] = top_k_predicted_classes
-
-                # append the predictions for the instance
-                obj["predictions"].append(preds_obj)
-
-            # total predictions
-            obj["overall_predictions"] = []
-
-            orig_words = [data[i] for i in instance_ix_data]
-            for s, surv_idx in enumerate(instance_ix_data):
-                widx = np.where(original_instance_ix_data == surv_idx)[0]
-                tobj = {"original_word_index": int(widx), "original_word": orig_words[s]}
-                tobj["replacements"] = {}
-
-                for (pr, cl) in zip (top_k_preds[s], top_k_predicted_classes[s]):
-                    tobj["replacements"][cl] = pr
-                obj["overall_predictions"].append(tobj)
-
-            if "skip_step_predictions" in self.input_parameters_dict and self.input_parameters_dict["skip_step_predictions"]:
-                del obj["predictions"]
-            res.append(obj)
         self.result = {"results": res, "input_params": self.input_parameters_dict, "messages": self.messages}
 
     def align_to_original_index(self, idx_progression, original_idx):

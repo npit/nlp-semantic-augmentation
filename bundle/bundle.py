@@ -82,6 +82,7 @@ class DataPool:
         self.data = []
         self.feeder_chains = []
         self.feeder_components = []
+        self.current_running_chain = None
 
     def add_data_packs(self, datapack_list, source_name):
         for dp in datapack_list:

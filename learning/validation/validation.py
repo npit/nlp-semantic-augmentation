@@ -27,12 +27,19 @@ class ValidationSetting:
 
     def make_splits(self):
         """Produce validation splits, if defined"""
+        # produce fold/portion splits of the training indexes: these output indexes to the tr. indexes themselves
         if self.folds is not None:
-            self.trainval_idx = kfold_split(self.train_idx, self.folds, self.seed, self.labels, self.label_info)
+            meta_trainval_idx = kfold_split(self.train_idx, self.folds, self.seed, self.labels, self.label_info)
         elif self.portion is not None:
-            self.trainval_idx = portion_split(self.train_idx, self.portion, self.seed, self.labels, self.label_info)
+            meta_trainval_idx = portion_split(self.train_idx, self.portion, self.seed, self.labels, self.label_info)
         else:
-            self.trainval_idx = [(self.train_idx, np.arange(0, dtype=np.int32))]
+            meta_trainval_idx = [(self.train_idx, np.arange(0, dtype=np.int32))]
+        # "dereference" the metaindexes to point to the data themselves
+        self.trainval_idx = []
+        for (tidx, vidx) in meta_trainval_idx:
+            self.trainval_idx.append(self.train_idx[tidx], self.train_idx[vidx])
+
+
 
     def get_total_iterations(self):
         return len(self.trainval_idx)

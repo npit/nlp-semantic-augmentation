@@ -35,12 +35,13 @@ class Filter(Manipulation):
         if self.config.params is not None:
             debug(f"Using params: {str(self.params)}")
         for i, dp in enumerate(self.input_dps):
+            info(f"Applying filter to datapack {i+1}/{len(self.input_dps)} of len/shp: {dp.data.get_shape_info()}")
             instances = dp.data.instances
             if len(instances) == 0:
                 mask = np.empty(0, dtype=np.int64)
             else:
                 mask = self.apply_operation(instances)
-            debug(f"Survivors in mask: {np.where(mask)}")
+            debug(f"First 10 of the {len(mask)} survivors: {mask[:10]}")
             # add filtered index and tag
             output_usages = [Indices(mask, [self.config.produce_index_tag], skip_empty=False)]
             # modify (align) existing indexes, post-filtering
@@ -52,7 +53,6 @@ class Filter(Manipulation):
             # filtering output -- dummy data
             new_dp = DataPack(DummyData(), output_usages)
             self.outputs.append(new_dp)
-            info(f"Filtering {i+1}/{len(self.input_dps)} input data pack")
 
     def set_component_outputs(self):
         self.data_pool.add_data_packs(self.outputs, self.name)
