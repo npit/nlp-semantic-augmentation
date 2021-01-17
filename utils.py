@@ -404,7 +404,7 @@ def info(msg, banner=None):
         info("-" * len(msg))
 
 
-def debug(msg):
+def debug(msg, end="\n"):
     logger = logging.getLogger()
     logger.debug(msg)
 
@@ -457,7 +457,9 @@ def write_pickled(path, data, msg="", write_intermmediate=True):
     if msg:
         msg += " "
     if write_intermmediate:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        direc = os.path.dirname(path)
+        if direc:
+            os.makedirs(direc, exist_ok=True)
     info(f"Serializing {msg}to {path}")
     with open(path, "wb") as f:
         pickle.dump(data, f)

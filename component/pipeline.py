@@ -71,7 +71,7 @@ class Pipeline:
                 # data_pool.log_data_request(chain.get_name(), required_input_chains)
                 input_identifier = self.data_pool.get_input_identifier(chain.components[0].get_consumption(chain.get_name()), required_input_chains)
 
-            debug(f"Configuring chain [{chain.get_name()}]")
+            debug(f" chain [{chain.get_name()}]", end=" ")
             # run chain components
             for c, component in enumerate(chain.components):
                 # # get appropriate head bundle
@@ -117,6 +117,7 @@ class Pipeline:
         info("Preloading the models for each component")
         for chain in self.chains.values():
             for comp in chain.get_components():
+                debug(f"Preloading {comp.get_full_name()}")
                 comp.attempt_load_model_from_disk(failure_is_fatal=failure_is_fatal)
 
     def run(self):

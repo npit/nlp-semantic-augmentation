@@ -18,7 +18,7 @@ class manip_conf(Configuration):
         self.times = self.get_value("times", base=config, default=None)
         self.function = self.get_value("func", base=config, default=None)
         self.produce_index_tag = self.get_value("produce_index_tag", base=config, default=None, expected_type=str)
-        self.size =  self.get_value("size", base=config, default=None)
+        self.window =  self.get_value("window", base=config, default=None)
         self.tag = self.get_value("tag", base=config, default=None)
         self.target_tags = self.get_value("target_tags", base=config, default=None)
         self.rename_tag = self.get_value("rename_tag", base=config, default=None)

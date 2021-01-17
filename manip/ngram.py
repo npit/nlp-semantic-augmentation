@@ -18,7 +18,7 @@ class NGram(Manipulation):
         self.config = config
         Manipulation.__init__(self)
         # Filter.__init__(self, config)
-        win_sizes = self.config.size if self.config.size is not None else [3, 3]
+        win_sizes = self.config.window if self.config.window is not None else [1, 1]
         if not is_collection(win_sizes):
             win_sizes = [win_sizes] * 2
         self.before, self.after = win_sizes
@@ -41,7 +41,7 @@ class NGram(Manipulation):
                 global_idx += 1
                 # get and filter indices for fefore - after contexts
                 cbi = [x for x in range(i-self.before, i) if x >= 0]
-                cai = [x for x in range(i+1, i+self.after) if x < len(sequence)]
+                cai = [x for x in range(i+1, i+1+self.after) if x < len(sequence)]
                 # assign elements
                 cb = [sequence[k] for k in cbi]
                 ca = [sequence[k] for k in cai]

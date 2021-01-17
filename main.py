@@ -2,7 +2,7 @@
 import argparse
 
 from config.config_reader import ConfigReader
-from utils import info, num_warnings, tictoc, warning
+from utils import info, num_warnings, tictoc, warning, error
 
 
 def main(config_file, ignore_undefined=False, load_models_first=False):
@@ -21,6 +21,7 @@ def main(config_file, ignore_undefined=False, load_models_first=False):
         # 
         should_load_models = load_models_first or any(trig.requires_model_loading() for trig in triggers)
         if should_load_models:
+            error("Should load models but model deserialization is not enabled!", not global_config.misc.allow_model_deserialization)
             pipeline.load_models()
 
         for trig in sorted(triggers, key=lambda x: x.is_blocking):

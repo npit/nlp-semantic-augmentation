@@ -35,7 +35,6 @@ class Chain(Component):
         for idx, (component_name, component_params) in enumerate(zip(fields, configs)):
             component = instantiator.create(component_name, component_params)
             self.components.append(component)
-            debug("Created chain {} component {}/{}: {}".format(name, idx + 1, self.num_components, str(self.components[-1])))
 
     def setup_suspension_handling(self):
         for com in self.components:

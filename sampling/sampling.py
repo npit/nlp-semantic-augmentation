@@ -45,7 +45,8 @@ class Sampler(Component):
             if not ddict:
                 # no oversampling required
                 info(f"No oversampling required to reach a min label freq. of {self.config.min_freq}!")
-                self.outputs = self.data + [self.labels_dp]
+                self.outputs = self.data
+                self.output_labels = self.labels_dp
                 return
             info(f"Will oversample {len(ddict)} / {len(self.labels_dp.get_usage(Labels).labelset)} labels, e.g. 10 of these: {list(ddict.keys())[:10]}")
             for inp in self.data:
@@ -77,6 +78,8 @@ class Sampler(Component):
         cn = Counter(labels)
         if min_freq:
             candidates = [x[0] for x in cn.most_common() if x[1] < min_freq]
+            if not candidates:
+                info(f"Min freq. is already large enough: {cn.most_common()[-1]}")
             desired_dict = {k: min_freq for k in candidates}
         return desired_dict
 

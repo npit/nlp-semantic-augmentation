@@ -123,7 +123,6 @@ class ConfigReader:
 
             # valid component key encountered; create it
             component_class = component_classes[valid_component_names.index(component_name)]
-            debug(f"Read configuration for chain component {component_name}")
             component_config = component_class(component_dict)
 
             # merge the global configuration to the component configuration

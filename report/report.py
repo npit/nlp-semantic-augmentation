@@ -98,6 +98,10 @@ class MultistageClassificationReport(Report):
             self.params["debug"] = False
         if self.params["only_report_labels"] is None:
             self.params["only_report_labels"] = [None] * len(self.params["pred_chains"])
+        # if "final_stages" not in self.params:
+        #     self.params["final_stages"] = None
+        if "report_if_fail" not in self.params:
+            self.params["report_if_fail"] = None
 
         self.params = to_namedtuple(self.config.params, "params")
     
@@ -143,13 +147,13 @@ class MultistageClassificationReport(Report):
         res = []
 
         # get final scores
-        final_preds = predictions[len(predictions)-1].data.instances
-        final_surv_idx = tagged_idx[len(predictions)-1]
+        # final_preds = predictions[len(predictions)-1].data.instances
+        # final_surv_idx = tagged_idx[len(predictions)-1]
 
-        curr_surv_idx = final_surv_idx
-        # find which words the survivors belong to
-        for idx in reversed(tagged_idx[:-1]):
-            curr_surv_idx = idx[curr_surv_idx]
+        # curr_surv_idx = final_surv_idx
+        # # find which words the survivors belong to
+        # for idx in reversed(tagged_idx[:-1]):
+        #     curr_surv_idx = idx[curr_surv_idx]
 
         res = []
         # contextualize wrt. each instance (specified by the ngram tag)
@@ -163,15 +167,20 @@ class MultistageClassificationReport(Report):
                 # indexes of the tokens for the current instance
                 # to the entire data container
                 original_instance_ix_data = datapack.usages[0].get_tag_instances(ngram_tag)
-                inst_obj = {"instance": n, "data": [data[i] for i in original_instance_ix_data], "detailed_preds": []}
+                inst_obj = {"instance": n, "data": [data[i] for i in original_instance_ix_data], "predictions": []}
 
                 for local_word_idx, ix in enumerate(original_instance_ix_data):
-                    word_obj = {"word": data[ix], "word_idx": int(local_word_idx), "word_preds": []}
+                    if data[ix] == "δυο":
+                        print()
+                    word_obj = {"word": data[ix], "word_idx": int(local_word_idx), "detailed_preds": [], "overall_preds": {}}
+                    # final stages
+                    final_stages_for_word = []
                     # for each step
                     for step_idx in range(num_steps):
                         preds = predictions[step_idx].data.instances
                         step_name = self.params.pred_chains[step_idx]
                         step_obj = {"name": step_name, "step_index": step_idx}
+
 
                         if step_idx == 0 or index_mapper.index_survives(ix, target_level=step_idx):
                             # we want the position of in the pred. container previous to the step
@@ -179,18 +188,54 @@ class MultistageClassificationReport(Report):
                             step_preds = preds[surv_idx, :]
                             scores, classes = self.get_topK_preds(step_preds, self.label_mapping[step_idx], self.params.only_report_labels[step_idx])
                             step_obj["step_preds"] = {c:s for (c,s) in zip(classes[0], scores[0])}
-                        else:
-                            scores, classes = [], []
-                            step_obj["step_preds"] = {}
-                        word_obj["word_preds"].append(step_obj)
-                        # 
-                        if step_idx == num_steps - 1:
-                            word_obj["overall_preds"] = step_obj["step_preds"]
 
-                    inst_obj["detailed_preds"].append(word_obj)
+                            if step_idx == num_steps -1:
+                                word_obj["overall_preds"] = step_obj["step_preds"]
+
+                            # add to detailed predictions, if not omitted
+                            if not self.omit_detailed_results():
+                                word_obj["detailed_preds"].append(step_obj)
+
+                        else:
+                            if self.params.report_if_fail is not None:
+                                if step_name in self.params.report_if_fail:
+                                    surv_idx = index_mapper.convert_index(ix, target_level=step_idx-1)
+                                    if surv_idx is None:
+                                        break
+                                    step_preds = preds[surv_idx, :]
+                                    scores, classes = self.get_topK_preds(step_preds, self.label_mapping[step_idx], self.params.only_report_labels[step_idx])
+                                    step_obj["step_preds"] = {c:s for (c,s) in zip(classes[0], scores[0])}
+
+                                    # since it fails, it's def. a final step for this word
+                                    word_obj["overall_preds"] = step_obj["step_preds"]
+
+                                    # add to detailed predictions, if not omitted
+                                    if not self.omit_detailed_results():
+                                        word_obj["detailed_preds"].append(step_obj)
+                            else:
+                                # add the score of the last classification
+                                scores, classes = [], []
+                                step_obj["step_preds"] = {}
+                                break
+
+                    # add if there's info in it
+                    if not word_obj["detailed_preds"]:
+                        del word_obj["detailed_preds"]
+                    inst_obj["predictions"].append(word_obj)
                 res.append(inst_obj)
 
         self.result = {"results": res, "input_params": self.input_parameters_dict, "messages": self.messages}
+
+    # def is_final_stage(self, step_idx):
+    #     if self.params.final_stages is not None:
+    #         val = self.params.pred_chains[step_idx] in self.params.final_stages
+    #     else:
+    #         # only the last step
+    #         val = step_idx == len(stage_names) -1
+    #     return val
+
+    def omit_detailed_results(self):
+        return "omit_detailed_results" in self.input_parameters_dict and self.input_parameters.omit_detailed_results == 1
 
     def align_to_original_index(self, idx_progression, original_idx):
         """

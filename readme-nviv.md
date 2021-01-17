@@ -3,11 +3,13 @@ The process below installs code and resources in the "smaug" folder.
 
 ## Code
 You need to have git
+
 ```
 sudo apt update && sudo apt install -y git
 ```
 
 Get the sources -- use the `nviv` branch of the `npit/nlp-semantic-augmentation` repository, i.e.:
+
 ```
 git clone https://github.com/npit/nlp-semantic-augmentation ./smaug 
 cd smaug && git checkout nviv
@@ -17,20 +19,23 @@ cd smaug && git checkout nviv
 ## Dependencies
 ### System Packages
 Install the package dependencies stored in `package-dependencies.txt`.
+
 ```
 sudo apt update && sudo apt install -y $(cat package-dependencies.txt)
 ```
 
 ### Python 3.8
-To install the latest python environment for older systems:
+To install the latest python environment for older ubuntu-based systems:
 Install the package:
+
 ```
 sudo apt install -y software-properties-common curl
 
 sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt update
 sudo apt install -y python3.8 python3.8-distutils
+
 ```
-Get up-to-date pip:
+Get the relevant pip vers.:
 ```
 sudo apt remove python3-pip
 curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
@@ -41,7 +46,8 @@ python3.8 -m pip install --upgrade pip
 *Note*: Use `python3.8` in all following commands (and/or use aliasing).
 
 ### Python Packages
-Install the python3 package dependencies stored in `dependencies.txt`:
+Install the python package dependencies stored in `dependencies.txt`:
+
 ```
 python3 -m pip install --user -r dependencies.txt
 ```
@@ -51,6 +57,7 @@ python3 -m pip install --user -r dependencies.txt
 
 ### Representations
 Fetch the greek w2v embeddings.
+
 ```
 mkdir -p raw_data/representation && cd $_
 # Fetch and extract
@@ -76,7 +83,7 @@ wget  -O labelmapping.json https://users.iit.demokritos.gr/~pittarasnikif/nv/mul
 
 # Deployment
 ## Configuration
-Use the preconfigured `nv-ngram-twostage.yml.example` configuration file.
+Use the preconfigured configuration file:
 ```
 cp nv-ngram-twostage.yml.example nv-ngram-twostage.yml
 ```
@@ -114,7 +121,6 @@ Place the `.model` files and their `.wrapper` counterparts in the same directory
 # Info
 ## Data, training and model details
 The data used to build the pretrained classifiers were generated using [the tools in this repository](https://gitlab.com/npit/word-level-transcription-classification), using parameters are as below:
-- Texts: 14117 instances of transcriptions - ground truth pairs
 - Preprocessing:
    - Data were split to ngrams, using a before/after context (around each word) of 3 tokens max, discarding data with no available context (i.e. single-word instances).
    - Lowercasing & punctuation removal

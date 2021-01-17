@@ -42,8 +42,8 @@ class misc_conf(Configuration):
                 self.keys[kname] = kvalue
         self.independent = self.get_value("independent_component", base=config, default=False)
 
-        self.allow_model_deserialization = self.get_value("allow_model_deserialization", base=config, default=True)
-        self.allow_output_deserialization = self.get_value("allow_output_deserialization", base=config, default=True)
+        self.allow_model_deserialization = self.get_value("allow_model_deserialization", base=config, default=False)
+        self.allow_output_deserialization = self.get_value("allow_output_deserialization", base=config, default=False)
 
 
         self.csv_separator = self.get_value("csv_separator", base=config, default=",")

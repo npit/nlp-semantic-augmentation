@@ -137,11 +137,11 @@ class Component:
 
     def attempt_load_model_from_disk(self, force_reload=False, failure_is_fatal=False):
         """Wrapper for model loading"""
-        if not self.config.misc.allow_model_deserialization:
-            return False
         if self.model_loaded and not force_reload:
             # already loaded
             return True
+        if not self.config.misc.allow_model_deserialization:
+            return False
         # else call the loading function
         self.model_loaded = self.load_model_from_disk()
         error(f"Failed to load prebuilt model for {self.get_full_name()} but it's required", not self.model_loaded and failure_is_fatal)
