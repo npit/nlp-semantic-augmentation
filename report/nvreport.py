@@ -97,7 +97,7 @@ class NVReport(Report):
                 inst_obj = {"instance": n, "data": [data[i] for i in original_instance_ix_data], "predictions": []}
 
                 for local_word_idx, ix in enumerate(original_instance_ix_data):
-                    word_obj = {"word": data[ix], "word_idx": int(local_word_idx), "detailed_preds": [], "overall_predictions": []}
+                    word_obj = {"word": data[ix], "word_idx": int(local_word_idx), "overall_predictions": {}}
                     detailed = []
                     
                     # for each step
@@ -109,21 +109,29 @@ class NVReport(Report):
                         survives = thresholding[ix, step_idx]
                         step_preds = np.expand_dims(preds[ix, :], axis=0)
                         scores, classes = self.get_topK_preds(step_preds, self.label_mapping[step_idx], self.params.only_report_labels[step_idx])
-                        step_preds = {c:s for (c,s) in zip(classes[0], scores[0])}
+                        step_preds = {c: round(s, 4) for (c, s) in zip(classes[0], scores[0])}
                         step_obj["step_preds"] = step_preds
                         detailed.append(step_preds)
 
                     modified, deleted, replaced = thresholding[ix, :]
+                    word_obj["overall_predictions"]["modify_prediction"] = {"modified": int(modified), "prob": detailed[0]["modify"]}
+
+                    delete_obj = detailed[1]
+                    # replaced
+                    objs = []
+                    for word, prob in detailed[2].items():
+                        objs.append({"word": word, "prob": prob})
+                    replace_obj = objs
+
                     if modified:
                         if deleted:
                             # deleted
-                            word_obj["overall_predictions"] = detailed[1]
+                            word_obj["overall_predictions"]["delete_prediction"] = delete_obj
                         elif replaced:
-                            # replaced
-                            word_obj["overall_predictions"] = detailed[2]
+                            word_obj["overall_predictions"]["replace_prediction"] = replace_obj
 
                     if not self.omit_detailed_results():
-                        word_obj["detailed_preds"] = detailed
+                        word_obj["detailed_predictions"] = {"delete_prediction": delete_obj, "replace_prediction": replace_obj}
 
                     inst_obj["predictions"].append(word_obj)
                 res.append(inst_obj)
