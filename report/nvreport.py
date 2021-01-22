@@ -114,7 +114,8 @@ class NVReport(Report):
                         detailed.append(step_preds)
 
                     modified, deleted, replaced = thresholding[ix, :]
-                    word_obj["overall_predictions"]["modify_prediction"] = {"modified": int(modified), "prob": detailed[0]["modify"]}
+                    modify_obj = {"modified": int(modified), "prob": detailed[0]["modify"]}
+                    word_obj["overall_predictions"]["modify_prediction"] = modify_obj
 
                     delete_obj = detailed[1]
                     # replaced
@@ -131,7 +132,7 @@ class NVReport(Report):
                             word_obj["overall_predictions"]["replace_prediction"] = replace_obj
 
                     if not self.omit_detailed_results():
-                        word_obj["detailed_predictions"] = {"delete_prediction": delete_obj, "replace_prediction": replace_obj}
+                        word_obj["detailed_predictions"] = {"modify_prediction": modify_obj, "delete_prediction": delete_obj, "replace_prediction": replace_obj}
 
                     inst_obj["predictions"].append(word_obj)
                 res.append(inst_obj)
