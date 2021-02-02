@@ -27,9 +27,19 @@ class BagRepresentation(Representation):
     def set_params(self):
         if self.config.ngram_range is not None:
             self.ngram_range = self.config.ngram_range
+
+        if self.config.term_list is not None:
+            self.read_term_list()
         self.compatible_aggregations = [defs.alias.none]
         self.compatible_sequence_lengths = [defs.sequence_length.unit]
         Representation.set_params(self)
+
+    def read_term_list(self):
+        try:
+            with open(self.config.term_list) as f:
+                self.term_list = [x.strip() for x in f.readlines()]
+        except:
+            error("Term list for bag should be a newline-delimited file, one term per line.")
 
     @staticmethod
     def generate_name(config, input_name):

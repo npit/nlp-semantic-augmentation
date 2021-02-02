@@ -18,32 +18,11 @@ class LabelledLearner(SupervisedLearner):
     def __init__(self):
         SupervisedLearner.__init__(self, consumes=[Numeric.name, Labels.name])
 
-    # def make(self):
-    #     super().make()
-    #     self.do_multilabel = is_multilabel(self.train_labels)
-    #     label_counts = count_label_occurences(self.train_labels)
-    #     self.num_labels = len(label_counts)
-
-    def attach_evaluator(self):
-        super().attach_evaluator()
-        # make sure the validation setting makes sense prior to configuring the evaluator
-        if len(self.test_labels) == 0:
-            # no test labels; better be some validation
-            if not (self.validation_exists and self.validation.use_for_testing):
-                error("No test data nor validation setting defined. Cannote evaluate run.")
-        # add label-related information to the evaluator
-        self.evaluator.set_labelling(self.train_labels, self.labelset, self.do_multilabel, self.test_labels)
-        if self.validation_exists and self.validation.use_for_testing:
-            reference_labels = self.train_labels
-        else:
-            reference_labels = self.test_labels
-        self.evaluator.majority_label = count_occurences(reference_labels)[0][0]
-
     def check_sanity(self):
         super().check_sanity()
         # need at least one sample per class
         existing_labels = set(np.concatenate(self.targets.instances))
-        missing_labels = [x for x in self.labelset if x not in existing_labels]
+        missing_labels = [x for x in range(len(self.label_names)) if x not in existing_labels]
         error("No training samples for label(s): {missing_labels}", len(missing_labels) > 0)
 
     def configure_validation_setting(self):
@@ -144,7 +123,7 @@ class LabelledLearner(SupervisedLearner):
         return self.model_loaded and loaded_wrapper
 
     def clear_model_wrapper(self):
-        self.labels_info, self.labelset, self.do_multilabel = None, None, None
+        self.labels_info, self.label_names, self.do_multilabel = None, None, None
 
     def make_predictions_datapack(self):
         pred = super().make_predictions_datapack()
@@ -153,29 +132,29 @@ class LabelledLearner(SupervisedLearner):
         return pred
 
     def process_label_information(self, data):
-        labelset = data.labelset
+        label_names = data.label_names
         multi = data.multilabel
-        num = len(labelset)
+        num = len(label_names)
 
         if self.labels_info is not None:
             # check compatibility with loaded inputs
-            if num != len(self.labels_info.labelset):
-                warning(f"Got {len(self.labels_info.labelset)} labels from inputs but processed {num}")
+            if num != len(self.labels_info.label_names):
+                warning(f"Got {len(self.labels_info.label_names)} labels from inputs but processed {num}")
                 return False
-            if self.labels_info.labelset != labelset:
-                warning(f"Got labelset: {self.labels_info.labelset} from inputs but processed labelset: {labelset}")
+            if self.labels_info.label_names != label_names:
+                warning(f"Got label names: {self.labels_info.label_names} from inputs but processed names: {label_names}")
                 return False
             if self.labels_info.multilabel != multi:
                 warning(f"Got multilabel setting: {self.labels_info.do_multilabel} from inputs but processed: {multi}")
                 return False
 
         self.labels_info = data
-        self.labelset, self.do_multilabel, self.num_labels = labelset, multi, num
+        self.label_names, self.do_multilabel, self.num_labels = label_names, multi, num
         return True
 
     def get_predictions_datapack(self):
         preds = super().get_predictions_datapack()
-        # add labelset
-        preds.get_usage(Predictions).add_ground_truth(self.labels_info.labelset)
+        # add labelnames
+        preds.get_usage(Predictions).add_ground_truth(self.labels_info.label_names)
         return preds
 

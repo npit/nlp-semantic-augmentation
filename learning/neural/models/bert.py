@@ -1,4 +1,3 @@
-from learning.neural.base_model import BaseModel
 from transformers import (BertConfig, BertForSequenceClassification, BertModel, BertTokenizer)
 from learning.neural.models.huggingface_classifier import HuggingfaceSequenceClassifier
 import logging
@@ -14,7 +13,10 @@ class Bert(HuggingfaceSequenceClassifier):
         """Constructor"""
         super().__init__(config, num_labels)
         self.use_pretrained = use_pretrained
-        self.pretrained_id = "bert-base-uncased"
+        if config.model_id is not None:
+            self.pretrained_id = config.model_id
+        else:
+            self.pretrained_id = "bert-base-uncased"
         config_args = {"pretrained_model_name_or_path": self.pretrained_id, "num_labels": self.num_labels}
         # suspend logging
         lvl = logging.getLogger().level
@@ -29,7 +31,8 @@ class Bert(HuggingfaceSequenceClassifier):
         logging.getLogger().setLevel(lvl)
         self.model = model
 
-    def get_tokenizer(use_pretrained=True, pretrained_id=None):
+    @classmethod
+    def get_tokenizer(config, use_pretrained=True):
         if use_pretrained:
             tokenizer = BertTokenizer.from_pretrained(Bert.pretrained_id)
         else:

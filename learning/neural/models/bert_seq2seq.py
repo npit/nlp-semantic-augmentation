@@ -46,12 +46,13 @@ class BertSeq2Seq(HuggingfaceSeq2seq):
             self.model = pretrained_model
         logging.getLogger().setLevel(self.config.print.log_level.upper())
 
-    def get_tokenizer(use_pretrained=True, pretrained_id=None):
-        info("Fetching tokenizer: " + ("id=" + str(pretrained_id)) if use_pretrained else " UNTRAINED!")
+    @classmethod
+    def get_tokenizer(self):
+        info("Fetching tokenizer: " + ("id=" + str(self.pretrained_id)) if self.use_pretrained else " UNTRAINED!")
         if pretrained_id is None:
             pretrained_id = BertSeq2Seq.pretrained_id
         if use_pretrained:
-            tokenizer = BertTokenizer.from_pretrained(pretrained_id)
+            tokenizer = BertTokenizer.from_pretrained(self.pretrained_id)
         else:
             tokenizer = BertTokenizer(BertConfig())
         return tokenizer

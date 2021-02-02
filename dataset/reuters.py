@@ -65,7 +65,7 @@ class Reuters(Dataset):
             self.test_labels.append(doc2labels[doc])
 
         self.label_names = label_set
-        self.labelset = list(sorted(set(self.train_labels)))
+        # self.labelset = list(sorted(set(self.train_labels)))
         self.roles = "train", "test"
         info("Loaded {} train & {} test instances.".format(len(self.train), len(self.test)))
         return self.get_all_raw()

@@ -1,5 +1,6 @@
 """Instantiator for neural models"""
 from learning.neural.models.bert import Bert
+from learning.neural.models.huggingface_automodel_classifier import HF_Automodel
 from learning.neural.models.bert_seq2seq import BertSeq2Seq
 from learning.neural.models.mlp import MLPModel
 from utils import error, warning
@@ -9,7 +10,7 @@ from learning.neural.languagemodel.huggingface_seq2seq_transformer_lm import Hug
 from learning.neural.languagemodel.huggingface_transformer_lm import HuggingfaceTransformer
 from learning.neural.languagemodel.labelled_huggingface_transformer_lm import LabelledHuggingfaceTransformer
 
-available_models = [Bert, MLPModel, BertSeq2Seq]
+available_models = [Bert, MLPModel, BertSeq2Seq, HF_Automodel]
 
 available_wrappers = [SupervisedDNN, LabelledDNN, UnsupervisedDNN,
                       HuggingfaceTransformer,

@@ -18,11 +18,11 @@ def kfold_split(data, num_folds, seed, labels=None, label_info=None):
         return list(KFold(num_folds, shuffle=True, random_state=seed).split(data))
     else:
         multilabel = label_info.multilabel
-        labelset = label_info.labelset
+        num_labels = len(label_info.label_names)
         if multilabel:
             info(msg +" using iterative stratification.")
             splitter = IterativeStratification(num_folds, order=1)
-            oh_labels = one_hot(labels, len(labelset), is_multilabel=True)
+            oh_labels = one_hot(labels, num_labels, is_multilabel=True)
             return list(splitter.split(np.zeros(len(labels)), oh_labels))
         else:
             try:
@@ -43,10 +43,10 @@ def portion_split(data, portion, seed=1337, labels=None, label_info=None):
             return list(ShuffleSplit( n_splits=1, test_size=portion, random_state=seed).split(data))
     else:
         multilabel = label_info.multilabel
-        labelset = label_info.labelset
+        num_labels = len(label_info.label_names)
         if multilabel:
             stratifier = IterativeStratification(n_splits=2, order=2, sample_distribution_per_fold=[portion, 1.0-portion])
-            labels = one_hot(labels, len(labelset), True)
+            labels = one_hot(labels, num_labels, True)
             info(msg +" using iterative stratification.")
             train_indexes, test_indexes = next(stratifier.split(np.zeros(len(data)), labels))
             return [(train_indexes, test_indexes)]

@@ -122,6 +122,7 @@ class BaseModel(ptl.LightningModule):
         """Forward pass function"""
         # forward pass
         error("Attempted to access abstract forward function")
+        return None
 
     def get_data_from_index(self, index, data):
         """Retrieve a subset of embedding data"""

@@ -43,7 +43,7 @@ class ManualDataset(Dataset):
         self.indices = mdr.indices
         self.targets = mdr.targets
         self.multilabel = mdr.max_num_instance_labels > 1
-        self.labelset, self.label_names = mdr.labelset, mdr.label_names
+        self.label_names = mdr.label_names
         self.language = mdr.language
         self.roles = mdr.roles
 
@@ -59,9 +59,6 @@ class ManualDataset(Dataset):
     def handle_raw_serialized(self, deserialized_data):
         Dataset.handle_raw_serialized(self, deserialized_data)
         self.language = deserialized_data["language"]
-        # if self.train_labels is not None:
-            # self.multilabel = deserialized_data["multilabel"]
-            # self.labelset = sorted(np.unique(np.concatenate(self.train_labels)))
 
     def handle_serialized(self, deserialized_data):
         self.handle_raw_serialized(deserialized_data)

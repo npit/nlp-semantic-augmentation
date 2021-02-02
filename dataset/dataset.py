@@ -34,7 +34,7 @@ class Dataset(Serializable):
     preprocessed = False
 
     data, roles, indices = None, None, None
-    labels, labelset, multilabel = None, None, None
+    labels, multilabel = None, None
     targets = None
     num_labels = None
 
@@ -209,7 +209,7 @@ class Dataset(Serializable):
     def handle_raw_serialized(self, deserialized_data):
         self.data, self.indices, self.roles = [deserialized_data[n] for n in self.data_names]
         self.loaded_raw_serialized = True
-        self.labels, self.label_names, self.labelset = [deserialized_data[n] for n in self.label_data_names]
+        self.labels, self.label_names = [deserialized_data[n] for n in self.label_data_names]
         self.targets = deserialized_data[self.target_data_names[0]]
         if self.labels is not None:
             self.num_labels = len(set(self.label_names))
@@ -400,7 +400,7 @@ class Dataset(Serializable):
         return data
 
     def get_labelled_data(self):
-        return [self.labels, self.label_names, self.labelset]
+        return [self.labels, self.label_names]
 
     def get_all_preprocessed(self):
         res = self.get_all_raw()
@@ -430,7 +430,7 @@ class Dataset(Serializable):
 
         if self.is_labelled():
             labels_data = Numeric(self.labels)
-            labels_usage = Labels(self.labelset, self.multilabel)
+            labels_usage = Labels(self.label_names, self.multilabel)
             dp = DataPack(labels_data, labels_usage)
             dp.add_usage(self.indices)
             outputs.append(dp)

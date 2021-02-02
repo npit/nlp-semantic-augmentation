@@ -35,7 +35,7 @@ class TwentyNewsGroups(Dataset):
         if not train.target_names == test.target_names:
             error("Non-matching label names for train and test set! {train.target_names} {test.target_names}")
         self.label_names = train.target_names
-        self.labelset = list(sorted(set(train.target)))
+        # self.labelset = list(sorted(set(train.target)))
         self.num_labels = len(self.label_names)
         self.roles = "train", "test"
         # write serialized data

@@ -55,7 +55,7 @@ class Evaluator:
     train_labels = None
     test_labels = None
     reference_labels = None
-    labelset = None
+    label_names = None
     test_label_distributions = [] # to average distribution across folds
     all_label_distributions = {} # to average distribution across folds
 
@@ -144,7 +144,7 @@ class Evaluator:
         self.labelled = False
 
 
-    def set_labelling(self, train_labels, labelset, do_multilabel=False, test_labels=None):
+    def set_labelling(self, train_labels, labelnames, do_multilabel=False, test_labels=None):
         """Assign labelling information to the evaluator
 
         :param train_labels: Training label collection
@@ -157,8 +157,8 @@ class Evaluator:
         if len(train_labels) == 0:
             error("Empty train labels container passed to the evaluator.")
         self.do_multilabel = do_multilabel
-        self.labelset = labelset
-        self.num_labels = len(self.labelset)
+        self.label_names = labelnames
+        self.num_labels = len(self.label_set)
         # squeeze to ndarray if necessary
         if not self.do_multilabel:
             if type(train_labels) is list:
@@ -308,7 +308,7 @@ class Evaluator:
         cr = pd.DataFrame.from_dict(metrics.classification_report(gt, preds, output_dict=True))
         # get classwise, micro, macro, weighted, defaulting non-precited classes to zero values
         cw = [0] * num_labels
-        for class_index in self.labelset:
+        for class_index in range(len(self.label_names)):
             cw[class_index] = cr[str(class_index)][measure]
         res = [cw]
 

@@ -1,7 +1,7 @@
 from semantic.semantic_resource import SemanticResource
 
 
-class BabelNet:
+class BabelNet(SemanticResource):
     name = "babelnet"
 
     def get_raw_path(self):

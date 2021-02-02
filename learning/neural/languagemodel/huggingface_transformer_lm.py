@@ -28,7 +28,7 @@ class HuggingfaceTransformer(NLM):
     def configure_language_model(self):
         # if not self.model_loaded:
         # construct the hf tokenizer object for sequence token encoding
-        self.tokenizer = self.neural_model_class.get_tokenizer(pretrained_id=self.neural_model_class.pretrained_id)
+        self.tokenizer = self.neural_model_class.get_tokenizer(self.config)
 
     def get_model(self):
         return self.neural_model_class(self.config, use_pretrained=True)

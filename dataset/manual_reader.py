@@ -3,34 +3,39 @@ import json
 import numbers
 import defs
 import numpy as np
+from collections import OrderedDict
 
 from utils import error, update_cumulative_index, debug
 
 
 class ManualDatasetReader:
-    labelset, label_names = None, None
+    label_names = None, None
     data, roles = None, None
     max_num_instance_labels = -1
 
-    def handle_instance_labels(self, lbls, current_labelset, current_label_names):
+    def handle_instance_labels(self, raw_lbls, current_label_names):
         """Ensure iterable of numeric labels"""
         # iterable check
         try:
-            lbls[0]
+            raw_lbls[0]
         except IndexError:
-            lbls = []
+            raw_lbls = []
         except TypeError:
-            lbls = [lbls]
+            raw_lbls = [raw_lbls]
 
-        for i in range(len(lbls)):
-            l = lbls[i]
+        output_lbls = []
+        for i in range(len(raw_lbls)):
+            l = raw_lbls[i]
             # numeric check
             if not isinstance(l, numbers.Number):
                 if l not in current_label_names:
                     current_label_names.append(l)
-                lbls[i] = current_label_names.index(l)
-                current_labelset.add(lbls[i])
-        return lbls, current_labelset
+                # get numeric index of name
+                output_lbls.append(current_label_names.index(l))
+            else:
+                # numeric, just append
+                output_lbls.append(l)
+        return output_lbls
 
     """Reader class for reading custom serialized datasets"""
     def read_instances(self, json_object, data_key="text", labels_key="labels", targets_key="targets"):
@@ -44,21 +49,21 @@ class ManualDatasetReader:
             target_key{str} -- The key under which the generic targets are contained (e.g. textual) (default: "target")
 
         """
-        data, labels, labelset, max_num_instance_labels, label_names = [], [], set(), 0, []
+        data, labels, max_num_instance_labels, label_names = [], [], 0, []
         targets = []
 
         is_labelled, is_fully_labelled = False, None
-        has_ground_truth = False
+
         for instance in json_object:
             # read data
             data.append(instance[data_key])
             # read labels
             if labels_key in instance:
                 is_labelled = True
-                lbls = instance[labels_key]
-                lbls, labelset = self.handle_instance_labels(lbls, labelset, label_names)
+                raw_lbls = instance[labels_key]
+                lbls = self.handle_instance_labels(raw_lbls, label_names)
                 labels.append(lbls)
-                labelset.update(lbls)
+
                 # check for multi-label setting
                 if len(lbls) > max_num_instance_labels:
                     max_num_instance_labels = len(lbls)
@@ -70,13 +75,9 @@ class ManualDatasetReader:
                     is_fully_labelled = False
             # read other targets
             if targets_key in instance:
-                has_ground_truth = True
-                # since targets are non-numeric, keep the format as-is without inserting into a list
-                # if type(instance[targets_key]) != list:
-                #     instance[targets_key] = [instance[targets_key]]
                 targets.append(instance[targets_key])
 
-        return data, labels, labelset, label_names, is_labelled, is_fully_labelled, max_num_instance_labels, targets
+        return data, labels, label_names, is_labelled, is_fully_labelled, max_num_instance_labels, targets
 
     def read_json_dataset(self, path=None, data=None):
         """ Read a JSON-serialized dataset from a folder.
@@ -121,14 +122,13 @@ class ManualDatasetReader:
 
         # read training data
         self.data, self.labels, self.targets, self.roles = [], [], [], []
-        self.labelset = set()
         self.is_labelled = False
         self.indices = []
 
         for role in [defs.roles.train, defs.roles.test]:
             if role not in json_data['data']:
                 continue
-            data, labels, labelset, label_names, is_labelled, fully_labelled, max_num_instance_labels, targets = \
+            data, labels, label_names, is_labelled, fully_labelled, max_num_instance_labels, targets = \
                 self.read_instances(json_data['data'][role])
 
             offset = len(self.data)
@@ -139,7 +139,7 @@ class ManualDatasetReader:
             if targets:
                 self.targets.extend(targets)
             self.roles.append(role)
-            self.labelset.update(labelset)
+
             self.is_labelled = self.is_labelled or is_labelled
             self.max_num_instance_labels = max_num_instance_labels if self.max_num_instance_labels < max_num_instance_labels else self.max_num_instance_labels
 
@@ -147,45 +147,41 @@ class ManualDatasetReader:
                 self.label_names = label_names
 
         # process labelling
-        # if self.labelset:
-        #     # labelsets
-        #     # ensure training labelset is at least as large as the test one
-        #     if self.test_is_labelled:
-        #         ntrain, ntest = [len(x) for x in (train_labelset, test_labelset)]
-        #         if ntrain < ntest:
-        #             error("Read manual dataset with {ntrain} unique labels in the training set, but {ntest} in the test set.")
-
-        self.labelset = list(sorted(self.labelset))
         if self.is_labelled:
-            self.configure_labelnames(json_data, self.labelset)
+            self.configure_labelnames(json_data, self.label_names)
 
 
-    def configure_labelnames(self, json_data, instances_labelset):
+    def configure_labelnames(self, json_data, instances_labelnames):
         # configure label names
         # label names
         if "label_names" in json_data:
-            # read manual label names
-            self.label_names = json_data["label_names"]
-            if type(self.label_names) is not list:
-                error(f"Expected list of strings for labelnames, got {type(self.label_names)} : {self.label_names}")
-            if instances_labelset != self.label_names:
-                # need instances with numeric labels
-                debug(f"Train non-numeric label names differ from the global labelnames provided -- mapping.")
-                if type(instances_labelset[0]) == str:
-                    # better be the same labelset
-                    if instances_labelset != self.label_names:
-                        error(f"Train string label names differ from the global string labelnames provided.")
-                    # remap to ints
-                    for i in range(len(self.labels)):
-                        str_lbls = self.labels[i]
-                        int_lbls = [self.label_names.index(l) for l in str_lbls]
-                        self.labels[i] = np.split(np.asarray(int_lbls), len(int_lbls))
-                else:
-                    if len(instances_labelset) != len(self.label_names):
-                        error(f"Unequal labelset lengths from instances: {len(instances_labelset)} and dedicated field: {len(self.label_names)}")
-        else:
-            # assign numeric indexes as label names
-            self.label_names = [str(x) for x in self.labelset]
+            # read explicitely defined label names
+            explicit_label_names = json_data["label_names"]
+
+            if type(explicit_label_names) is not list:
+                error(f"Expected list of strings for labelnames, got {type(explicit_label_names)} : {explicit_label_names}")
+
+            if sorted(instances_labelnames) != explicit_label_names:
+                error(f"Label names read from instances: {instances_labelnames} differ from ones explicitely defined: {explicit_label_names}")
+
+        #     if instances_labelnames != self.label_names:
+        #         # need instances with numeric labels
+        #         debug(f"Train label names differ from the global labelnames provided -- mapping.")
+        #         if type(instances_labelset[0]) == str:
+        #             # better be the same labelset
+        #             if instances_labelset != self.label_names:
+        #                 error(f"Train string label names differ from the global string labelnames provided.")
+        #             # remap to ints
+        #             for i in range(len(self.labels)):
+        #                 str_lbls = self.labels[i]
+        #                 int_lbls = [self.label_names.index(l) for l in str_lbls]
+        #                 self.labels[i] = np.split(np.asarray(int_lbls), len(int_lbls))
+        #         else:
+        #             if len(instances_labelset) != len(self.label_names):
+        #                 error(f"Unequal labelset lengths from instances: {len(instances_labelset)} and dedicated field: {len(self.label_names)}")
+        # else:
+        #     # assign numeric indexes as label names
+        #     self.label_names = [str(x) for x in self.labelset]
 
 
     def read_dataset(self, raw_data, format="json"):

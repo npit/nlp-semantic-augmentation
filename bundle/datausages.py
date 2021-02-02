@@ -210,9 +210,9 @@ class Labels(GroundTruth):
     labelset = None
     multilabel = None
 
-    def __init__(self, labelset=None, multilabel=None):
+    def __init__(self, labelnames=None, multilabel=None):
         super().__init__(discrete=True)
-        self.labelset = labelset if labelset is not None else []
+        self.label_names = labelnames if labelnames is not None else []
         self.multilabel = multilabel if multilabel is not None else False
 
     def is_multilabel(self):
@@ -220,13 +220,13 @@ class Labels(GroundTruth):
 
     def to_json(self):
         res = super().to_json()
-        res["labelset"] = list(self.labelset)
+        res["labelnames"] = list(self.label_names)
         res["multilabel"] = int(self.multilabel)
         return res
 
     @staticmethod
     def from_json(data):
-        return Labels(labelset=data["labelset"], multilabel=bool(data["multilabel"]))
+        return Labels(label_names=data["label_names"], multilabel=bool(data["multilabel"]))
 
 
 class DataPack:
