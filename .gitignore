@@ -12,7 +12,6 @@ raw_data_test
 serialization_test
 serialization
 test.config.yml
-test
 test_runs
 venv/
 !example.config.yml
