@@ -40,7 +40,7 @@ class Dataset(Serializable):
 
     data_names = ["data", "indices", "roles"]
     target_data_names = ["targets"]
-    label_data_names = ["labels", "label_names", "labelset"]
+    label_data_names = ["labels", "label_names"]
 
     preprocessed_data_names = ["vocabulary", "vocabulary_index", "undefined_word_index"]
 

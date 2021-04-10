@@ -43,7 +43,7 @@ class SupervisedEvaluator(Evaluator):
         """Get inputs for unsupervised evaluation"""
         # anything but ground truth
         super().get_component_inputs()
-        matches = self.data_pool.request_data(None, [Labels, Indices], usage_matching="exact", client=self.name)
+        matches = self.data_pool.request_data(None, [Labels, Indices], usage_matching="exact", client=self.name, on_error_message="Failed to find ground truth labels.")
         self.labels = matches.data
         self.labels_info = matches.get_usage(Labels)
         # TODO subclass

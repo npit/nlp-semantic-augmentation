@@ -7,7 +7,7 @@ from pytorch_lightning import Trainer
 # from pytorch_lightning.callbacks.progress import ProgressBar
 from torch.utils.data import DataLoader, RandomSampler
 
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from os.path import join
 
 class BaseModel(ptl.LightningModule):
@@ -86,25 +86,48 @@ class BaseModel(ptl.LightningModule):
 
         if self.val_index is not None and len(self.val_index) > 0:
             checkpoint_callback = ModelCheckpoint(
-                filepath= model_savepath,
+                filepath=join(model_savepath, self.name+"-{epoch}-{val_loss:.2f}"),
                 verbose=True,
                 monitor='val_loss',
                 period=self.save_interval,
-                mode='min'
+                mode='min',
+                save_weights_only=True
             )
+            if self.config.train.early_stopping_patience is not None:
+                patience = self.config.train.early_stopping_patience
+                early_stop_callback = EarlyStopping(
+                    monitor='val_loss',
+                    min_delta=0.00,
+                    patience=patience,
+                    verbose=False,
+                    mode='min'
+                )
+                info(f"Using early stopping on validation loss at a patience of {patience} epochs")
+
             trainer = Trainer(min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks, checkpoint_callback=checkpoint_callback)
+            trainer.fit(self)
+            # after training, set model to the best weight configuration
+            data = torch.load(checkpoint_callback.best_model_path)
+            weights = data["state_dict"]
+            epoch, step = data["epoch"], data["global_step"]
+            info(f"Restoring best model (epoch: {epoch}, glob. step: {step}) from path: {checkpoint_callback.best_model_path}")
+            self.load_state_dict(weights)
+
         else:
+            # no validation-based best model tracking available
             checkpoint_callback = ModelCheckpoint(
-                filepath=model_savepath,
+                filepath=join(model_savepath, self.name+"-{epoch}-{val_loss:.2f}"),
                 verbose=True,
-                period=self.save_interval
+                period=self.save_interval,
+                save_weights_only=True
             )
             trainer = Trainer(min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks)
+            trainer.fit(self)
 
         # trainer = Trainer(val_check_interval=100)
         # self.callbacks.append(BaseModel.SmaugProgressBar())
         # trainer = Trainer(logger=logger, min_epochs=1, max_epochs=self.config.train.epochs, callbacks=self.callbacks)
-        trainer.fit(self)
+
 
     def test_model(self):
         """Testing function
@@ -203,8 +226,9 @@ class BaseModel(ptl.LightningModule):
         loss = self.compute_loss(logits, y)
 
         # add logging
-        logs = {'loss': loss}
-        return {'loss': loss, 'log': logs}
+        loss_dict = {'loss': loss}
+        self.log_dict(loss_dict)
+        return loss_dict
 
     # validation
     def validation_step(self, batch, batch_idx):
@@ -214,16 +238,16 @@ class BaseModel(ptl.LightningModule):
         logits = self.account_for_padding(logits, y)
         loss = F.nll_loss(logits, y)
         loss_dict = {'val_loss': loss}
-        return {'val_loss': loss, 'log': loss_dict}
-
+        self.log_dict(loss_dict)
+        return loss_dict
         # error("Attempted to access abstract validation step function")
+
     def validation_epoch_end(self, outputs):
         """Define metric computation at validation epoch end"""
         if self.should_do_validation():
             avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
             tensorboard_logs = {'val_loss': avg_loss}
-            return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
-        return {}
+            self.log_dict({'avg_val_loss': avg_loss, 'log': tensorboard_logs})
 
     def test_step(self, batch, batch_idx):
         """Define a single testing step"""

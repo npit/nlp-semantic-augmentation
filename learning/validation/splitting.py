@@ -56,5 +56,4 @@ def portion_split(data, portion, seed=1337, labels=None, label_info=None):
                 return list(StratifiedShuffleSplit(n_splits=1, test_size=portion, random_state=seed).split(data, labels))
             except ValueError as ve:
                 error(f"Unable to complete a stratified split: {ve}")
-                # import ipdb; ipdb.set_trace()
                 # return portion_split(data, portion, seed, labels=None, label_info=None)

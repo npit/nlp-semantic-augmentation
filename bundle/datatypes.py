@@ -19,6 +19,17 @@ class Datatype:
     def __str__(self):
         return self.name + f" {len(self.instances)}"
 
+    def get_all_but_slice(self, instance_idx):
+        num_instances = len(self.instances)
+        try:
+            if type(self.instances) is np.ndarray:
+                idx = np.setdiff1d(np.arange(num_instances), instance_idx)
+                return self.instances[idx]
+            else:
+                return [self.instances[i] for i in range(num_instances) if i not in instance_idx]
+        except KeyError:
+            return None
+
     def get_slice(self, instance_idx):
         try:
             if type(self.instances) is np.ndarray:
@@ -44,7 +55,7 @@ class Datatype:
     def append_instance(self, inst):
         """Append another instance object"""
         self.instances = np.append(self.instances, inst, axis=0)
-    
+
     @classmethod
     def get_subclasses(cls):
         """Get a list of names matching the datatype"""

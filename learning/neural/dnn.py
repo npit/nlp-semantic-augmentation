@@ -171,7 +171,7 @@ class LabelledDNN(GenericSupervisedDNN, LabelledLearner):
 
     def build_model(self):
         """Model building function for simple labelled DNNs"""
-        self.num_labels = len(self.labels_info.labelset)
+        self.num_labels = len(self.labels_info.label_names)
 
         self.neural_model = self.neural_model_class(self.config, self.get_embedding_info(),
             output_dim=self.get_output_dim(), working_folder=self.config.folders.results, model_name=self.get_model_filename())

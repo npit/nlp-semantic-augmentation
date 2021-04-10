@@ -140,7 +140,7 @@ class Component:
         if self.model_loaded and not force_reload:
             # already loaded
             return True
-        if not self.config.misc.allow_model_deserialization:
+        if not self.config.model_deserialization_allowed():
             return False
         # else call the loading function
         self.model_loaded = self.load_model_from_disk()

@@ -17,7 +17,7 @@ avail_disam = ["first", "pos"]
 avail_limit = ["frequency", "top", "none"]
 avail_alias = ["none", "link"]
 avail_sampling = ["oversample", "undersample"]
-avail_roles = ["train", "test", "inputs"]
+avail_roles = ["train", "test", "inputs", "val"]
 avail_datatypes = ["text", "vectors", "indices", "labels"]
 
 aggregation = make_def("aggregation")

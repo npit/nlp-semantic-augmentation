@@ -217,6 +217,7 @@ class Serializable(Component):
 
     def get_model_path(self):
         """Get a path of the trained model"""
+        # model path arg
         if self.config.explicit_model_path is not None:
             path = self.config.explicit_model_path
             info(f"Using explicit path {path}")
@@ -226,7 +227,7 @@ class Serializable(Component):
                     path = fp
                     info(f"Using full path of {path}")
             return path
-        path = join(self.config.folders.run, self.name)
+        path = join(self.config.folders.run, self.name) if not isabs(self.name) else self.name
         return path
 
     def load_model(self):

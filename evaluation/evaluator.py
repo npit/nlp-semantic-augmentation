@@ -145,15 +145,17 @@ class Evaluator(Serializable):
     def evaluate_predictions(self, input_predictions, run_type, override_tags_roles=None):
         """Perform all evaluations on given predictions
         Perform a two-step hierarchical aggregation:
-        Outer: any tag that's not inner
+        Outer: any tag that's not inner (e.g. different models / folds)
         Inner: "train", "test"
         """
         out_dict = self.results[run_type]
         # outer evaluation tags: model instances
         outer = [t for t in self.tags if t.startswith("model") and not t.endswith(defs.roles.inputs)]
-        inner = [t for t in self.tags if t in [defs.roles.train, defs.roles.test]]
+        inner = [t for t in self.tags if t in [defs.roles.train, defs.roles.val, defs.roles.test]]
 
+        # collect indexes to across outer tags to produce, e.g. total <train> performance
         total_idxs_inner = defaultdict(list)
+        has_multiple_models = len(outer) > 1
 
         for outer_tag in outer:
             out_idx = self.indexes[self.tags.index(outer_tag)]
@@ -164,20 +166,21 @@ class Evaluator(Serializable):
                 in_idx = self.indexes[self.tags.index(inner_tag)]
                 joint_idx = np.intersect1d(out_idx, in_idx)
                 current_predictions = input_predictions[joint_idx]
+                if len(current_predictions) == 0:
+                    continue
 
-                # get the indexes to the input data
-                input_tag = f"{outer_tag}_{inner_tag}_{defs.roles.inputs}"
-                input_idx = self.indexes[self.tags.index(input_tag)]
-                total_idxs_inner[inner_tag].append(input_idx)
+                total_idxs_inner[inner_tag].append(joint_idx)
 
                 out_dict[outer_tag][inner_tag] = {}
 
                 for measure in self.available_measures:
-                    result = self.evaluate_measure(current_predictions, input_idx, measure, tag_info=(outer_tag, inner_tag))
+                    result = self.evaluate_measure(current_predictions, joint_idx, measure, tag_info=(outer_tag, inner_tag))
                     out_dict[outer_tag][inner_tag][measure] = result
-                self.compute_additional_info(current_predictions, input_idx, f"{run_type}-{outer_tag}-{inner_tag}", do_print=self.should_print_this(run_type, outer_tag))
+                do_print = (not has_multiple_models) or self.should_print_this(run_type, outer_tag)
+                self.compute_additional_info(current_predictions, joint_idx, f"{run_type}-{outer_tag}-{inner_tag}", do_print=do_print)
 
-        if len(outer) > 1:
+        if has_multiple_models:
+            # aggregate
             out_dict["all_tags"] = {}
             self.aggregate_tags(outer, inner, out_dict)
             for o in total_idxs_inner:
@@ -188,7 +191,7 @@ class Evaluator(Serializable):
         # whether or not to print individual models (e.g. individual folds)
         if tag != "all_tags":
             # skip if it is set as such or we are at a baseline
-            if not self.config.print_individual_models or self.is_baseline_run(run_type):
+            if (not self.config.print_individual_models) or self.is_baseline_run(run_type):
                 return False
         return True
 

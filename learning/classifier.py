@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.dummy import DummyClassifier as sk_Dummy
+from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression as sk_LogReg
 from sklearn.naive_bayes import GaussianNB as sk_NaiveBayes
 from sklearn.preprocessing import StandardScaler
@@ -81,6 +82,22 @@ class SKLClassifier(Classifier):
         return predictions
 
 
+
+class SVM(SKLClassifier):
+    name = "svm"
+    def __init__(self, config):
+        self.config = config
+        self.model_class = SVC
+        try:
+            kernel = config.train.kernel
+        except AttributeError:
+            kernel = "rbf"
+        self.args = {"max_iter": config.train.epochs, "verbose": 1, "kernel": kernel, "probability": True}
+        SKLClassifier.__init__(self)
+
+    def make(self):
+        error("Cannot apply {} to multilabel data.".format(self.name), self.do_multilabel)
+        SKLClassifier.make(self)
 
 class NaiveBayes(SKLClassifier):
     name = "naive_bayes"

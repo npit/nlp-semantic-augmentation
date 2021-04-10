@@ -1,6 +1,6 @@
 from bundle.datatypes import *
 import numpy as np
-from utils import as_list, warning, align_index
+from utils import as_list, warning, align_index, error, debug
 from collections import defaultdict
 
 class DataUsage:
@@ -21,6 +21,9 @@ class DataUsage:
     def to_json(self):
         return {}
 
+    def merge(self, other):
+        raise NotImplemented(f"Undefined merging for usage {self.name}")
+
 class Indices(DataUsage):
     """Indexes to a collection of data with train/test roles"""
     name = "indices"
@@ -31,6 +34,16 @@ class Indices(DataUsage):
     instances = None
     tags = None
 
+    def merge(self, other):
+        for i, inst in enumerate(other.instances):
+            tag = other.tags[i]
+            if tag in self.tags:
+                idx = self.tags.index(other.tag)
+                self.instances[idx] = np.unique(np.append(self.instances[idx], inst))
+            else:
+                self.tags.append(tag)
+                self.instances.append(inst)
+
     def has_tag(self, tag):
         return tag in self.tags
 
@@ -39,6 +52,25 @@ class Indices(DataUsage):
         self.tags = tags
         if len(self.tags) != len(self.instances):
             warning(f"Added {len(self.tags)} tags on indexes composed of {len(self.instances)} instances.")
+
+    def apply_index_contraction(self, new_index):
+        """
+        Update indexes in usages with new index
+        new_index (ndarray): Array of new integer indexes to the data container
+        """
+        # make sure it's unique indexes
+        error("Non-unique indexes supplied to index contraction", len(new_index) != len(set(new_index)))
+        new_tags, new_instances = [], []
+        for i, inst in enumerate(self.instances):
+            overlap = np.intersect1d(inst, new_index)
+            if len(overlap) == 0:
+                continue
+            # make relative index to the new index container
+            idx = [np.where(new_index == x) for x in new_index]
+            self.instances[i] = idx
+        self.instances = new_instances
+        self.tags = new_tags
+
 
     def apply_index_expansion(self, replicated_addendum_idx, old_size):
         """
@@ -80,7 +112,7 @@ class Indices(DataUsage):
         tags = as_list(tags)
         if epi is None:
             epi = [np.ones((len(ind),), np.int32) for ind in instances]
-        self.elements_per_instance = epi 
+        self.elements_per_instance = epi
 
         self.instances = []
         self.tags = []
@@ -210,10 +242,18 @@ class Labels(GroundTruth):
     labelset = None
     multilabel = None
 
-    def __init__(self, labelnames=None, multilabel=None):
+    def merge(self, other):
+        # assume equality
+        error(f"Cannot merge single and multilabel {self.name} usages!", self.is_multilabel and not other.is_multilabel)
+        error(f"Cannot merge {self.name} usages with different labelnames!", self.label_names != other.label_names)
+
+    def __init__(self, label_names=None, multilabel=None):
         super().__init__(discrete=True)
-        self.label_names = labelnames if labelnames is not None else []
+        self.label_names = label_names if label_names is not None else []
         self.multilabel = multilabel if multilabel is not None else False
+
+    def get_num_labels(self):
+        return len(self.label_names)
 
     def is_multilabel(self):
         return self.multilabel
@@ -226,7 +266,7 @@ class Labels(GroundTruth):
 
     @staticmethod
     def from_json(data):
-        return Labels(label_names=data["label_names"], multilabel=bool(data["multilabel"]))
+        return Labels(label_names=data["labelnames"], multilabel=bool(data["multilabel"]))
 
 
 class DataPack:
@@ -236,6 +276,12 @@ class DataPack:
     chain = "NO_CHAIN"
     source = "NO_SOURCE"
     id = "NO_ID"
+
+    def get_copy(self):
+        dat = self.data
+        usages = self.usages
+        return DataPack(dat, usages)
+
 
     def to_json(self):
         res = {"usages": defaultdict(list)}
@@ -256,6 +302,35 @@ class DataPack:
         if chain is not None:
             self.chain = chain
 
+    def apply_index_change(self, new_index):
+        """
+        Apply a new index to the datapack data nad usages.
+        """
+        # update instances
+        self.data.instances = self.data.get_slice(new_index)
+        new_tags, new_instances = [], []
+        for u in self.usages:
+            if issubclass(type(u), Indices):
+                for i, inst in enumerate(u.instances):
+                    tag = u.tags[i]
+                    # get updated index, referring to the new container
+                    idx = [r for (r, x) in enumerate(new_index) if x in inst]
+                    if not idx:
+                        continue
+                    new_instances.append(np.asarray(idx, dtype=np.int32))
+                    new_tags.append(tag)
+            u.instances = new_instances
+            u.tags = new_tags
+
+    def apply_index_contraction(self, new_idx):
+        """
+        Inform indexes in usages with appended indexes, pointing to existing data in the container
+        replicated_addendum_idx (list): List of integer indexes to the current data container
+        """
+        for u in self.usages:
+            if issubclass(type(u), Indices):
+                u.apply_index_contraction(new_idx)
+
     def apply_index_expansion(self, replicated_addendum_idx, old_data_size=None):
         """
         Inform indexes in usages with appended indexes, pointing to existing data in the container
@@ -268,8 +343,11 @@ class DataPack:
                 u.apply_index_expansion(replicated_addendum_idx, old_data_size)
 
     def add_usage(self, us):
-        error("Attempted to add duplicate usage {us.name} in datapack!", us in self.usages)
-        self.usages.append(us)
+        if us in self.usages:
+            debug(f"Merging {us.name} usage")
+            self.usages[self.usages.index(us)].merge(us)
+        else:
+            self.usages.append(us)
 
     def get_usages_str(self):
         return "_".join([x.name for x in self.usages])

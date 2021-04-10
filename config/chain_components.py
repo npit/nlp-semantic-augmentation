@@ -31,6 +31,8 @@ class sampling_conf(Configuration):
         super().__init__(config)
         self.label_dict = self.get_value("label_dict", base=config)
         self.min_freq = self.get_value("min_freq", base=config)
+        self.max_freq = self.get_value("max_freq", base=config)
+        self.exclude_tags = self.get_value("exclude_tags", base=config)
 
 class dataset_conf(Configuration):
     conf_key_name = "dataset"

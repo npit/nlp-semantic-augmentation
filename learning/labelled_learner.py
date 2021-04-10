@@ -158,3 +158,7 @@ class LabelledLearner(SupervisedLearner):
         preds.get_usage(Predictions).add_ground_truth(self.labels_info.label_names)
         return preds
 
+    def save_outputs(self):
+        """Save produced predictions"""
+        predictions_file = self.get_predictions_file("total")
+        write_pickled(predictions_file, [self.predictions, self.output_usage.instances, self.output_usage.tags, self.labels_info.to_json()])

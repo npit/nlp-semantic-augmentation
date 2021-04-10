@@ -34,7 +34,7 @@ class SupervisedLearner(Learner):
         return self.targets
 
     def process_ground_truth_input(self):
-        # if we have to train the mode, we can load more than one ground truth instance (i.e. train & test)
+        # if we have to train the model, we can load more than one ground truth instance (i.e. train & test)
         need_instances = not self.model_loaded
         # fetch any type of ground 
         # targets = self.data_pool.request_data(None, GroundTruth.get_subclasses(), usage_matching="any", client=self.name, must_be_single=single_instances)
@@ -55,12 +55,7 @@ class SupervisedLearner(Learner):
 
     # def check_sanity(self):
     #     super().check_sanity()
-    #     # if we're to build the model, check that everything matches
-    #     if not self.model_loaded:
-    #         if len(self.train_embedding_index) != len(self.target_train_embedding_index):
-    #             error(f"Supplied train data-gt instance number mismatch: {len(self.train_embedding_index)} data and {len(self.target_train_embedding_index)}")
-    #         if len(self.test_embedding_index) != len(self.target_test_embedding_index):
-    #             error(f"Supplied test data-gt instance number mismatch: {len(self.test_embedding_index)} data and {len(self.target_test_embedding_index)}")
+    #     # if we're to build the mode
 
     def get_train_test_targets():
         error("Attempted to access target getter from base class")

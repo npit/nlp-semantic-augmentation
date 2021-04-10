@@ -240,34 +240,61 @@ class Learner(Serializable):
         self.prediction_roles = []
 
         if self.validation is not None:
-            train_indexes = self.validation.get_train_indexes()
-            test_indexes = self.validation.get_test_indexes()
+            idxs = {defs.roles.train: self.validation.get_train_indexes(),
+                    defs.roles.val: self.validation.get_val_indexes(),
+                    defs.roles.test: self.validation.get_test_indexes()}
         else:
-            train_indexes = [self.train_embedding_index]
-            test_indexes = [self.test_embedding_index]
+            idxs = {defs.roles.train: [self.train_embedding_index],
+                    defs.roles.val: [np.asarray([], dtype=np.int32)],
+                    defs.roles.test: [self.test_embedding_index]}
 
         # loop over the available models / data batches
         num_models = len(self.models)
-        if num_models > 1:
-            if len(train_indexes) == 1:
-                # single indexes, multiple models: duplicate
-                train_indexes *= num_models
-                test_indexes *= num_models
+        if num_models > 1 and len(train_indexes) == 1:
+            for k, v in idxs:
+                # single set of indexes, multiple models: duplicate
+                idxs[k] = idxs[k] * num_models
 
-        # make the output usage object
+        self.predictions = None
+
         self.output_usage = None
         for model_index, model in enumerate(self.models):
-            self.model_index = model_index
-            train, test = train_indexes[model_index], test_indexes[model_index]
-            for (data, role) in zip([train, test], [defs.roles.train, defs.roles.test]):
-                if len(data) > 0:
-                    info(f"Evaluating model {model_index + 1}/{num_models} on {len(data)} {role} data")
-                    # tag = f"model_{self.model_index}_{role}"
-                    self.apply_model(model=model, index=data, tag=role)
-        # no predictions in the output
-        if self.predictions is None:
-            self.predictions = np.empty(0)
-            self.output_usage = Predictions(np.empty(0, dtype=np.int64), "dummy")
+            # apply to all input data
+            self.test_index = np.arange(len(self.embeddings))
+            info(f"Evaluating model {model_index + 1}/{num_models} on all {len(self.test_index)} input data.")
+            new_predictions = self.test_model(self.models[model_index])
+            if self.predictions is None:
+                self.predictions = np.empty((0, new_predictions.shape[-1]), dtype=new_predictions.dtype)
+            predictions_index = np.arange(len(self.predictions), len(self.predictions) + len(new_predictions))
+            self.predictions = np.vstack((self.predictions, new_predictions))
+
+            # make the prediction usages annotation
+            # mark role tags and indexes
+
+            for role, idx in idxs.items():
+                idx = idx[model_index]
+                if self.output_usage is None:
+                    self.output_usage = Predictions(idx, role)
+                else:
+                    self.output_usage.add_instance(idx, role)
+            # mark model index tags and indexes
+            model_id = f"model_{self.model_index}"
+            self.output_usage.add_instance(predictions_index, model_id)
+
+            # mark the correspondence to the input instances
+            # self.output_usage.add_instance(self.test_index, f"{model_id}_{tag}_{defs.roles.inputs}")
+
+
+        #     train, test = train_indexes[model_index], test_indexes[model_index]
+        #     for (data, role) in zip([train, test], [defs.roles.train, defs.roles.test]):
+        #         if len(data) > 0:
+        #             info(f"Evaluating model {model_index + 1}/{num_models} on {len(data)} {role} data")
+        #             # tag = f"model_{self.model_index}_{role}"
+        #             self.apply_model(model=model, index=data, tag=role)
+        # # no predictions in the output
+        # if self.predictions is None:
+        #     self.predictions = np.empty(0)
+        #     self.output_usage = Predictions(np.empty(0, dtype=np.int64), "dummy")
 
     def get_model(self):
         return self.model
@@ -292,7 +319,7 @@ class Learner(Serializable):
         else:
             pred_idx += len(self.predictions)
             self.predictions = np.append(self.predictions, predictions, axis=0)
-        
+
         # mark the model
         model_id = f"model_{self.model_index}"
         if self.output_usage is None:
@@ -307,7 +334,7 @@ class Learner(Serializable):
 
     def save_outputs(self):
         """Save produced predictions"""
-        predictions_file = self.get_predictions_file("total") 
+        predictions_file = self.get_predictions_file("total")
         write_pickled(predictions_file, [self.predictions, self.output_usage.instances, self.output_usage.tags])
 
     def load_model_from_disk(self):

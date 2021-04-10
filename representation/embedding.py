@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from pandas.errors import ParserError
 
-from os.path import join
+from os.path import join, isabs
 import defs
 from representation.representation import Representation
 from utils import (debug, error, get_shape, info, realign_embedding_index,
@@ -35,13 +35,19 @@ class Embedding(Representation):
 
     def load_model_from_disk(self):
         """Load the component's model from disk"""
-        csv_mapping_path = join(self.config.folders.raw_data, self.dir_name, self.base_name) + ".csv"
-        self.read_raw_embedding_mapping(csv_mapping_path)
+        self.read_raw_embedding_mapping(self.get_embeddings_path())
         self.model_loaded = True
         return True
 
+    def get_embeddings_path(self):
+        if not isabs(self.config.name):
+            # for non-absolute paths, look for the file in the raw data dir
+            embeddings_path = join(self.config.folders.raw_data, self.dir_name, self.base_name) + ".csv"
+        else:
+            embeddings_path = self.config.name
+        return embeddings_path
+
     def build_model_from_inputs(self):
-        embeddings_path = join(self.raw_data_dir, self.config.name) + ".csv"
         self.read_raw_embedding_mapping(embeddings_path)
 
     def read_raw_embedding_mapping(self, path):

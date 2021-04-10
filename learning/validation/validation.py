@@ -63,6 +63,9 @@ class ValidationSetting:
     def get_train_indexes(self):
         return [x[0] for x in self.trainval_idx]
 
+    def get_val_indexes(self):
+        return [x[1] for x in self.trainval_idx]
+
     def get_test_indexes(self):
         ti = self.test_idx
         if type(self.test_idx) is not list:

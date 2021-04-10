@@ -38,6 +38,8 @@ class BagRepresentation(Representation):
         try:
             with open(self.config.term_list) as f:
                 self.term_list = [x.strip() for x in f.readlines()]
+        except FileNotFoundError:
+            error("Term list file does not exist.")
         except:
             error("Term list for bag should be a newline-delimited file, one term per line.")
 
@@ -126,12 +128,22 @@ class BagRepresentation(Representation):
                 error("Configuration for {} set to dimension {} but read {} from data.".format(self.name, self.dimension, data_dim))
         self.dimension = data_dim
 
+    def get_model_path(self):
+        # model equivalent to list of terms
+        return self.config.term_list
+
     def load_model_from_disk(self):
-        """Load bag model from disk"""
-        if super().load_model():
-            self.term_list = self.model
-            return True
-        return False
+        """Load bag model (vocabulary terms) from disk"""
+        model_path = self.config.explicit_model_path if self.config.explicit_model_path is not None else self.config.term_list
+        if model_path is None:
+            return False
+        try:
+            with open(model_path) as f:
+                self.term_list = self.model = [x.strip() for x in f.readlines()]
+        except (Exception, Error) as ex:
+            warning(ex)
+            return False
+        return True
 
     def get_model(self):
         return self.term_list

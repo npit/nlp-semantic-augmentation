@@ -32,6 +32,8 @@ class Configuration:
 
     def output_deserialization_allowed(self):
         return self.allow_output_deserialization == True or (self.allow_output_deserialization is None and self.misc.allow_output_deserialization)
+    def model_deserialization_allowed(self):
+        return self.allow_model_deserialization == True or (self.allow_model_deserialization is None and self.misc.allow_model_deserialization)
 
     def add_config_object(self, conf_name, conf_object):
         """Add a configuration sub-object to the current configuration object
