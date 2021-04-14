@@ -2,11 +2,12 @@
 """
 import random
 from os.path import join
+import os
 
 import nltk
 
 from config.config import Configuration
-from utils import datetime_str, warning
+from utils import datetime_str, warning, error, info
 
 
 class print_conf(Configuration):
@@ -15,6 +16,7 @@ class print_conf(Configuration):
 
     def __init__(self, config=None):
         """Constructor for the printing component configuration"""
+        config = {} if config is None else config
         super().__init__(config)
         if config is None:
             return
@@ -34,8 +36,7 @@ class misc_conf(Configuration):
 
     def __init__(self, config=None):
         """Constructor for the miscellaneous configuration"""
-        if config is None:
-            return
+        config = {} if config is None else config
         super().__init__(config)
         if self.has_value("keys", base=config):
             for kname, kvalue in config['keys'].items():
@@ -58,18 +59,13 @@ class misc_conf(Configuration):
 
 class folders_conf(Configuration):
     conf_key_name = "folders"
-    run = None
-    results = None
-    serialization = None
-    raw_data = None
-    logs = None
 
     def __init__(self, config=None):
         """Constructor for the folders configuration"""
-        if config is None:
-            return
+        config = {} if config is None else config
         super().__init__(config)
-        self.run = config["run"]
+        self.run = self.get_value("run", base=config, default=join(os.getcwd(), "run_" + datetime_str()))
+        warning(f"No run folder submitted, generated {self.run}")
         self.results = join(self.run, "results")
         self.serialization = self.get_value("serialization", base=config, default="serialization")
         self.raw_data = self.get_value("raw_data", base=config, default="raw_data")
@@ -78,13 +74,4 @@ class folders_conf(Configuration):
         # set nltk data folder
         nltk.data.path = [nltk_data_path]
 
-class deploy_conf(Configuration):
-    conf_key_name = "deploy"
-    def __init__(self, config=None):
-        """Constructor for the deployment configuration"""
-        if config is None:
-            return
-        super().__init__(config)
-
-
-global_component_classes = [print_conf, misc_conf, folders_conf, deploy_conf]
+global_component_classes = [print_conf, misc_conf, folders_conf]

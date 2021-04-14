@@ -66,7 +66,6 @@ class Sampler(Component):
             labels = self.apply_tag_exclusion(labels)
         else:
             labels = self.labels_dp.data.instances
-
         self.original_labels = self.reference_labels = labels
         self.original_index = self.reference_index = np.arange(len(self.reference_labels))
         # resulting index-based transformation will be applied to all other input dpacks
@@ -86,6 +85,7 @@ class Sampler(Component):
         self.output_labels = self.labels_dp.get_copy()
         labels_usage = self.labels_dp.get_usage(Labels)
         labelset = range(len(labels_usage.label_names))
+        breakpoint()
         self.outputs = []
         if any(x is not None for x in (self.config.min_freq, self.config.max_freq)):
             sampling_dicts, distro = self.make_label_transformation_dict(self.reference_labels, self.config.min_freq, self.config.max_freq)
@@ -94,7 +94,7 @@ class Sampler(Component):
             if not any(sampling_dicts.values()):
                 # no sampling required
                 info(f"No under/oversampling required to reach max/min label freqs of {self.config.max_freq, self.config.min_freq}!")
-                self.outputs = self.data
+                self.outputs = [x.get_copy() for x in self.data]
                 return
 
             affected_labels = [p for k in sampling_dicts.values() for p in k]
@@ -125,12 +125,6 @@ class Sampler(Component):
                 dp_copy = inp.get_copy()
                 dp_copy.apply_index_change(self.reference_index)
                 self.outputs.append(dp_copy)
-
-            ls = self.output_labels.data.instances
-            lns = labels_usage.map_to_label_names(np.concatenate(ls))
-            dats = [x['words'][0] for x in self.data[0].data.instances]
-            for d, l in zip(dats,lns):
-                print(d, l)
         else:
             error(f"Undefined desired operation for {self.name}")
 
@@ -151,7 +145,7 @@ class Sampler(Component):
             both = [x for x in overs_candidates if x in unders_candidates]
             error(f"Labels {both} specified for both over/undersampling", both)
             if not overs_candidates:
-                info(f"Min freq: {self.config.min_freq} is already large enough: {distro[-1]}")
+                info(f"Min freq: {self.config.min_freq} is already large enough -- most populous class count: {distro[-1]}")
             if not unders_candidates:
                 info(f"Max freq: {self.config.max_freq} is already low enough -- least populous class count: {distro[0]}")
 

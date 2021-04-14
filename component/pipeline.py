@@ -158,6 +158,7 @@ class Pipeline:
             # info(f"Default linkage after completion of chain {chain.get_name()}")
             # Bundle.print_linkages(completed_chain_outputs)
         outputs = self.data_pool.get_outputs()
+        debug(f"Finished with {len(self.data_pool.data)} bundles in the data pool {self.data_pool}")
         return outputs
 
 

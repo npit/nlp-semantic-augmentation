@@ -1,5 +1,6 @@
 import copy
 from os.path import basename
+from collections import Counter
 
 import numpy as np
 
@@ -7,7 +8,7 @@ import defs
 from defs import is_none
 from representation.bag import Bag
 from representation.representation import Representation
-from utils import debug, error, info, read_lines, shapes_list, write_pickled
+from utils import debug, error, info, read_lines, shapes_list, write_pickled, warning
 from bundle.datatypes import Text
 
 
@@ -140,9 +141,13 @@ class BagRepresentation(Representation):
         try:
             with open(model_path) as f:
                 self.term_list = self.model = [x.strip() for x in f.readlines()]
-        except (Exception, Error) as ex:
-            warning(ex)
+        except Exception as ex:
+            warning(str(ex))
             return False
+
+        counts = [x for x in Counter(self.term_list).most_common() if x[1] > 1]
+        if counts:
+            error(f"Duplicate term(s) in term list: {counts}")
         return True
 
     def get_model(self):

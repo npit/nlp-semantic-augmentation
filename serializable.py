@@ -1,6 +1,6 @@
 from utils import error, read_pickled, info, debug, write_pickled
 from component.component import Component
-from os.path import exists, isfile, join, dirname, isabs
+from os.path import exists, isfile, join, dirname, isabs, basename
 from os import makedirs
 
 """
@@ -69,7 +69,7 @@ class Serializable(Component):
         self.loaded_preprocessed = False
         self.loaded_aggregated = False
         self.multiple_config_names = None
-        self.deserialization_allowed = self.config.misc.allow_output_deserialization
+        self.deserialization_allowed = self.config.output_deserialization_allowed()
         self.set_multiple_config_names()
 
     def loaded(self):
@@ -117,6 +117,7 @@ class Serializable(Component):
     def get_paths_by_name(self, name=None, raw_path=None):
         if name is None:
             name = self.name
+        name = basename(name)
         if not exists(self.serialization_dir):
             makedirs(self.serialization_dir, exist_ok=True)
         # raw

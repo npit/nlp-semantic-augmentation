@@ -33,6 +33,8 @@ class sampling_conf(Configuration):
         self.min_freq = self.get_value("min_freq", base=config)
         self.max_freq = self.get_value("max_freq", base=config)
         self.exclude_tags = self.get_value("exclude_tags", base=config)
+        if self.exclude_tags is not None:
+            self.exclude_tags = as_list(self.exclude_tags)
 
 class dataset_conf(Configuration):
     conf_key_name = "dataset"
@@ -86,6 +88,9 @@ class representation_conf(Configuration):
         self.ngram_range = self.get_value("ngram_range", base=config, default=None)
         self.limit = self.get_value("limit", base=config, default=[])
 
+        if self.term_list is not None:
+            self.allow_model_deserialization = True
+
 
 class transform_conf(Configuration):
     conf_key_name = "transform"
@@ -134,7 +139,6 @@ class learner_conf(Configuration):
     num_clusters = None
 
     # dnns
-    hidden_dim = None
     num_layers = None
     sequence_length = None
 
@@ -156,16 +160,15 @@ class learner_conf(Configuration):
         if config is None:
             return
         self.name = config["name"]
-        if "hidden_dim" in config:
-            self.hidden_dim = config["hidden_dim"]
-        if "layers" in config:
-            self.num_layers = config["layers"]
         try:
             self.sequence_length = self.get_value("sequence_length", default=1, base=config)
         except KeyError:
             self.sequence_length = 1
         if "num_clusters" in config:
             self.num_clusters = self.get_value("num_clusters", default=None, base=config)
+        self.layers = self.get_value("layers", base=config)
+        self.layers = as_list(self.layers)
+
         self.use_gpu = self.get_value("use_gpu", default=True, base=config)
         self.do_test = self.get_value("do_test", default=True, base=config)
         self.model_id = self.get_value("model_id", base=config)

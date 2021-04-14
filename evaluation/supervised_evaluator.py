@@ -19,7 +19,7 @@ class SupervisedEvaluator(Evaluator):
 
     labels_info = None
     num_max_print_labels = 10
-    label_aggregations = ["micro", "macro", "weighted", "none"]
+    available_label_aggregations = ["micro", "macro", "weighted", "none"]
 
     def __init__(self, config):
         self.config = config
@@ -35,6 +35,10 @@ class SupervisedEvaluator(Evaluator):
             self.print_measures = ("f1", "accuracy")
         if self.print_label_aggregations is None:
             self.print_label_aggregations = ("micro", "macro")
+        undef_measures = [x for x in self.print_measures if x not in self.available_measures]
+        error(f"Undefined specified measure(s): {undef_measures}", undef_measures)
+        undef_lbl_aggr = [x for x in self.print_label_aggregations if x not in self.available_label_aggregations]
+        error(f"Undefined specified label aggregation(s): {undef_lbl_aggr}", undef_lbl_aggr)
         # dedicated container for majority baseline (that's index-dependent)
         self.results_majority_baseline = {}
 
@@ -97,7 +101,7 @@ class SupervisedEvaluator(Evaluator):
         res (dict): Dictionary like {"label_aggr1": <score>, "label_aggr2": <score>}
         """
         res = {}
-        for lbl_aggr in self.label_aggregations:
+        for lbl_aggr in self.available_label_aggregations:
             key = lbl_aggr
             res[key] = {self.iterations_alias:[]}
             gt, preds = self.get_evaluation_input(predictions, indexes)
@@ -160,7 +164,7 @@ class SupervisedEvaluator(Evaluator):
             out_dict["all_tags"][role] = {}
             for measure in self.available_measures:
                 out_dict["all_tags"][role][measure] = {}
-                for laggr in self.label_aggregations:
+                for laggr in self.available_label_aggregations:
                     out_dict["all_tags"][role][measure][laggr] = {}
                     tag_values = [out_dict[t][role][measure][laggr][self.iterations_alias] for t in set(tags)]
                     # flatten
@@ -171,21 +175,25 @@ class SupervisedEvaluator(Evaluator):
     def compute_additional_info(self, predictions, indexes, key, do_print=True):
         # compute label distributions
         # tuplelist to string
-        tl2s = lambda tlist: ", ".join(f"({x}: {y})" for (x,y) in tlist[:self.num_max_print_labels])
+        tl2s = lambda tlist: ", ".join(f"({x} ({self.labels_info.label_names[x]}): {y})" for (x,y) in tlist[:self.num_max_print_labels])
 
         gt, preds = self.get_evaluation_input(predictions, indexes)
         if do_print:
-            info(f"{key} | predictions ({len(preds)} instances) Top-{self.num_max_print_labels} label distros:")
+            info(f"{key} | predictions ({len(preds)} instances) Top-{self.num_max_print_labels} label distros (index/labelname):count :")
         gt_distr, preds_distr = count_occurences(gt), count_occurences(preds)
 
         if do_print:
             info(f"gt:    {tl2s(gt_distr)}")
             info(f"preds: {tl2s(preds_distr)}")
 
+
+    def get_print_dataframe_index_name(self):
+        return "measure-labelaggregation"
+
     def print_measure(self, measure, ddict, df=None):
         """Print measure results, aggregating over prediction iterations"""
-        for lbl_agg in self.label_aggregations:
-            super().print_measure(measure, ddict[lbl_agg], print_override=f"{measure} {lbl_agg}", df=df)
+        for lbl_agg in self.print_label_aggregations:
+            super().print_measure(measure, ddict[lbl_agg], print_override=f"{measure}-{lbl_agg}", df=df)
 
     def compute_f1(self, gt, preds, lbl_aggr):
         return metrics.f1_score(gt, preds, average=lbl_aggr)

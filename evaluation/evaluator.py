@@ -114,9 +114,12 @@ class Evaluator(Serializable):
         """Print additional information on the run"""
         pass
 
+    def get_print_dataframe_index_name(self):
+        return "measure"
+
     def set_printable_info(self, df):
         # iteration aggregations
-        df.index.name = "measure"
+        df.index.name = self.get_print_dataframe_index_name()
         df = df.drop(columns=[x for x in df.columns if x not in self.print_aggregations and x != "score"])
         # measures
         df = df.drop(index=[x for x in df.index if not any (x.startswith(k) for k in self.print_measures)])

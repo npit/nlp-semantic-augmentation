@@ -26,7 +26,6 @@ class Configuration:
             self.allow_output_deserialization = self.get_value("allow_output_deserialization", base=config, default=None)
             self.allow_model_deserialization = self.get_value("allow_model_deserialization", base=config, default=None)
 
-
         if config is not None:
             self.explicit_model_path = self.get_value("model_path", default=None, base=config)
 

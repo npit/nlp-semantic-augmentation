@@ -17,11 +17,9 @@ class MLPModel(BaseModel):
         self.config = config
         self.embedding_layer = neural_utils.make_embedding_layer(embeddings_or_dim_info, config.train.train_embedding)
 
-        hidden_dim = config.hidden_dim
-        num_layers = config.num_layers
-        self.linear_layers = neural_utils.make_linear_chain(self.embedding_layer.embedding_dim, num_layers * [hidden_dim])
+        self.linear_layers = neural_utils.make_linear_chain(self.embedding_layer.embedding_dim, config.layers)
         # build final output layer
-        self.linear_out = torch.nn.Linear(hidden_dim, output_dim)
+        self.linear_out = torch.nn.Linear(config.layers[-1], output_dim)
 
     def update_embedding_layer(self, input_embedding_data):
         """For MLP, if the embeddings are not word-based, there's no sense keeping the input embedding layer passed on from training.

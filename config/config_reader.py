@@ -65,6 +65,7 @@ class ConfigReader:
         """Read global-level configuration (accessible to all components and chains)
         Arguments:
             input_config {dict} -- The configuration
+            ignore_undefined {boolean} -- Whether to ignore (true) of throw an error (false) on undefined keys
         """
         global_config = GlobalConfig()
         for global_conf_key, comp_conf in config_dict.items():
@@ -81,12 +82,12 @@ class ConfigReader:
             component_config = comp(comp_conf)
             global_config.add_config_object(global_conf_key, component_config)
 
+        global_config.finalize()
         if global_config.misc.run_id is None:
             global_config.misc.run_id = utils.datetime_str()
         # make directories
-        os.makedirs(global_config.folders.run, exist_ok=True)
-        os.makedirs(global_config.folders.raw_data, exist_ok=True)
-        os.makedirs(global_config.folders.serialization, exist_ok=True)
+        for ddir in (global_config.folders.run, global_config.folders.raw_data, global_config.folders.serialization):
+            os.makedirs(ddir, exist_ok=True)
         return global_config
 
     @staticmethod

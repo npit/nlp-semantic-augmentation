@@ -82,11 +82,12 @@ class BaseModel(ptl.LightningModule):
         # self.model_to_device()
 
 
+        breakpoint()
         model_savepath = join(self.working_folder, 'models')
 
         if self.val_index is not None and len(self.val_index) > 0:
             checkpoint_callback = ModelCheckpoint(
-                filepath=join(model_savepath, self.name+"-{epoch}-{val_loss:.2f}"),
+                filename=join(model_savepath, self.name+"-{epoch}-{val_loss:.2f}"),
                 verbose=True,
                 monitor='val_loss',
                 period=self.save_interval,
@@ -116,7 +117,7 @@ class BaseModel(ptl.LightningModule):
         else:
             # no validation-based best model tracking available
             checkpoint_callback = ModelCheckpoint(
-                filepath=join(model_savepath, self.name+"-{epoch}-{val_loss:.2f}"),
+                filename=join(model_savepath, self.name+"-{epoch}-{val_loss:.2f}"),
                 verbose=True,
                 period=self.save_interval,
                 save_weights_only=True

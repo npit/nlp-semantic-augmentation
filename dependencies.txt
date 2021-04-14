@@ -1,5 +1,5 @@
 # ML & DNNs
-torch
+torch==1.7
 sklearn
 scikit-multilearn
 gensim
@@ -7,7 +7,7 @@ pytorch_lightning
 transformers
 imbalanced_learn
 # NLP & semantic
-nltk
+nltk==3.5
 pyspotlight
 # Utils
 pandas
