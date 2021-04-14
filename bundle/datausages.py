@@ -258,6 +258,9 @@ class Labels(GroundTruth):
     def is_multilabel(self):
         return self.multilabel
 
+    def map_to_label_names(self, label_indexes):
+        return [self.label_names[i] for i in label_indexes]
+
     def to_json(self):
         res = super().to_json()
         res["labelnames"] = list(self.label_names)

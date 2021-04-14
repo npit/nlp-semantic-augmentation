@@ -41,7 +41,7 @@ class Sampler(Component):
         self.original_excluded_values = np.asarray([], dtype=np.int32)
         for tag in self.config.exclude_tags:
             idx = self.labels_dp.get_usage(Indices).get_tag_instances(tag)
-            info(f"Excluding tag {tag}, with {len(idx)} labels and distro {self.get_label_distro(labels[idx])}")
+            info(f"Excluding tag [{tag}], with {len(idx)} samples and distro {self.get_label_distro(labels[idx])}")
             self.exclude_idx = np.append(self.exclude_idx, idx)
             self.original_excluded_values = np.append(self.original_excluded_values, labels[idx])
         # set dummy values
@@ -88,8 +88,8 @@ class Sampler(Component):
         labelset = range(len(labels_usage.label_names))
         self.outputs = []
         if any(x is not None for x in (self.config.min_freq, self.config.max_freq)):
-            sampling_dicts, label_distro = self.make_label_transformation_dict(self.reference_labels, self.config.min_freq, self.config.max_freq)
-            info(f"Label size / distribution prior to resampling: {len(self.reference_labels)},  {label_distro}")
+            sampling_dicts, distro = self.make_label_transformation_dict(self.reference_labels, self.config.min_freq, self.config.max_freq)
+            info(f"Label size / distribution prior to resampling: {len(self.reference_labels)},  {distro}")
 
             if not any(sampling_dicts.values()):
                 # no sampling required
@@ -99,14 +99,14 @@ class Sampler(Component):
 
             affected_labels = [p for k in sampling_dicts.values() for p in k]
             unaffected_labels = [l for l in labelset if l not in [p for k in sampling_dicts.values() for p in k]]
-            info(f"Will change labels: {affected_labels}")
-            if unaffected_labels:
-                info(f"No need to resample labels: {unaffected_labels}")
+            msg = f"Will modify labels: {affected_labels}" + ("" if unaffected_labels else f"No need to resample labels: {unaffected_labels}")
 
             # apply resampling -- first undersampling, then oversampling
             for oper in "undersample oversample".split():
                 ddict = sampling_dicts[oper]
-                info(f"Applying {oper} {len(ddict)} / {self.labels_dp.get_usage(Labels).get_num_labels()} labels: {list(ddict.keys())}")
+                info(f"Applying {oper} on {len(ddict)} label(s): {list(ddict.keys())}")
+                for l in ddict:
+                    debug(f"Label: {l} {oper}: {dict(distro)[l]} -> {ddict[l]}")
 
                 self.reference_index, self.reference_labels = self.resample(oper, self.reference_index, self.reference_labels, ddict)
                 distro = self.get_label_distro(self.reference_labels)
@@ -126,51 +126,11 @@ class Sampler(Component):
                 dp_copy.apply_index_change(self.reference_index)
                 self.outputs.append(dp_copy)
 
-                # # update datapack usages
-                # for usage in inp.usages:
-                #     usage.
-                # data_idx = np.arange(len(inp.data.instances))
-
-                # # create new labels only once
-                # if op_labels is None:
-                #     # resample on the data indexes and reference labels
-                #     # data indexes will indicate which instances are duplicated / deleted
-                #     new_data_idx, op_labels = self.resample(oper, data_idx, self.reference_labels, ddict)
-
-                #     # convert to list of ndarrays
-                #     op_labels = np.split(op_labels, len(op_labels))
-                #     op_labels = DataPack(Numeric(op_labels), usage=self.labels_dp.usages)
-                #     if oper == "oversample":
-                #         # expand data
-                #         self.output_labels.data.instances.extend(op_labels)
-                #         # expand usage indexes
-                #         added_idx = new_data_idx[len(data_idx):]
-                #         op_labels.apply_index_expansion(added_idx, old_data_size=len(data_idx))
-                #     elif oper == "undersample":
-                #         op_labels.apply_index_contraction(new_data_idx)
-                #     if self.output_labels is None:
-                #         self.output_labels = op_labels
-                #     else:
-                #         num_existing_labels = len(self.output_labels.data.instances)
-                #         # offset index usages
-                #         for u in op_labels.usages:
-                #             if issubclass(type(u), Indices):
-                #                 for inst in u.instances:
-                #                     inst += num_existing_labels
-                #         # add the new label data
-                #         self.output_labels.data.instances.extend(op_labels.data.instances)
-                #         # update usages
-                #         for u in op_labels.usages:
-                #             self.output_labels.add_usage(u)
-                #     info(f"Current label statistics: {Counter(np.concatenate(self.output_labels.data.instances))}")
-
-
-                # # update all data
-                # info(f"Resampling dpack {inp} {len(data_idx)} -> {len(new_data_idx)}")
-                # # make data dpack
-                # dat = DataPack(type(inp.data)(inp.data.get_slice(new_data_idx)), usage=inp.usages)
-                # dat.apply_index_expansion(added_idx, old_data_size=len(data_idx))
-            # info(f"Final label setting: {Counter(np.concatenate(self.output_labels.data.instances))}")
+            ls = self.output_labels.data.instances
+            lns = labels_usage.map_to_label_names(np.concatenate(ls))
+            dats = [x['words'][0] for x in self.data[0].data.instances]
+            for d, l in zip(dats,lns):
+                print(d, l)
         else:
             error(f"Undefined desired operation for {self.name}")
 
@@ -191,9 +151,9 @@ class Sampler(Component):
             both = [x for x in overs_candidates if x in unders_candidates]
             error(f"Labels {both} specified for both over/undersampling", both)
             if not overs_candidates:
-                info(f"Min freq. is already large enough: {distro[-1]}")
+                info(f"Min freq: {self.config.min_freq} is already large enough: {distro[-1]}")
             if not unders_candidates:
-                info(f"Max freq. is already low enough: {distro[0]}")
+                info(f"Max freq: {self.config.max_freq} is already low enough -- least populous class count: {distro[0]}")
 
         overs_dict = {k: min_freq for k in overs_candidates}
         unders_dict = {k: max_freq for k in unders_candidates}

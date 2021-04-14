@@ -48,7 +48,7 @@ class Embedding(Representation):
         return embeddings_path
 
     def build_model_from_inputs(self):
-        self.read_raw_embedding_mapping(embeddings_path)
+        self.read_raw_embedding_mapping(self.get_embeddings_path())
 
     def read_raw_embedding_mapping(self, path):
         # check if there's a vocabulary file and map token to its position in the embedding list

@@ -330,7 +330,7 @@ class Dataset(Serializable):
                     ret_voc.update(word_data)
                 num_words.append(len(word_data))
         stats = [x(num_words) for x in [np.mean, np.var, np.std]]
-        info(f"Text vocab size: {len(ret_voc)}" + ", stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
+        info(f"New vocabulary size extracted from text: {len(ret_voc)}" + ", stats: mean {:.3f}, var {:.3f}, std {:.3f}".format(*stats))
         return ret_words_pos, ret_voc, discarded_indexes
 
     # preprocess raw texts into word list
@@ -339,7 +339,8 @@ class Dataset(Serializable):
 
         self.setup_nltk_resources()
         # make indices object -- this filters down non-existent (with no instances) roles
-        self.indices = Indices(self.indices, tags=self.roles)
+        if type(self.indices) is not Indices:
+            self.indices = Indices(self.indices, tags=self.roles)
         self.roles = self.indices.tags
         train_idx, test_idx = self.indices.get_train_test()
         test_idx = self.indices.get_tag_instances(defs.roles.test, must_exist=False)
